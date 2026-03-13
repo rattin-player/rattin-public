@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - node-datachannel
+  - registry-js
+  - win-version-info
