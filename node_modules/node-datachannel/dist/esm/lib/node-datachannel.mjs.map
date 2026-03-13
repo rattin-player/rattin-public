@@ -1,0 +1,1 @@
+{"version":3,"file":"node-datachannel.mjs","sources":["../../../src/lib/node-datachannel.ts"],"sourcesContent":["// @ts-expect-error no types\nimport nodeDataChannel = require('../../build/Release/node_datachannel.node');\nexport default nodeDataChannel;\n"],"names":[],"mappings":";;;;;;;;AACA;;"}

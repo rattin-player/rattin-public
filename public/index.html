@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rattin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #fff; }
+    .input-row { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+
+    input[type="text"] {
+      flex: 1; padding: 0.7rem 1rem; border: 1px solid #333;
+      border-radius: 6px; background: #1a1a1a; color: #e0e0e0;
+      font-size: 0.95rem; outline: none;
+    }
+    input[type="text"]:focus { border-color: #5b6eae; }
+
+    button {
+      padding: 0.7rem 1.5rem; border: none; border-radius: 6px;
+      background: #5b6eae; color: #fff; font-size: 0.95rem; cursor: pointer;
+    }
+    button:hover { background: #4a5d9e; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .status { padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 6px; font-size: 0.9rem; }
+    .status.info { background: #1a2a3a; border: 1px solid #2a4a6a; }
+    .status.error { background: #3a1a1a; border: 1px solid #6a2a2a; }
+
+    .stats-panel {
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 8px; padding: 1rem 1.2rem;
+      margin-bottom: 1.2rem; display: none;
+    }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.8rem; }
+    .stat-item { display: flex; flex-direction: column; gap: 0.15rem; }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+    .stat-value { font-size: 1rem; color: #e0e0e0; font-variant-numeric: tabular-nums; }
+
+    .progress-bar-container { margin-top: 0.8rem; background: #252525; border-radius: 4px; height: 6px; overflow: hidden; }
+    .progress-bar { height: 100%; background: #5b6eae; border-radius: 4px; transition: width 0.5s ease; width: 0%; }
+    .progress-text { margin-top: 0.3rem; font-size: 0.75rem; color: #666; text-align: right; }
+
+    .file-list { list-style: none; margin-bottom: 1.5rem; }
+    .file-list li {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.6rem 0.8rem; border-bottom: 1px solid #222; flex-wrap: wrap; gap: 0.3rem;
+    }
+    .file-list li:hover { background: #1a1a1a; }
+    .file-main-row { display: flex; align-items: center; width: 100%; gap: 0.5rem; }
+    .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-meta { display: flex; align-items: center; gap: 0.8rem; white-space: nowrap; }
+    .file-size { color: #888; font-size: 0.85rem; }
+    .file-progress { color: #5b6eae; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+    .transcode-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .transcode-badge.transcoding { background: #3a3520; color: #d4a; }
+    .transcode-badge.ready { background: #1a3520; color: #4a8; }
+    .transcode-badge.pending { background: #252525; color: #666; }
+    .transcode-badge.error { background: #3a1a1a; color: #a44; }
+
+    .play-btn { padding: 0.4rem 1rem; font-size: 0.85rem; background: #4a8; }
+    .play-btn:hover { background: #3a7; }
+    .stop-btn { padding: 0.4rem 0.7rem; font-size: 0.85rem; background: #a44; }
+    .stop-btn:hover { background: #933; }
+    .resume-btn { padding: 0.4rem 0.7rem; font-size: 0.85rem; background: #5b6eae; }
+    .resume-btn:hover { background: #4a5d9e; }
+    .remove-torrent-btn { background: #a44; margin-bottom: 1rem; }
+    .remove-torrent-btn:hover { background: #933; }
+
+    .file-progress-bar { width: 100%; height: 3px; background: #252525; border-radius: 2px; overflow: hidden; }
+    .file-progress-fill { height: 100%; background: #5b6eae; border-radius: 2px; transition: width 0.5s ease; width: 0%; }
+
+    .player-section { margin-top: 1rem; }
+    .player-section h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: #ccc; }
+    video { width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+    .close-btn { background: #666; padding: 0.4rem 0.8rem; font-size: 0.8rem; margin-left: 0.5rem; }
+    .close-btn:hover { background: #555; }
+    .header-row { display: flex; align-items: center; gap: 0.5rem; }
+    .non-video { color: #555; font-size: 0.85rem; }
+    .sub-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 3px; background: #1a2a3a; color: #5b9; text-transform: uppercase; letter-spacing: 0.03em; }
+    .sub-select { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.8rem; margin-left: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Rattin</h1>
+
+    <div class="input-row">
+      <input type="text" id="magnetInput" placeholder="Paste magnet link here..." />
+      <button id="loadBtn" onclick="loadMagnet()">Load</button>
+    </div>
+
+    <div id="statusBox" style="display:none" class="status info"></div>
+
+    <div class="stats-panel" id="statsPanel">
+      <div class="stats-grid">
+        <div class="stat-item"><span class="stat-label">Download</span><span class="stat-value" id="statDown">--</span></div>
+        <div class="stat-item"><span class="stat-label">Upload</span><span class="stat-value" id="statUp">--</span></div>
+        <div class="stat-item"><span class="stat-label">Peers</span><span class="stat-value" id="statPeers">--</span></div>
+        <div class="stat-item"><span class="stat-label">Downloaded</span><span class="stat-value" id="statDownloaded">--</span></div>
+        <div class="stat-item"><span class="stat-label">Total Size</span><span class="stat-value" id="statTotal">--</span></div>
+        <div class="stat-item"><span class="stat-label">Time Left</span><span class="stat-value" id="statEta">--</span></div>
+      </div>
+      <div class="progress-bar-container"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">0%</div>
+    </div>
+
+    <div id="torrentInfo" style="display:none">
+      <button class="remove-torrent-btn" onclick="removeTorrent()">Remove Torrent</button>
+      <ul class="file-list" id="fileList"></ul>
+    </div>
+
+    <div id="playerSection" class="player-section" style="display:none">
+      <div class="header-row">
+        <h2 id="nowPlaying"></h2>
+        <button class="close-btn" onclick="closePlayer()">Close</button>
+      </div>
+      <video id="videoPlayer" controls autoplay crossorigin="anonymous"></video>
+      <div id="subtitleControls" style="display:none; margin-top: 0.5rem;">
+        <label style="font-size: 0.85rem; color: #888;">Subtitles: </label>
+        <select id="subtitleSelect" class="sub-select" onchange="switchSubtitle()">
+          <option value="">Off</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTorrent = null;
+    let statusInterval = null;
+    let currentlyPlaying = null;
+    let transcodeWasReady = false;
+    const stoppedFiles = new Set();
+
+    async function loadMagnet() {
+      const input = document.getElementById("magnetInput");
+      const magnet = input.value.trim();
+      if (!magnet) return;
+
+      const btn = document.getElementById("loadBtn");
+      btn.disabled = true;
+      btn.textContent = "Loading...";
+      showStatus("Connecting to peers and fetching metadata...", "info");
+      document.getElementById("torrentInfo").style.display = "none";
+      document.getElementById("statsPanel").style.display = "none";
+      closePlayer();
+
+      try {
+        const res = await fetch("/api/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ magnet }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentTorrent = data;
+        hideStatus();
+        renderFiles(data);
+        document.getElementById("statsPanel").style.display = "block";
+        startStatusPolling(data.infoHash);
+      } catch (err) {
+        showStatus(err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Load";
+      }
+    }
+
+    function renderFiles(torrent) {
+      const list = document.getElementById("fileList");
+      const videoFiles = torrent.files.filter((f) => f.isVideo);
+      const nonVideoFiles = torrent.files.filter((f) => !f.isVideo);
+      list.innerHTML = "";
+      stoppedFiles.clear();
+
+      if (videoFiles.length === 0) {
+        showStatus("No video files found in this torrent.", "error");
+        return;
+      }
+
+      // All files start deselected
+      torrent.files.forEach((f) => stoppedFiles.add(f.index));
+
+      videoFiles.forEach((f) => {
+        const li = document.createElement("li");
+        li.id = `file-${f.index}`;
+        li.innerHTML = `
+          <div class="file-main-row">
+            <span class="file-name">${escapeHtml(f.name)}</span>
+            <div class="file-meta">
+              <span class="transcode-badge" id="tbadge-${f.index}" style="display:none"></span>
+              <span class="file-progress" id="fprog-${f.index}">0%</span>
+              <span class="file-size">${formatBytes(f.length)}</span>
+              <button class="resume-btn" id="stopbtn-${f.index}" onclick="toggleFile('${torrent.infoHash}', ${f.index})">Download</button>
+              <button class="play-btn" onclick="playFile('${torrent.infoHash}', ${f.index})">Play</button>
+            </div>
+          </div>
+          <div class="file-progress-bar">
+            <div class="file-progress-fill" id="fbar-${f.index}"></div>
+          </div>
+        `;
+        list.appendChild(li);
+      });
+
+      // Show subtitle files
+      const subFiles = torrent.files.filter((f) => f.isSubtitle);
+      if (subFiles.length > 0) {
+        subFiles.forEach((f) => {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <div class="file-main-row">
+              <span class="file-name">${escapeHtml(f.name)}</span>
+              <div class="file-meta">
+                <span class="sub-badge">subtitle</span>
+                <span class="file-size">${formatBytes(f.length)}</span>
+              </div>
+            </div>
+          `;
+          list.appendChild(li);
+        });
+      }
+
+      const otherFiles = torrent.files.filter((f) => !f.isVideo && !f.isSubtitle);
+      if (otherFiles.length > 0) {
+        const li = document.createElement("li");
+        li.className = "non-video";
+        li.textContent = `+ ${otherFiles.length} other file(s)`;
+        list.appendChild(li);
+      }
+
+      document.getElementById("torrentInfo").style.display = "block";
+    }
+
+    async function playFile(infoHash, fileIndex) {
+      const file = currentTorrent.files[fileIndex];
+      const video = document.getElementById("videoPlayer");
+      currentlyPlaying = { infoHash, fileIndex };
+      transcodeWasReady = false;
+
+      // Select the file for download if not already
+      if (stoppedFiles.has(fileIndex)) {
+        await fetch(`/api/select/${infoHash}/${fileIndex}`, { method: "POST" }).catch(() => {});
+        stoppedFiles.delete(fileIndex);
+        const btn = document.getElementById(`stopbtn-${fileIndex}`);
+        if (btn) { btn.textContent = "Stop"; btn.className = "stop-btn"; }
+      }
+
+      // Remove old tracks
+      video.querySelectorAll("track").forEach((t) => t.remove());
+
+      video.src = `/api/stream/${infoHash}/${fileIndex}`;
+      document.getElementById("nowPlaying").textContent = file.name;
+      document.getElementById("playerSection").style.display = "block";
+
+      // Find and attach subtitle files
+      attachSubtitles(infoHash, fileIndex);
+
+      video.play().catch(() => {});
+    }
+
+    const langMap = {
+      eng: "English", en: "English", english: "English",
+      spa: "Spanish", es: "Spanish", spanish: "Spanish",
+      fre: "French", fr: "French", french: "French",
+      ger: "German", de: "German", german: "German",
+      por: "Portuguese", pt: "Portuguese", portuguese: "Portuguese",
+      ita: "Italian", it: "Italian", italian: "Italian",
+      jpn: "Japanese", ja: "Japanese", japanese: "Japanese",
+      kor: "Korean", ko: "Korean", korean: "Korean",
+      chi: "Chinese", zh: "Chinese", chinese: "Chinese",
+      ara: "Arabic", ar: "Arabic", arabic: "Arabic",
+      rus: "Russian", ru: "Russian", russian: "Russian",
+      dut: "Dutch", nl: "Dutch", dutch: "Dutch",
+      pol: "Polish", pl: "Polish", polish: "Polish",
+      tur: "Turkish", tr: "Turkish", turkish: "Turkish",
+    };
+
+    function guessLabel(name) {
+      const base = name.replace(/\.[^.]+$/, "").toLowerCase();
+      for (const [code, lang] of Object.entries(langMap)) {
+        if (base.includes("." + code) || base.includes("_" + code) || base.includes("-" + code)) {
+          return lang;
+        }
+      }
+      return name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop();
+    }
+
+    let subtitleProbeTimer = null;
+    let embeddedSubsFound = false;
+
+    async function attachSubtitles(infoHash, videoFileIndex) {
+      const video = document.getElementById("videoPlayer");
+      const select = document.getElementById("subtitleSelect");
+      const controls = document.getElementById("subtitleControls");
+      select.innerHTML = '<option value="">Off</option>';
+      embeddedSubsFound = false;
+      if (subtitleProbeTimer) { clearInterval(subtitleProbeTimer); subtitleProbeTimer = null; }
+
+      if (!currentTorrent) { controls.style.display = "none"; return; }
+
+      // 1) External subtitle files in the torrent
+      const subtitleFiles = currentTorrent.files.filter((f) => f.isSubtitle);
+      subtitleFiles.forEach((f) => {
+        if (stoppedFiles.has(f.index)) {
+          fetch(`/api/select/${infoHash}/${f.index}`, { method: "POST" }).catch(() => {});
+          stoppedFiles.delete(f.index);
+        }
+        const label = guessLabel(f.name);
+        const opt = document.createElement("option");
+        opt.value = `file:${f.index}`;
+        opt.textContent = label + " (external)";
+        select.appendChild(opt);
+      });
+
+      // 2) Probe for embedded subtitles - do it now and retry if file not complete
+      await probeEmbeddedSubs(infoHash, videoFileIndex);
+
+      // Show controls if we found anything
+      if (select.options.length > 1) {
+        controls.style.display = "block";
+        // Don't auto-enable, let user pick
+      } else {
+        controls.style.display = "none";
+        // Keep retrying probe until file is complete (embedded subs might be found later)
+        subtitleProbeTimer = setInterval(async () => {
+          if (!currentlyPlaying || currentlyPlaying.fileIndex !== videoFileIndex) {
+            clearInterval(subtitleProbeTimer);
+            subtitleProbeTimer = null;
+            return;
+          }
+          const found = await probeEmbeddedSubs(infoHash, videoFileIndex);
+          if (found || embeddedSubsFound) {
+            clearInterval(subtitleProbeTimer);
+            subtitleProbeTimer = null;
+            if (select.options.length > 1) {
+              controls.style.display = "block";
+            }
+          }
+        }, 5000);
+      }
+    }
+
+    async function probeEmbeddedSubs(infoHash, videoFileIndex) {
+      const select = document.getElementById("subtitleSelect");
+      try {
+        const probeRes = await fetch(`/api/subtitles/${infoHash}/${videoFileIndex}`);
+        if (!probeRes.ok) return false;
+        const data = await probeRes.json();
+        if (data.tracks && data.tracks.length > 0) {
+          // Remove old embedded options
+          for (const opt of [...select.options]) {
+            if (opt.value.startsWith("embedded:")) opt.remove();
+          }
+          data.tracks.forEach((t) => {
+            const lang = t.lang ? (langMap[t.lang] || t.lang) : null;
+            const label = t.title || lang || `Track ${t.streamIndex}`;
+            const opt = document.createElement("option");
+            opt.value = `embedded:${t.streamIndex}`;
+            opt.textContent = label + " (embedded)";
+            select.appendChild(opt);
+          });
+          embeddedSubsFound = true;
+          return true;
+        }
+        // If file is complete and no subs found, stop retrying
+        if (data.complete) {
+          embeddedSubsFound = true; // flag to stop retrying
+          return false;
+        }
+        return false;
+      } catch { return false; }
+    }
+
+    function loadSubtitleTrack(src, label, key, autoEnable) {
+      const video = document.getElementById("videoPlayer");
+      const existing = video.querySelector(`track[data-key="${key}"]`);
+      if (existing) {
+        if (autoEnable && existing.track) existing.track.mode = "showing";
+        return;
+      }
+
+      const track = document.createElement("track");
+      track.kind = "subtitles";
+      track.src = src;
+      track.label = label;
+      track.dataset.key = key;
+      video.appendChild(track);
+
+      if (autoEnable) {
+        track.default = true;
+        track.addEventListener("load", () => {
+          if (track.track) track.track.mode = "showing";
+        });
+        if (track.track) track.track.mode = "showing";
+      }
+    }
+
+    function tryLoadExternalSub(infoHash, fileIndex, label, autoEnable) {
+      const url = `/api/subtitle/${infoHash}/${fileIndex}`;
+      fetch(url, { method: "HEAD" }).then((res) => {
+        if (res.status === 202) {
+          setTimeout(() => {
+            if (currentlyPlaying && currentlyPlaying.infoHash === infoHash) {
+              tryLoadExternalSub(infoHash, fileIndex, label, autoEnable);
+            }
+          }, 3000);
+          return;
+        }
+        if (!res.ok) return;
+        loadSubtitleTrack(url, label, `file:${fileIndex}`, autoEnable);
+      }).catch(() => {});
+    }
+
+    function switchSubtitle() {
+      const video = document.getElementById("videoPlayer");
+      const select = document.getElementById("subtitleSelect");
+      const val = select.value;
+
+      // Hide all tracks
+      for (const track of video.textTracks) {
+        track.mode = "hidden";
+      }
+
+      if (!val || !currentlyPlaying) return;
+
+      const { infoHash, fileIndex } = currentlyPlaying;
+      const label = select.options[select.selectedIndex]?.textContent || "Subtitles";
+
+      if (val.startsWith("file:")) {
+        const subFileIndex = parseInt(val.split(":")[1], 10);
+        const existing = video.querySelector(`track[data-key="${val}"]`);
+        if (existing && existing.track) {
+          existing.track.mode = "showing";
+        } else {
+          tryLoadExternalSub(infoHash, subFileIndex, label, true);
+        }
+      } else if (val.startsWith("embedded:")) {
+        const streamIdx = parseInt(val.split(":")[1], 10);
+        const url = `/api/subtitle-extract/${infoHash}/${fileIndex}/${streamIdx}`;
+        const existing = video.querySelector(`track[data-key="${val}"]`);
+        if (existing && existing.track) {
+          existing.track.mode = "showing";
+        } else {
+          loadSubtitleTrack(url, label, val, true);
+        }
+      }
+    }
+
+    async function toggleFile(infoHash, fileIndex) {
+      const isStopped = stoppedFiles.has(fileIndex);
+      const endpoint = isStopped ? "select" : "deselect";
+      try {
+        const res = await fetch(`/api/${endpoint}/${infoHash}/${fileIndex}`, { method: "POST" });
+        if (!res.ok) return;
+        const btn = document.getElementById(`stopbtn-${fileIndex}`);
+        if (isStopped) {
+          stoppedFiles.delete(fileIndex);
+          btn.textContent = "Stop"; btn.className = "stop-btn";
+        } else {
+          stoppedFiles.add(fileIndex);
+          btn.textContent = "Download"; btn.className = "resume-btn";
+        }
+      } catch {}
+    }
+
+    async function removeTorrent() {
+      if (!currentTorrent) return;
+      try { await fetch(`/api/remove/${currentTorrent.infoHash}`, { method: "DELETE" }); } catch {}
+      if (statusInterval) clearInterval(statusInterval);
+      closePlayer();
+      document.getElementById("torrentInfo").style.display = "none";
+      document.getElementById("statsPanel").style.display = "none";
+      stoppedFiles.clear();
+      currentTorrent = null;
+      showStatus("Torrent removed.", "info");
+    }
+
+    function closePlayer() {
+      const video = document.getElementById("videoPlayer");
+      video.pause();
+      video.querySelectorAll("track").forEach((t) => t.remove());
+      video.src = "";
+      document.getElementById("playerSection").style.display = "none";
+      document.getElementById("subtitleControls").style.display = "none";
+      currentlyPlaying = null;
+      transcodeWasReady = false;
+    }
+
+    function startStatusPolling(infoHash) {
+      if (statusInterval) clearInterval(statusInterval);
+      updateStatus(infoHash);
+      statusInterval = setInterval(() => updateStatus(infoHash), 1500);
+    }
+
+    async function updateStatus(infoHash) {
+      try {
+        const res = await fetch(`/api/status/${infoHash}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        document.getElementById("statDown").textContent = formatBytes(data.downloadSpeed) + "/s";
+        document.getElementById("statUp").textContent = formatBytes(data.uploadSpeed) + "/s";
+        document.getElementById("statPeers").textContent = data.numPeers;
+        document.getElementById("statDownloaded").textContent = formatBytes(data.downloaded);
+        document.getElementById("statTotal").textContent = formatBytes(data.totalSize);
+        document.getElementById("statEta").textContent = formatEta(data.timeRemaining);
+
+        const pct = (data.progress * 100).toFixed(1);
+        document.getElementById("progressBar").style.width = pct + "%";
+        document.getElementById("progressText").textContent =
+          `${pct}% - ${formatBytes(data.downloaded)} / ${formatBytes(data.totalSize)}`;
+
+        data.files.forEach((f) => {
+          const progEl = document.getElementById(`fprog-${f.index}`);
+          const barEl = document.getElementById(`fbar-${f.index}`);
+          if (progEl) {
+            const filePct = (f.progress * 100).toFixed(1);
+            progEl.textContent = filePct + "%";
+            barEl.style.width = filePct + "%";
+          }
+
+          // Transcode badge
+          const badge = document.getElementById(`tbadge-${f.index}`);
+          if (badge && f.transcodeStatus) {
+            badge.style.display = "inline";
+            badge.className = `transcode-badge ${f.transcodeStatus}`;
+            const labels = {
+              pending: "needs transcode",
+              transcoding: "transcoding...",
+              ready: "ready (seekable)",
+              error: "transcode failed",
+            };
+            badge.textContent = labels[f.transcodeStatus] || f.transcodeStatus;
+
+            // Auto-switch to transcoded version when ready (preserves playback position)
+            if (f.transcodeStatus === "ready" && currentlyPlaying &&
+                currentlyPlaying.fileIndex === f.index && !transcodeWasReady) {
+              transcodeWasReady = true;
+              const video = document.getElementById("videoPlayer");
+              const savedTime = video.currentTime;
+              video.src = `/api/stream/${currentlyPlaying.infoHash}/${f.index}`;
+              video.addEventListener("loadedmetadata", function onMeta() {
+                video.removeEventListener("loadedmetadata", onMeta);
+                video.currentTime = savedTime;
+              });
+              video.play().catch(() => {});
+            }
+          }
+        });
+      } catch {}
+    }
+
+    function showStatus(msg, type) {
+      const box = document.getElementById("statusBox");
+      box.textContent = msg; box.className = `status ${type}`; box.style.display = "block";
+    }
+    function hideStatus() { document.getElementById("statusBox").style.display = "none"; }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return "0 B";
+      const k = 1024, sizes = ["B", "KB", "MB", "GB", "TB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i];
+    }
+
+    function formatEta(ms) {
+      if (!ms || !isFinite(ms)) return "--";
+      const secs = Math.floor(ms / 1000);
+      if (secs < 60) return secs + "s";
+      const mins = Math.floor(secs / 60), remSecs = secs % 60;
+      if (mins < 60) return mins + "m " + remSecs + "s";
+      const hrs = Math.floor(mins / 60), remMins = mins % 60;
+      return hrs + "h " + remMins + "m";
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    document.getElementById("magnetInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") loadMagnet();
+    });
+  </script>
+</body>
+</html>

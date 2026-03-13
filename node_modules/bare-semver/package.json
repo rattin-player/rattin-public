@@ -1,0 +1,40 @@
+{
+  "name": "bare-semver",
+  "version": "1.0.2",
+  "description": "Minimal semantic versioning library for Bare",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package": "./package.json",
+    "./constants": "./lib/constants.js",
+    "./errors": "./lib/errors.js",
+    "./version": "./lib/version.js",
+    "./range": "./lib/range.js",
+    "./comparator": "./lib/comparator.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib"
+  ],
+  "scripts": {
+    "test": "prettier . --check && bare test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/holepunchto/bare-semver.git"
+  },
+  "author": "Holepunch",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/holepunchto/bare-semver/issues"
+  },
+  "homepage": "https://github.com/holepunchto/bare-semver#readme",
+  "devDependencies": {
+    "brittle": "^3.2.1",
+    "prettier": "^3.4.2",
+    "prettier-config-standard": "^7.0.0"
+  }
+}
