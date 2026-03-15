@@ -13,11 +13,15 @@ const client = new WebTorrent();
 
 const DOWNLOAD_PATH = "/tmp/rattin";
 const TRANSCODE_PATH = "/tmp/rattin-transcoded";
-const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"];
+const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".flv", ".wmv"];
+const AUDIO_EXTENSIONS = [".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma"];
 const SUBTITLE_EXTENSIONS = [".srt", ".ass", ".ssa", ".vtt", ".sub"];
+const ALLOWED_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS, ...SUBTITLE_EXTENSIONS]);
 const BROWSER_NATIVE = new Set([".mp4", ".m4v", ".webm"]);
 
 const transcodeJobs = new Map();
+const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
+const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 
 function log(level, msg, data) {
   const ts = new Date().toISOString().slice(11, 23);
@@ -44,6 +48,59 @@ function needsTranscode(ext) {
   return !BROWSER_NATIVE.has(ext);
 }
 
+function isAllowedFile(name) {
+  const ext = path.extname(name).toLowerCase();
+  return ALLOWED_EXTENSIONS.has(ext);
+}
+
+// Verify a file is actually media by probing its content with ffprobe.
+// Returns { valid, format, streams } or { valid: false, reason }.
+const probeCache = new Map(); // filePath -> result
+function probeMedia(filePath) {
+  if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath));
+  return new Promise((resolve) => {
+    const proc = spawn("ffprobe", [
+      "-v", "quiet", "-print_format", "json",
+      "-show_format", "-show_streams",
+      filePath,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+
+    let out = "";
+    proc.stdout.on("data", (d) => { out += d.toString(); });
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        const result = { valid: false, reason: "ffprobe failed — not a valid media file" };
+        probeCache.set(filePath, result);
+        return resolve(result);
+      }
+      try {
+        const data = JSON.parse(out);
+        const fmt = data.format?.format_name || "";
+        const streams = data.streams || [];
+        const hasMedia = streams.some((s) =>
+          s.codec_type === "video" || s.codec_type === "audio"
+        );
+        if (!hasMedia) {
+          const result = { valid: false, reason: "No video or audio streams detected" };
+          probeCache.set(filePath, result);
+          return resolve(result);
+        }
+        const result = { valid: true, format: fmt, streams: streams.length };
+        probeCache.set(filePath, result);
+        log("info", "Media probe OK", { file: path.basename(filePath), format: fmt, streams: streams.length });
+        resolve(result);
+      } catch {
+        const result = { valid: false, reason: "Failed to parse probe output" };
+        probeCache.set(filePath, result);
+        resolve(result);
+      }
+    });
+    proc.on("error", () => {
+      resolve({ valid: false, reason: "ffprobe not available" });
+    });
+  });
+}
+
 // Start background transcode to a proper MP4 with faststart (moov at beginning).
 // This is what makes seeking work - the browser can read the moov atom first
 // and know the full duration + seek table.
@@ -58,6 +115,7 @@ function startTranscode(inputPath, jobKey) {
 
   log("info", "Starting transcode", { input: path.basename(inputPath) });
   const job = { outputPath, done: false, error: null, process: null };
+  transcodeJobs.set(jobKey, job);
 
   // Try remux first (fast - just repackage, no re-encoding)
   const proc = spawn("ffmpeg", [
@@ -68,13 +126,17 @@ function startTranscode(inputPath, jobKey) {
   ], { stdio: ["ignore", "ignore", "pipe"] });
   job.process = proc;
 
+  let remuxStderr = "";
+  proc.stderr.on("data", (d) => { remuxStderr += d.toString(); });
+
   proc.on("close", (code) => {
     if (code === 0) {
       job.done = true;
       log("info", "Transcode complete (remux)", { output: path.basename(outputPath) });
     } else {
-      // Remux failed, re-encode
-      log("info", "Remux failed, re-encoding with H.264");
+      log("info", "Remux failed (code " + code + "), re-encoding with H.264", {
+        stderr: remuxStderr.slice(-200)
+      });
       const proc2 = spawn("ffmpeg", [
         "-i", inputPath,
         "-c:v", "libx264", "-preset", "fast", "-crf", "22",
@@ -84,7 +146,9 @@ function startTranscode(inputPath, jobKey) {
       ], { stdio: ["ignore", "ignore", "pipe"] });
       job.process = proc2;
 
+      let encodeStderr = "";
       proc2.stderr.on("data", (d) => {
+        encodeStderr += d.toString();
         const m = d.toString().match(/time=(\S+)/);
         if (m) log("info", "Transcode progress", { time: m[1] });
       });
@@ -94,19 +158,65 @@ function startTranscode(inputPath, jobKey) {
           job.done = true;
           log("info", "Transcode complete (re-encode)");
         } else {
-          job.error = "Transcode failed";
-          log("err", "Transcode failed");
+          job.error = "Transcode failed (code " + code2 + ")";
+          log("err", "Transcode re-encode failed", {
+            code: code2, stderr: encodeStderr.slice(-300)
+          });
         }
+      });
+
+      proc2.on("error", (err) => {
+        job.error = "ffmpeg error: " + err.message;
+        log("err", "ffmpeg spawn error", { error: err.message });
       });
     }
   });
 
-  transcodeJobs.set(jobKey, job);
+  proc.on("error", (err) => {
+    job.error = "ffmpeg error: " + err.message;
+    log("err", "ffmpeg spawn error", { error: err.message });
+  });
+
   return job;
 }
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// Torrent search proxy (avoids CORS, queries apibay)
+app.get("/api/search", async (req, res) => {
+  const q = (req.query.q || "").trim();
+  if (!q) return res.json([]);
+
+  try {
+    const url = `https://apibay.org/q.php?q=${encodeURIComponent(q)}`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "MagnetPlayer/1.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) throw new Error("Search API returned " + resp.status);
+    const data = await resp.json();
+    // apibay returns [{id, name, info_hash, leechers, seeders, num_files, size, ...}]
+    // Filter out the "no results" placeholder (id "0" with name "No results...")
+    const results = (Array.isArray(data) ? data : [])
+      .filter((r) => r.id !== "0" && r.name !== "No results returned")
+      .map((r) => ({
+        name: r.name,
+        infoHash: r.info_hash,
+        size: parseInt(r.size, 10) || 0,
+        seeders: parseInt(r.seeders, 10) || 0,
+        leechers: parseInt(r.leechers, 10) || 0,
+        numFiles: parseInt(r.num_files, 10) || 0,
+        added: r.added,
+        category: r.category,
+      }));
+    log("info", "Search", { query: q, results: results.length });
+    res.json(results);
+  } catch (err) {
+    log("err", "Search failed", { error: err.message });
+    res.status(502).json({ error: "Search failed: " + err.message });
+  }
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -151,11 +261,16 @@ app.post("/api/add", (req, res) => {
     torrent.on("done", () => {
       log("info", "Download complete, stopping seed", { name: torrent.name });
       torrent.pause();
-      // Auto-start transcode for files that need it
-      torrent.files.forEach((f, i) => {
+      // Auto-start transcode for files that need it (after verifying they're real media)
+      torrent.files.forEach(async (f, i) => {
         const ext = path.extname(f.name).toLowerCase();
         if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
-          startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
+          const probe = await probeMedia(diskPath(torrent, f));
+          if (probe.valid) {
+            startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
+          } else {
+            log("warn", "Skipping transcode for fake media", { name: f.name, reason: probe.reason });
+          }
         }
       });
     });
@@ -169,6 +284,46 @@ app.post("/api/add", (req, res) => {
   setTimeout(() => {
     if (!res.headersSent) res.status(408).json({ error: "Timed out waiting for metadata" });
   }, 30000);
+});
+
+// Duration endpoint - ffprobe the video to get total duration
+app.get("/api/duration/:infoHash/:fileIndex", (req, res) => {
+  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  if (!torrent) return res.status(404).json({ error: "Torrent not found" });
+
+  const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+  if (!file) return res.status(404).json({ error: "File not found" });
+
+  const cacheKey = `${torrent.infoHash}:${req.params.fileIndex}`;
+  if (durationCache.has(cacheKey)) {
+    return res.json({ duration: durationCache.get(cacheKey) });
+  }
+
+  const filePath = diskPath(torrent, file);
+  try { statSync(filePath); } catch {
+    return res.json({ duration: null });
+  }
+
+  const probe = spawn("ffprobe", [
+    "-v", "quiet", "-print_format", "json",
+    "-show_format",
+    filePath,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+
+  let out = "";
+  probe.stdout.on("data", (d) => { out += d.toString(); });
+  probe.on("close", (code) => {
+    if (code !== 0) return res.json({ duration: null });
+    try {
+      const data = JSON.parse(out);
+      const dur = parseFloat(data.format?.duration);
+      if (dur && isFinite(dur)) {
+        durationCache.set(cacheKey, dur);
+        return res.json({ duration: dur });
+      }
+    } catch {}
+    res.json({ duration: null });
+  });
 });
 
 // Subtitle endpoint - converts any subtitle format to WebVTT
@@ -190,15 +345,38 @@ app.get("/api/subtitle/:infoHash/:fileIndex", (req, res) => {
   }
 
   const filePath = diskPath(torrent, file);
+  const offset = parseFloat(req.query.offset) || 0;
 
-  // VTT can be served directly
+  // For any offset or non-SRT format, use ffmpeg (handles offset via -ss)
+  if (offset > 0 || (ext !== ".srt" && ext !== ".vtt")) {
+    log("info", "Converting subtitle via ffmpeg", { file: file.name, ext, offset });
+    const args = [
+      ...(offset > 0 ? ["-ss", String(offset)] : []),
+      "-i", filePath,
+      "-f", "webvtt",
+      "-v", "warning",
+      "pipe:1",
+    ];
+    const ffmpeg = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    ffmpeg.stdout.pipe(res);
+    ffmpeg.stderr.on("data", (d) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
+    ffmpeg.on("close", (code) => {
+      if (code !== 0) log("err", "Subtitle conversion failed", { file: file.name, code });
+    });
+    res.on("close", () => ffmpeg.kill());
+    return;
+  }
+
+  // VTT can be served directly (no offset)
   if (ext === ".vtt") {
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.setHeader("Access-Control-Allow-Origin", "*");
     return createReadStream(filePath).pipe(res);
   }
 
-  // SRT: simple text conversion (faster than ffmpeg)
+  // SRT without offset: simple text conversion
   if (ext === ".srt") {
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -208,12 +386,10 @@ app.get("/api/subtitle/:infoHash/:fileIndex", (req, res) => {
       return res.send(vtt);
     } catch (err) {
       log("err", "SRT conversion failed, falling back to ffmpeg", { error: err.message });
-      // Fall through to ffmpeg
     }
   }
 
-  // ASS/SSA/SUB and fallback: use ffmpeg to convert
-  log("info", "Converting subtitle via ffmpeg", { file: file.name, ext });
+  // Fallback: ffmpeg
   const ffmpeg = spawn("ffmpeg", [
     "-i", filePath,
     "-f", "webvtt",
@@ -312,15 +488,18 @@ app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req, res) =>
     return res.status(202).json({ error: "File not on disk yet" });
   }
 
-  log("info", "Extracting embedded subtitle", { file: file.name, stream: streamIdx });
+  const offset = parseFloat(req.query.offset) || 0;
+  log("info", "Extracting embedded subtitle", { file: file.name, stream: streamIdx, offset });
 
-  const ffmpeg = spawn("ffmpeg", [
+  const args = [
+    ...(offset > 0 ? ["-ss", String(offset)] : []),
     "-i", filePath,
     "-map", `0:${streamIdx}`,
     "-f", "webvtt",
     "-v", "warning",
     "pipe:1",
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  ];
+  const ffmpeg = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
 
   res.setHeader("Content-Type", "text/vtt; charset=utf-8");
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -333,15 +512,32 @@ app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req, res) =>
 });
 
 // Stream endpoint
-app.get("/api/stream/:infoHash/:fileIndex", (req, res) => {
+app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
   if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
   const file = torrent.files[parseInt(req.params.fileIndex, 10)];
   if (!file) return res.status(404).json({ error: "File not found" });
 
+  if (!isAllowedFile(file.name)) {
+    return res.status(403).json({ error: "File type not allowed" });
+  }
+
   const ext = path.extname(file.name).toLowerCase();
   const complete = isFileComplete(torrent, file);
+  const filePath = diskPath(torrent, file);
+
+  // Verify file is real media once enough data exists on disk
+  if (complete || (file.downloaded > 1024 * 1024)) {
+    try {
+      const probe = await probeMedia(filePath);
+      if (!probe.valid) {
+        log("warn", "Blocked fake media file", { name: file.name, reason: probe.reason });
+        return res.status(403).json({ error: "File failed media verification: " + probe.reason });
+      }
+    } catch {}
+  }
+
   const jobKey = `${torrent.infoHash}:${req.params.fileIndex}`;
   const xcode = needsTranscode(ext);
 
@@ -366,8 +562,9 @@ app.get("/api/stream/:infoHash/:fileIndex", (req, res) => {
 
   // 3) Needs transcode but not ready yet - live pipe through ffmpeg
   if (xcode) {
-    log("info", "Live transcode", { file: file.name, complete });
-    return serveLiveTranscode(torrent, file, complete, req, res);
+    const seekTo = parseFloat(req.query.t) || 0;
+    log("info", "Live transcode", { file: file.name, complete, seekTo });
+    return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
   }
 
   // 4) Native format, still downloading - WebTorrent stream
@@ -437,18 +634,32 @@ function serveFromTorrent(file, req, res) {
 }
 
 // Live transcode through ffmpeg (for MKV etc, before background transcode is ready)
-function serveLiveTranscode(torrent, file, complete, req, res) {
-  const input = complete ? diskPath(torrent, file) : "pipe:0";
-  const useStdin = !complete;
+function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
+  // Try to use disk file whenever possible (even partial downloads).
+  // ffmpeg can read partial MKV files from disk and seek within them.
+  // Only use pipe as last resort when file doesn't exist on disk.
+  const filePath = diskPath(torrent, file);
+  let fileOnDisk = false;
+  try { fileOnDisk = statSync(filePath).size > 0; } catch {}
 
+  const input = fileOnDisk ? filePath : "pipe:0";
+  const useStdin = !fileOnDisk;
+
+  const doSeek = seekTo > 0;
   const args = [
     ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
+    ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
     "-i", input,
-    "-c:v", "copy", "-c:a", "aac",
+    ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
+    // Re-encode when seeking to avoid audio/video desync at cut point
+    ...(doSeek ? ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"] : ["-c:v", "copy"]),
+    "-c:a", "aac",
     "-movflags", "frag_keyframe+empty_moov+default_base_moof",
     "-f", "mp4", "-v", "warning",
     "pipe:1",
   ];
+
+  log("info", "Live transcode", { input: fileOnDisk ? "disk" : "pipe", seekTo, doSeek });
 
   const ffmpeg = spawn("ffmpeg", args, {
     stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
@@ -474,10 +685,12 @@ function serveLiveTranscode(torrent, file, complete, req, res) {
 
   ffmpeg.on("close", (code) => {
     if (code && code !== 0 && code !== 255) {
-      log("warn", "Copy failed, retrying with re-encode");
+      log("warn", "First attempt failed, retrying with full re-encode");
       const args2 = [
         ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
+        ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
         "-i", input,
+        ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
         "-c:a", "aac",
         "-movflags", "frag_keyframe+empty_moov+default_base_moof",
@@ -536,8 +749,11 @@ app.get("/api/status/:infoHash", (req, res) => {
         downloaded: f.downloaded,
         progress: f.length > 0 ? f.downloaded / f.length : 0,
         isVideo: VIDEO_EXTENSIONS.includes(ext),
+        isAudio: AUDIO_EXTENSIONS.includes(ext),
         isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
+        isAllowed: isAllowedFile(f.name),
         transcodeStatus,
+        duration: durationCache.get(jobKey) || null,
       };
     }),
   });
@@ -546,23 +762,75 @@ app.get("/api/status/:infoHash", (req, res) => {
 app.post("/api/deselect/:infoHash/:fileIndex", (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
   if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-  const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+  const fileIdx = parseInt(req.params.fileIndex, 10);
+  const file = torrent.files[fileIdx];
   if (!file) return res.status(404).json({ error: "File not found" });
-  file.deselect();
-  // Also deselect at torrent level to ensure pieces are truly removed
-  torrent.deselect(file._startPiece, file._endPiece);
-  log("info", "Deselected", { name: file.name });
+
+  // Remove from our tracking set
+  const active = activeFiles.get(torrent.infoHash) || new Set();
+  active.delete(fileIdx);
+  activeFiles.set(torrent.infoHash, active);
+
+  // Nuclear: clear ALL selections, then re-add only the ones still active
+  torrent._selections.clear();
+  for (const idx of active) {
+    const f = torrent.files[idx];
+    if (f && f.progress < 1) {
+      torrent.select(f._startPiece, f._endPiece, 1);
+    }
+  }
+
+  // If nothing active, pause the torrent to fully stop all traffic
+  if (active.size === 0) {
+    torrent.pause();
+    log("info", "No active files, paused torrent");
+  }
+
+  log("info", "Deselected", { name: file.name, activeFiles: active.size });
   res.json({ ok: true });
 });
 
 app.post("/api/select/:infoHash/:fileIndex", (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
   if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-  const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+  const fileIdx = parseInt(req.params.fileIndex, 10);
+  const file = torrent.files[fileIdx];
   if (!file) return res.status(404).json({ error: "File not found" });
+
+  // Block non-media files from being downloaded
+  if (!isAllowedFile(file.name)) {
+    log("warn", "Blocked download of non-media file", { name: file.name });
+    return res.status(403).json({ error: "Only video, audio, and subtitle files can be downloaded" });
+  }
+
+  // Track this file as active
+  const active = activeFiles.get(torrent.infoHash) || new Set();
+  active.add(fileIdx);
+  activeFiles.set(torrent.infoHash, active);
+
+  // Resume if paused
+  if (torrent.paused) torrent.resume();
   file.select();
-  log("info", "Selected", { name: file.name });
+  log("info", "Selected", { name: file.name, activeFiles: active.size });
   res.json({ ok: true });
+});
+
+// List all active torrents (for persistent dashboard)
+app.get("/api/torrents", (req, res) => {
+  res.json(client.torrents.map((t) => ({
+    infoHash: t.infoHash,
+    name: t.name,
+    progress: t.progress,
+    downloadSpeed: t.downloadSpeed,
+    uploadSpeed: t.uploadSpeed,
+    numPeers: t.numPeers,
+    paused: t.paused,
+    done: t.progress === 1,
+    totalSize: t.length,
+    downloaded: t.downloaded,
+    numFiles: t.files.length,
+    mediaFiles: t.files.filter((f) => isAllowedFile(f.name)).length,
+  })));
 });
 
 app.delete("/api/remove/:infoHash", (req, res) => {
@@ -580,17 +848,23 @@ app.delete("/api/remove/:infoHash", (req, res) => {
 });
 
 function torrentInfo(torrent) {
-  return {
-    infoHash: torrent.infoHash, name: torrent.name,
-    files: torrent.files.map((f, i) => {
-      const ext = path.extname(f.name).toLowerCase();
-      return {
-        index: i, name: f.name, length: f.length,
-        isVideo: VIDEO_EXTENSIONS.includes(ext),
-        isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
-      };
-    }),
-  };
+  const blocked = [];
+  const files = torrent.files.map((f, i) => {
+    const ext = path.extname(f.name).toLowerCase();
+    const allowed = isAllowedFile(f.name);
+    if (!allowed) blocked.push(f.name);
+    return {
+      index: i, name: f.name, length: f.length,
+      isVideo: VIDEO_EXTENSIONS.includes(ext),
+      isAudio: AUDIO_EXTENSIONS.includes(ext),
+      isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
+      isAllowed: allowed,
+    };
+  });
+  if (blocked.length > 0) {
+    log("info", "Blocked non-media files", { count: blocked.length, examples: blocked.slice(0, 5) });
+  }
+  return { infoHash: torrent.infoHash, name: torrent.name, files };
 }
 
 function magnetToInfoHash(magnet) {
@@ -610,21 +884,35 @@ function throttle(fn, ms) {
   return (...a) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...a); } };
 }
 
+// Explicit clear endpoint - deletes all downloaded files and transcodes
+app.delete("/api/clear", (req, res) => {
+  log("info", "Clearing all data...");
+  // Kill all transcode jobs
+  for (const [, job] of transcodeJobs) {
+    if (job.process && !job.done) job.process.kill();
+  }
+  transcodeJobs.clear();
+  durationCache.clear();
+  // Destroy all torrents
+  const promises = client.torrents.map((t) => new Promise((resolve) => {
+    t.destroy({ destroyStore: true }, resolve);
+  }));
+  Promise.all(promises).then(() => {
+    try { fs.rmSync(DOWNLOAD_PATH, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(TRANSCODE_PATH, { recursive: true, force: true }); } catch {}
+    log("info", "All data cleared");
+    res.json({ ok: true });
+  });
+});
+
 function cleanup() {
   log("info", "Shutting down...");
   for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
   client.destroy(() => {
-    try {
-      fs.rmSync(DOWNLOAD_PATH, { recursive: true, force: true });
-      fs.rmSync(TRANSCODE_PATH, { recursive: true, force: true });
-      log("info", "Cleaned up");
-    } catch {}
+    log("info", "Stopped");
     process.exit(0);
   });
-  setTimeout(() => {
-    try { fs.rmSync(DOWNLOAD_PATH, { recursive: true, force: true }); fs.rmSync(TRANSCODE_PATH, { recursive: true, force: true }); } catch {}
-    process.exit(1);
-  }, 5000);
+  setTimeout(() => process.exit(1), 5000);
 }
 
 process.on("SIGINT", cleanup);
