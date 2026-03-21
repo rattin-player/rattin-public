@@ -585,6 +585,7 @@ function serveFile(filePath, fileSize, contentType, req, res) {
       "Accept-Ranges": "bytes",
       "Content-Length": end - start + 1,
       "Content-Type": contentType,
+      "X-Accel-Buffering": "no",
     });
     const s = createReadStream(filePath, { start, end });
     s.on("error", () => s.destroy());
@@ -595,6 +596,7 @@ function serveFile(filePath, fileSize, contentType, req, res) {
       "Content-Length": fileSize,
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
+      "X-Accel-Buffering": "no",
     });
     const s = createReadStream(filePath);
     s.on("error", () => s.destroy());
@@ -616,6 +618,7 @@ function serveFromTorrent(file, req, res) {
       "Accept-Ranges": "bytes",
       "Content-Length": end - start + 1,
       "Content-Type": "video/mp4",
+      "X-Accel-Buffering": "no",
     });
     const s = file.createReadStream({ start, end });
     s.on("error", () => s.destroy());
@@ -626,6 +629,7 @@ function serveFromTorrent(file, req, res) {
       "Content-Length": size,
       "Content-Type": "video/mp4",
       "Accept-Ranges": "bytes",
+      "X-Accel-Buffering": "no",
     });
     const s = file.createReadStream();
     s.on("error", () => s.destroy());
@@ -680,6 +684,8 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
   res.writeHead(200, {
     "Content-Type": "video/mp4",
     "Transfer-Encoding": "chunked",
+    "X-Accel-Buffering": "no",
+    "Cache-Control": "no-cache",
   });
 
   ffmpeg.stdout.pipe(res);
