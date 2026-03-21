@@ -271,9 +271,13 @@ export default function Player() {
 
   function seekTo(seconds) {
     const v = videoRef.current;
-    if (isLiveRef.current && dlProgress < 1) return;
     if (isLiveRef.current) {
+      // Allow seeking within the downloaded portion
       const dur = getEffectiveDuration();
+      if (dur > 0 && dlProgress < 1) {
+        const maxSeekable = dur * dlProgress;
+        if (seconds > maxSeekable) return;
+      }
       setSeekOffset(seconds);
       setIsLiveTranscode(true);
       v.src = `/api/stream/${infoHash}/${fileIndex}?t=${seconds}`;
@@ -323,7 +327,6 @@ export default function Player() {
   }, []);
 
   const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
-  const seekDisabled = isLiveTranscode && dlProgress < 1;
 
   return (
     <div className="player-page" onMouseMove={handleMouseMove}>
@@ -346,7 +349,7 @@ export default function Player() {
 
         <div className="player-bottom">
           <div
-            className={`player-seek ${seekDisabled ? "disabled" : ""}`}
+            className="player-seek"
             ref={seekRef}
             onClick={handleSeekClick}
             onMouseMove={handleSeekHover}
