@@ -525,11 +525,22 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   }
 
   const ext = path.extname(file.name).toLowerCase();
+  const fileIdx = parseInt(req.params.fileIndex, 10);
+
+  // Ensure this file is selected and prioritized
+  file.select();
+  // Deselect other files so bandwidth goes to the requested file
+  torrent.files.forEach((f, i) => {
+    if (i !== fileIdx && f.length > 0) {
+      try { f.deselect(); } catch {}
+    }
+  });
+
   const complete = isFileComplete(torrent, file);
   const filePath = diskPath(torrent, file);
 
-  // Verify file is real media once enough data exists on disk
-  if (complete || (file.downloaded > 1024 * 1024)) {
+  // Verify file is real media — only when complete (probing partial files can hang)
+  if (complete) {
     try {
       const probe = await probeMedia(filePath);
       if (!probe.valid) {
@@ -640,15 +651,10 @@ function serveFromTorrent(file, req, res) {
 
 // Live transcode through ffmpeg (for MKV etc, before background transcode is ready)
 function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
-  // Try to use disk file whenever possible (even partial downloads).
-  // ffmpeg can read partial MKV files from disk and seek within them.
-  // Only use pipe as last resort when file doesn't exist on disk.
   const filePath = diskPath(torrent, file);
-  let fileOnDisk = false;
-  try { fileOnDisk = statSync(filePath).size > 0; } catch {}
-
-  const input = fileOnDisk ? filePath : "pipe:0";
-  const useStdin = !fileOnDisk;
+  // Only use disk file when download is complete — partial files have gaps that break ffmpeg
+  const useStdin = !complete;
+  const input = useStdin ? "pipe:0" : filePath;
 
   const doSeek = seekTo > 0;
   const args = [
@@ -664,7 +670,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
     "pipe:1",
   ];
 
-  log("info", "Live transcode", { input: fileOnDisk ? "disk" : "pipe", seekTo, doSeek });
+  log("info", "Live transcode", { input: useStdin ? "pipe" : "disk", seekTo, doSeek });
 
   const ffmpeg = spawn("ffmpeg", args, {
     stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
