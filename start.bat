@@ -129,6 +129,7 @@ echo.
 
 start "" /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:3000"
 
+call npm run build
 node server.js
 
 pause

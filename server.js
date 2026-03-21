@@ -5,6 +5,7 @@ import fs from "fs";
 import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -833,6 +834,20 @@ app.get("/api/torrents", (req, res) => {
   })));
 });
 
+// Pause all other torrents, resume this one
+app.post("/api/set-active/:infoHash", (req, res) => {
+  const activeHash = req.params.infoHash;
+  for (const t of client.torrents) {
+    if (t.infoHash === activeHash) {
+      if (t.paused) t.resume();
+    } else if (t.progress < 1 && !t.paused) {
+      t.pause();
+      log("info", "Paused inactive torrent", { name: t.name });
+    }
+  }
+  res.json({ ok: true });
+});
+
 app.delete("/api/remove/:infoHash", (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
   if (!torrent) return res.status(404).json({ error: "Torrent not found" });
@@ -903,6 +918,775 @@ app.delete("/api/clear", (req, res) => {
     log("info", "All data cleared");
     res.json({ ok: true });
   });
+});
+
+// ---- TMDB API Proxy (with cache) ----
+
+startCacheJanitor(log);
+
+function tmdbErrorStatus(e) {
+  return e.message === "TMDB_API_KEY not set" ? 503 : 502;
+}
+
+// Stale-while-revalidate: trending
+app.get("/api/tmdb/trending", async (req, res) => {
+  const page = req.query.page || 1;
+  const key = `trending:${page}`;
+  const { value: cached, stale } = tmdbCache.getStale(key);
+  if (cached && !stale) return res.json(cached);
+  if (cached && stale) {
+    res.json(cached);
+    fetchTMDB(`/trending/all/week?page=${page}`)
+      .then((data) => tmdbCache.set(key, data, CACHE_TTL.TRENDING))
+      .catch(() => {});
+    return;
+  }
+  try {
+    const data = await fetchTMDB(`/trending/all/week?page=${page}`);
+    tmdbCache.set(key, data, CACHE_TTL.TRENDING);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Stale-while-revalidate: discover
+app.get("/api/tmdb/discover", async (req, res) => {
+  const { type = "movie", genre = "", page = 1, sort = "popularity.desc" } = req.query;
+  const key = `discover:${type}:${genre}:${page}`;
+  let endpoint = `/discover/${type}?sort_by=${sort}&page=${page}`;
+  if (genre) endpoint += `&with_genres=${genre}`;
+  for (const [k, v] of Object.entries(req.query)) {
+    if (!["type", "genre", "page", "sort"].includes(k)) endpoint += `&${k}=${v}`;
+  }
+
+  const { value: cached, stale } = tmdbCache.getStale(key);
+  if (cached && !stale) return res.json(cached);
+  if (cached && stale) {
+    res.json(cached);
+    fetchTMDB(endpoint)
+      .then((data) => tmdbCache.set(key, data, CACHE_TTL.DISCOVER))
+      .catch(() => {});
+    return;
+  }
+  try {
+    const data = await fetchTMDB(endpoint);
+    tmdbCache.set(key, data, CACHE_TTL.DISCOVER);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Stale-while-revalidate: search
+app.get("/api/tmdb/search", async (req, res) => {
+  const q = req.query.q || "";
+  const page = req.query.page || 1;
+  const key = `search:${q.toLowerCase()}:${page}`;
+  const endpoint = `/search/multi?query=${encodeURIComponent(q)}&page=${page}`;
+
+  const { value: cached, stale } = tmdbCache.getStale(key);
+  if (cached && !stale) return res.json(cached);
+  if (cached && stale) {
+    res.json(cached);
+    fetchTMDB(endpoint)
+      .then((data) => tmdbCache.set(key, data, CACHE_TTL.SEARCH))
+      .catch(() => {});
+    return;
+  }
+  try {
+    const data = await fetchTMDB(endpoint);
+    tmdbCache.set(key, data, CACHE_TTL.SEARCH);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Simple cache: movie details
+app.get("/api/tmdb/movie/:id", async (req, res) => {
+  const key = `movie:${req.params.id}`;
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+  try {
+    const data = await fetchTMDB(`/movie/${req.params.id}?append_to_response=credits,similar,videos`);
+    tmdbCache.set(key, data, CACHE_TTL.MOVIE);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Simple cache: TV season (must be before /api/tmdb/tv/:id)
+app.get("/api/tmdb/tv/:id/season/:num", async (req, res) => {
+  const key = `tv:${req.params.id}:season:${req.params.num}`;
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+  try {
+    const data = await fetchTMDB(`/tv/${req.params.id}/season/${req.params.num}`);
+    tmdbCache.set(key, data, CACHE_TTL.SEASON);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Simple cache: TV show details
+app.get("/api/tmdb/tv/:id", async (req, res) => {
+  const key = `tv:${req.params.id}`;
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+  try {
+    const data = await fetchTMDB(`/tv/${req.params.id}?append_to_response=credits,similar,videos,external_ids`);
+    tmdbCache.set(key, data, CACHE_TTL.TV);
+    res.json(data);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// Simple cache: genres
+app.get("/api/tmdb/genres", async (req, res) => {
+  const key = "genres";
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+  try {
+    const [movie, tv] = await Promise.all([
+      fetchTMDB("/genre/movie/list"),
+      fetchTMDB("/genre/tv/list"),
+    ]);
+    const seen = new Set();
+    const genres = [...(movie.genres || []), ...(tv.genres || [])].filter((g) => {
+      if (seen.has(g.id)) return false;
+      seen.add(g.id);
+      return true;
+    });
+    tmdbCache.set(key, genres, CACHE_TTL.GENRES);
+    res.json(genres);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
+// ---- Auto-Play Endpoint ----
+
+const TRACKERS = [
+  "udp://tracker.opentrackr.org:1337/announce",
+  "udp://open.stealth.si:80/announce",
+  "udp://tracker.torrent.eu.org:451/announce",
+  "udp://tracker.bittor.pw:1337/announce",
+  "udp://public.popcorn-tracker.org:6969/announce",
+  "udp://tracker.dler.org:6969/announce",
+  "udp://exodus.desync.com:6969",
+  "udp://open.demonii.com:1337/announce",
+];
+
+async function searchTPB(query) {
+  const url = `https://search-provider-1.example/q.php?q=${encodeURIComponent(query)}`;
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "MagnetPlayer/2.0" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  return (Array.isArray(data) ? data : [])
+    .filter((r) => r.id !== "0" && r.name !== "No results returned")
+    .map((r) => ({
+      name: r.name,
+      infoHash: (r.info_hash || "").toLowerCase(),
+      size: parseInt(r.size, 10) || 0,
+      seeders: parseInt(r.seeders, 10) || 0,
+      leechers: parseInt(r.leechers, 10) || 0,
+      source: "tpb",
+    }));
+}
+
+async function searchEZTV(query, imdbId) {
+  if (!imdbId) return [];
+  // EZTV API requires IMDB ID (numeric part only)
+  const numericId = imdbId.replace(/\D/g, "");
+  if (!numericId) return [];
+  try {
+    const results = [];
+    // Fetch up to 3 pages to get good coverage
+    for (let page = 1; page <= 3; page++) {
+      const url = `https://search-provider-2.example/api/get-torrents?imdb_id=${numericId}&limit=100&page=${page}`;
+      const resp = await fetch(url, {
+        headers: { "User-Agent": "MagnetPlayer/2.0" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) break;
+      const data = await resp.json();
+      if (!data.torrents || data.torrents.length === 0) break;
+      for (const t of data.torrents) {
+        results.push({
+          name: t.title || t.filename,
+          infoHash: (t.hash || "").toLowerCase(),
+          size: parseInt(t.size_bytes, 10) || 0,
+          seeders: parseInt(t.seeds, 10) || 0,
+          leechers: parseInt(t.peers, 10) || 0,
+          source: "eztv",
+        });
+      }
+      if (data.torrents.length < 100) break;
+    }
+    // Filter by query terms (to match specific episode)
+    const terms = query.toLowerCase().split(/\s+/);
+    return results.filter((r) => {
+      const name = r.name.toLowerCase();
+      return terms.every((term) => name.includes(term));
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function searchYTS(query) {
+  try {
+    const url = `https://search-provider-3.example/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=20&sort_by=seeds`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "MagnetPlayer/2.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    if (!data.data?.movies) return [];
+    const results = [];
+    for (const movie of data.data.movies) {
+      for (const torrent of (movie.torrents || [])) {
+        results.push({
+          name: `${movie.title_long} ${torrent.quality} ${torrent.type}`.trim(),
+          infoHash: (torrent.hash || "").toLowerCase(),
+          size: parseInt(torrent.size_bytes, 10) || 0,
+          seeders: parseInt(torrent.seeds, 10) || 0,
+          leechers: parseInt(torrent.peers, 10) || 0,
+          source: "yts",
+        });
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+async function searchTorrents(query, imdbId) {
+  const [tpb, eztv, yts] = await Promise.allSettled([
+    searchTPB(query),
+    searchEZTV(query, imdbId),
+    searchYTS(query),
+  ]);
+
+  const all = [
+    ...(tpb.status === "fulfilled" ? tpb.value : []),
+    ...(eztv.status === "fulfilled" ? eztv.value : []),
+    ...(yts.status === "fulfilled" ? yts.value : []),
+  ];
+
+  // Dedupe by infoHash, keep the one with more seeders
+  const seen = new Map();
+  for (const r of all) {
+    if (!r.infoHash) continue;
+    const existing = seen.get(r.infoHash);
+    if (!existing || r.seeders > existing.seeders) {
+      seen.set(r.infoHash, r);
+    }
+  }
+
+  const merged = [...seen.values()];
+  log("info", "Multi-provider search", {
+    query,
+    tpb: tpb.status === "fulfilled" ? tpb.value.length : 0,
+    eztv: eztv.status === "fulfilled" ? eztv.value.length : 0,
+    yts: yts.status === "fulfilled" ? yts.value.length : 0,
+    merged: merged.length,
+  });
+
+  return merged;
+}
+
+function scoreTorrent(result, title, year, type) {
+  let score = 0;
+  const name = result.name.toLowerCase();
+  const titleLower = title.toLowerCase();
+
+  if (!name.includes(titleLower.split(" ")[0])) return -1;
+
+  const titleWords = titleLower.split(/\s+/);
+  const matchedWords = titleWords.filter((w) => name.includes(w)).length;
+  score += (matchedWords / titleWords.length) * 50;
+
+  if (year && name.includes(String(year))) score += 15;
+
+  if (/1080p/.test(name)) score += 20;
+  if (/2160p|4k/i.test(name)) score += 15;
+  if (/720p/.test(name)) score += 10;
+  if (/blu-?ray|bdrip|bdremux/i.test(name)) score += 15;
+  if (/web-?dl|webrip/i.test(name)) score += 12;
+  if (/remux/i.test(name)) score += 10;
+
+  if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
+
+  // Prefer MP4 (browser-native, no transcode needed)
+  if (/\.mp4\b/i.test(name)) score += 15;
+  if (/\bx264\b.*\.mp4|\.mp4\b.*\bx264\b/i.test(name)) score += 5;
+  // Penalize MKV slightly (needs transcode)
+  if (/\.mkv\b/i.test(name)) score -= 5;
+
+  if (result.seeders === 0) return -1;
+  score += Math.min(30, Math.log2(result.seeders + 1) * 3);
+
+  return score;
+}
+
+// ---- Availability Check ----
+
+const availabilityCache = new Map(); // "title:year" -> { available: bool, ts: number }
+const AVAIL_TTL = 2 * 60 * 60 * 1000; // 2 hours
+
+async function checkOneAvailability(title, year, type) {
+  const cacheKey = `${title.toLowerCase()}:${year || ""}`;
+  const cached = availabilityCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < AVAIL_TTL) return cached.available;
+
+  const query = year ? `${title} ${year}` : title;
+  try {
+    const results = await searchTorrents(query);
+    const hasMatch = results.some((r) => scoreTorrent(r, title, year, type) > 0);
+    availabilityCache.set(cacheKey, { available: hasMatch, ts: Date.now() });
+    return hasMatch;
+  } catch {
+    return false;
+  }
+}
+
+async function runPool(tasks, concurrency) {
+  const results = [];
+  let i = 0;
+  async function worker() {
+    while (i < tasks.length) {
+      const idx = i++;
+      results[idx] = await tasks[idx]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
+  return results;
+}
+
+app.post("/api/check-availability", async (req, res) => {
+  const { items } = req.body;
+  if (!Array.isArray(items) || items.length === 0) return res.json({ available: [] });
+
+  const capped = items.slice(0, 40);
+  const tasks = capped.map((item) => () =>
+    checkOneAvailability(item.title, item.year, item.type).then((ok) => ok ? item.id : null)
+  );
+
+  try {
+    const results = await runPool(tasks, 6);
+    const available = results.filter(Boolean);
+    log("info", "Availability check", { requested: capped.length, available: available.length });
+    res.json({ available });
+  } catch (err) {
+    log("err", "Availability check failed", { error: err.message });
+    res.json({ available: capped.map((i) => i.id) }); // fail open — show everything
+  }
+});
+
+function parseTags(name) {
+  const tags = [];
+  const n = name;
+  // Resolution
+  if (/2160p/i.test(n)) tags.push("4K");
+  else if (/1080p/i.test(n)) tags.push("1080p");
+  else if (/720p/i.test(n)) tags.push("720p");
+  else if (/480p/i.test(n)) tags.push("480p");
+  // Source
+  if (/blu-?ray|bdremux/i.test(n)) tags.push("BluRay");
+  else if (/web-?dl/i.test(n)) tags.push("WEB-DL");
+  else if (/webrip/i.test(n)) tags.push("WEBRip");
+  else if (/bdrip/i.test(n)) tags.push("BDRip");
+  else if (/hdtv/i.test(n)) tags.push("HDTV");
+  else if (/\bcam\b|hdcam/i.test(n)) tags.push("CAM");
+  // Codec
+  if (/\bx265\b|\bhevc\b/i.test(n)) tags.push("HEVC");
+  else if (/\bx264\b|\bavc\b/i.test(n)) tags.push("x264");
+  else if (/\bav1\b/i.test(n)) tags.push("AV1");
+  // Audio
+  if (/atmos/i.test(n)) tags.push("Atmos");
+  else if (/\bdts\b/i.test(n)) tags.push("DTS");
+  else if (/ddp?\s?5\.1|dd\+?\s?5\.1|eac3/i.test(n)) tags.push("5.1");
+  // Container
+  if (/\.mp4\b/i.test(n)) tags.push("MP4");
+  else if (/\.mkv\b/i.test(n)) tags.push("MKV");
+  // Extras
+  if (/remux/i.test(n)) tags.push("Remux");
+  if (/hdr10\+/i.test(n)) tags.push("HDR10+");
+  else if (/hdr/i.test(n)) tags.push("HDR");
+  return tags;
+}
+
+async function searchTV(title, season, episode, imdbId) {
+  const s = String(season).padStart(2, "0");
+  const e = String(episode).padStart(2, "0");
+  const episodeQuery = `${title} S${s}E${e}`;
+  const seasonQuery = `${title} S${s}`;
+
+  const [episodeResults, seasonResults] = await Promise.all([
+    searchTorrents(episodeQuery, imdbId),
+    searchTorrents(seasonQuery, imdbId),
+  ]);
+
+  // Dedupe
+  const seen = new Map();
+  for (const r of [...episodeResults, ...seasonResults]) {
+    if (!r.infoHash) continue;
+    const existing = seen.get(r.infoHash);
+    if (!existing || r.seeders > existing.seeders) {
+      // Mark season packs (name contains S01 but not S01E01)
+      const hasEpisode = new RegExp(`S${s}E${e}(?!\\d)`, "i").test(r.name)
+        || new RegExp(`S${season}E${episode}(?!\\d)`, "i").test(r.name);
+      const hasSeason = new RegExp(`S${s}(?!\\d)`, "i").test(r.name)
+        || /complete|full.season|season.\d/i.test(r.name);
+      const isSeasonPack = !hasEpisode && hasSeason;
+      seen.set(r.infoHash, { ...r, seasonPack: isSeasonPack });
+    }
+  }
+  return [...seen.values()];
+}
+
+// Return scored torrent options for user selection
+app.post("/api/search-streams", async (req, res) => {
+  const { title, year, type, season, episode, imdbId } = req.body;
+  if (!title) return res.status(400).json({ error: "Title is required" });
+
+  let results;
+  if (type === "tv" && season && episode) {
+    results = await searchTV(title, season, episode, imdbId);
+  } else {
+    const query = year ? `${title} ${year}` : title;
+    results = await searchTorrents(query, imdbId);
+  }
+
+  try {
+    const scored = results
+      .map((r) => ({
+        name: r.name,
+        infoHash: r.infoHash,
+        seeders: r.seeders,
+        leechers: r.leechers,
+        size: r.size,
+        source: r.source,
+        score: scoreTorrent(r, title, year, type),
+        tags: parseTags(r.name),
+        seasonPack: r.seasonPack || false,
+      }))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.seeders - a.seeders || b.score - a.score)
+      .slice(0, 20);
+
+    res.json({ results: scored });
+  } catch (err) {
+    log("err", "Search streams failed", { error: err.message });
+    res.json({ results: [] });
+  }
+});
+
+app.post("/api/auto-play", async (req, res) => {
+  const { title, year, type, season, episode, imdbId } = req.body;
+  if (!title) return res.status(400).json({ error: "Title is required" });
+
+  let results;
+  if (type === "tv" && season && episode) {
+    log("info", "Auto-play search (TV)", { title, season, episode });
+    results = await searchTV(title, season, episode, imdbId);
+  } else {
+    const query = year ? `${title} ${year}` : title;
+    log("info", "Auto-play search", { query });
+    results = await searchTorrents(query, imdbId);
+  }
+
+  try {
+    if (results.length === 0) {
+      log("info", "Auto-play: no results");
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    const scored = results
+      .map((r) => ({ ...r, score: scoreTorrent(r, title, year, type) }))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || b.seeders - a.seeders);
+
+    if (scored.length === 0) {
+      log("info", "Auto-play: no quality matches", { query, total: results.length });
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    const best = scored[0];
+    log("info", "Auto-play selected", { name: best.name, score: best.score, seeders: best.seeders, source: best.source });
+
+    const tags = parseTags(best.name);
+    const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
+    const magnet = `magnet:?xt=urn:btih:${best.infoHash}&dn=${encodeURIComponent(best.name)}${trackerParams}`;
+
+    // Reuse existing torrent if already in client
+    const existing = client.torrents.find(
+      (t) => t.infoHash === best.infoHash || t.infoHash === best.infoHash.toLowerCase()
+    );
+
+    function respondWithTorrent(torrent) {
+      const videoFile = (type === "tv" && season && episode)
+        ? findEpisodeFile(torrent, season, episode)
+        : findLargestVideo(torrent);
+      if (!videoFile) return null;
+      videoFile.file.select();
+      return {
+        infoHash: torrent.infoHash,
+        fileIndex: videoFile.index,
+        fileName: videoFile.file.name,
+        torrentName: torrent.name,
+        totalSize: torrent.length,
+        tags,
+      };
+    }
+
+    if (existing) {
+      // Already ready with files — return immediately
+      if (existing.files && existing.files.length > 0) {
+        const result = respondWithTorrent(existing);
+        if (result) return res.json(result);
+      }
+      // Still loading metadata — wait for ready
+      log("info", "Waiting for existing torrent metadata", { infoHash: existing.infoHash });
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
+          existing.on("ready", () => { clearTimeout(timeout); resolve(); });
+          existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
+        });
+        const result = respondWithTorrent(existing);
+        if (result) return res.json(result);
+      } catch {}
+      // If still no good, remove the stuck torrent and try fresh
+      log("info", "Removing stuck torrent, retrying", { infoHash: existing.infoHash });
+      try { existing.destroy({ destroyStore: false }); } catch {}
+    }
+
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for metadata")), 30000);
+      let torrent;
+      try {
+        torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+      } catch (err) {
+        clearTimeout(timeout);
+        reject(err);
+        return;
+      }
+      torrent.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+      torrent.on("ready", () => {
+        clearTimeout(timeout);
+
+        torrent.on("download", throttle(() => {
+          log("info", "Progress", {
+            name: torrent.name,
+            progress: (torrent.progress * 100).toFixed(1) + "%",
+            down: fmtBytes(torrent.downloadSpeed) + "/s",
+            peers: torrent.numPeers,
+          });
+        }, 10000));
+
+        torrent.on("done", () => {
+          log("info", "Download complete", { name: torrent.name });
+          torrent.pause();
+          torrent.files.forEach(async (f, i) => {
+            const ext = path.extname(f.name).toLowerCase();
+            if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
+              const probe = await probeMedia(diskPath(torrent, f));
+              if (probe.valid) startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
+            }
+          });
+        });
+
+        torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
+
+        const videoFile = (type === "tv" && season && episode)
+          ? findEpisodeFile(torrent, season, episode)
+          : findLargestVideo(torrent);
+        if (!videoFile) {
+          reject(new Error("No video files found in torrent"));
+          return;
+        }
+
+        videoFile.file.select();
+
+        resolve({
+          infoHash: torrent.infoHash,
+          fileIndex: videoFile.index,
+          fileName: videoFile.file.name,
+          torrentName: torrent.name,
+          totalSize: torrent.length,
+          tags,
+        });
+      });
+    }).then((data) => {
+      if (!res.headersSent) res.json(data);
+    }).catch((err) => {
+      log("err", "Auto-play torrent failed", { error: err.message });
+      if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
+    });
+  } catch (err) {
+    log("err", "Auto-play failed", { error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
+  }
+});
+
+// Play a specific torrent by infoHash (user-selected from search-streams)
+app.post("/api/play-torrent", async (req, res) => {
+  const { infoHash, name, season, episode } = req.body;
+  if (!infoHash) return res.status(400).json({ error: "infoHash is required" });
+
+  const tags = parseTags(name || "");
+  const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
+  const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}${trackerParams}`;
+
+  const existing = client.torrents.find(
+    (t) => t.infoHash === infoHash || t.infoHash === infoHash.toLowerCase()
+  );
+
+  function respondWithTorrent(torrent) {
+    const videoFile = (season && episode)
+      ? findEpisodeFile(torrent, season, episode)
+      : findLargestVideo(torrent);
+    if (!videoFile) return null;
+    videoFile.file.select();
+    return {
+      infoHash: torrent.infoHash,
+      fileIndex: videoFile.index,
+      fileName: videoFile.file.name,
+      torrentName: torrent.name,
+      totalSize: torrent.length,
+      tags,
+    };
+  }
+
+  try {
+    if (existing) {
+      if (existing.files && existing.files.length > 0) {
+        const result = respondWithTorrent(existing);
+        if (result) return res.json(result);
+      }
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
+        existing.on("ready", () => { clearTimeout(timeout); resolve(); });
+        existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
+      });
+      const result = respondWithTorrent(existing);
+      if (result) return res.json(result);
+      try { existing.destroy({ destroyStore: false }); } catch {}
+    }
+
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
+      let torrent;
+      try {
+        torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+      } catch (err) {
+        clearTimeout(timeout);
+        reject(err);
+        return;
+      }
+      torrent.on("error", (err) => { clearTimeout(timeout); reject(err); });
+      torrent.on("ready", () => {
+        clearTimeout(timeout);
+        torrent.on("done", () => {
+          torrent.pause();
+          torrent.files.forEach(async (f, i) => {
+            const ext = path.extname(f.name).toLowerCase();
+            if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
+              const probe = await probeMedia(diskPath(torrent, f));
+              if (probe.valid) startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
+            }
+          });
+        });
+        torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
+        const videoFile = (season && episode)
+          ? findEpisodeFile(torrent, season, episode)
+          : findLargestVideo(torrent);
+        if (!videoFile) { reject(new Error("No video files")); return; }
+        videoFile.file.select();
+        resolve({
+          infoHash: torrent.infoHash,
+          fileIndex: videoFile.index,
+          fileName: videoFile.file.name,
+          torrentName: torrent.name,
+          totalSize: torrent.length,
+          tags,
+        });
+      });
+    }).then((data) => {
+      if (!res.headersSent) res.json(data);
+    }).catch((err) => {
+      log("err", "Play-torrent failed", { error: err.message });
+      if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
+    });
+  } catch (err) {
+    log("err", "Play-torrent failed", { error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
+  }
+});
+
+function findLargestVideo(torrent) {
+  let best = null;
+  if (!torrent.files) return null;
+  torrent.files.forEach((f, i) => {
+    const ext = path.extname(f.name).toLowerCase();
+    if (VIDEO_EXTENSIONS.includes(ext)) {
+      if (!best || f.length > best.file.length) best = { file: f, index: i };
+    }
+  });
+  return best;
+}
+
+function findEpisodeFile(torrent, season, episode) {
+  if (!torrent.files || !season || !episode) return findLargestVideo(torrent);
+  const s = String(season).padStart(2, "0");
+  const e = String(episode).padStart(2, "0");
+  const sNum = String(season);
+  const eNum = String(episode);
+  // Match patterns: S01E05, S1E5, 1x05, E05, Episode 5, Episode.05, Ep05
+  const patterns = [
+    new RegExp(`S${s}E${e}(?!\\d)`, "i"),           // S01E05
+    new RegExp(`S${sNum}E${eNum}(?!\\d)`, "i"),      // S1E5
+    new RegExp(`${sNum}x${e}(?!\\d)`, "i"),           // 1x05
+    new RegExp(`${sNum}x${eNum}(?!\\d)`, "i"),        // 1x5
+    new RegExp(`[._\\s/-]E${e}(?!\\d)`, "i"),         // .E05 _E05
+    new RegExp(`[._\\s/-]E${eNum}(?!\\d)`, "i"),      // .E5
+    new RegExp(`Episode[._\\s-]?${e}(?!\\d)`, "i"),   // Episode.05, Episode 05
+    new RegExp(`Episode[._\\s-]?${eNum}(?!\\d)`, "i"),// Episode.5, Episode 5
+    new RegExp(`Ep[._\\s-]?${e}(?!\\d)`, "i"),        // Ep05, Ep.05
+  ];
+  let best = null;
+  torrent.files.forEach((f, i) => {
+    const ext = path.extname(f.name).toLowerCase();
+    if (!VIDEO_EXTENSIONS.includes(ext)) return;
+    // Use just the filename, not the full path with folders
+    const name = f.name.split("/").pop();
+    for (const pat of patterns) {
+      if (pat.test(name)) {
+        if (!best || f.length > best.file.length) best = { file: f, index: i };
+        return;
+      }
+    }
+  });
+  // If no episode match found, fall back to largest (single-episode torrent)
+  return best || findLargestVideo(torrent);
+}
+
+app.get("/{*splat}", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 function cleanup() {

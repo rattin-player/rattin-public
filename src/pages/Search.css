@@ -1,0 +1,37 @@
+.search-page {
+  padding: 100px 48px 48px;
+  min-height: 100vh;
+}
+
+.search-page h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 28px;
+}
+
+.search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 20px;
+}
+
+.search-grid .movie-card {
+  width: 100%;
+}
+
+.search-empty {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  text-align: center;
+  margin-top: 80px;
+}
+
+@media (max-width: 768px) {
+  .search-page {
+    padding: 80px 16px 24px;
+  }
+  .search-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+  }
+}

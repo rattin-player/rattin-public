@@ -1,0 +1,168 @@
+.player-page {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: none;
+}
+
+.player-page:hover {
+  cursor: default;
+}
+
+.player-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.player-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.player-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.player-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.player-tags {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.player-tag {
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.player-back {
+  padding: 8px;
+  border-radius: 50%;
+  transition: background var(--transition);
+}
+
+.player-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.player-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-bottom {
+  padding: 0 24px 20px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.player-seek {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: height 0.1s;
+}
+
+.player-seek:hover {
+  height: 10px;
+}
+
+.player-seek.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.seek-downloaded {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.seek-played {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.seek-tooltip {
+  position: absolute;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.player-playpause {
+  padding: 4px;
+}
+
+.player-time {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-spacer {
+  flex: 1;
+}
+
+.player-sub-select {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.player-fullscreen {
+  padding: 4px;
+}

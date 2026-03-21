@@ -1,0 +1,9 @@
+.home {
+  min-height: 100vh;
+}
+
+.home-rows {
+  position: relative;
+  margin-top: -40px;
+  z-index: 2;
+}
