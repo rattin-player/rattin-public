@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { usePlayer } from "../lib/PlayerContext";
 import { fetchStatus, fetchDuration, fetchSubtitleTracks } from "../lib/api";
 import { formatTime } from "../lib/utils";
 import "./Player.css";
@@ -18,9 +19,11 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const tags = location.state?.tags || [];
-  const mediaTitle = location.state?.title || "";
-  const videoRef = useRef();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef } = usePlayer();
+  const tags = location.state?.tags || active?.tags || [];
+  const mediaTitle = location.state?.title || active?.title || "";
+  const videoContainerRef = useRef();
+  const pageRef = useRef();
   const seekRef = useRef();
   const hideTimer = useRef();
   const pollRef = useRef();
@@ -34,11 +37,27 @@ export default function Player() {
   const [isLiveTranscode, setIsLiveTranscode] = useState(false);
   const [seekOffset, setSeekOffset] = useState(0);
   const [transcodeReady, setTranscodeReady] = useState(false);
-  const [subs, setSubs] = useState([]);
-  const [activeSub, setActiveSub] = useState("");
+  const [subs, setSubsRaw] = useState(subsRef.current || []);
+  const [activeSub, setActiveSubRaw] = useState(activeSubRef.current || "");
+
+  function setSubs(val) {
+    setSubsRaw((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      subsRef.current = next;
+      return next;
+    });
+  }
+
+  function setActiveSub(val) {
+    setActiveSubRaw(val);
+    activeSubRef.current = val;
+  }
   const [fileName, setFileName] = useState("");
   const [tooltipTime, setTooltipTime] = useState(null);
   const [tooltipX, setTooltipX] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMsg, setLoadingMsg] = useState(0);
+  const [loadingReason, setLoadingReason] = useState("initial"); // "initial" | "seeking"
 
   const seekOffsetRef = useRef(0);
   const isLiveRef = useRef(false);
@@ -65,40 +84,77 @@ export default function Player() {
     return 0;
   }, []);
 
-  // Initial load
+  const MESSAGES = {
+    initial: [
+      "Getting everything ready...",
+      "Finding the best source...",
+      "Connecting to peers...",
+      "Almost there...",
+      "Buffering the good stuff...",
+      "Just a moment...",
+      "Preparing your stream...",
+      "Hang tight, nearly ready...",
+      "Setting things up for you...",
+    ],
+    seeking: [
+      "Skipping ahead...",
+      "Jumping to that part...",
+      "Rebuffering...",
+      "Almost there...",
+      "One sec...",
+      "Loading from new position...",
+    ],
+  };
+
+  // Rotate loading messages
+  useEffect(() => {
+    if (!loading) return;
+    setLoadingMsg(0);
+    const msgs = MESSAGES[loadingReason] || MESSAGES.initial;
+    const interval = setInterval(() => {
+      setLoadingMsg((prev) => (prev + 1) % msgs.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [loading, loadingReason]);
+
+  // Detect when video is ready to play
   useEffect(() => {
     const v = videoRef.current;
-    const posKey = `playback:${infoHash}:${fileIndex}`;
-    const savedPos = parseFloat(sessionStorage.getItem(posKey)) || 0;
-
-    // Tell backend to pause other downloads
-    fetch(`/api/set-active/${infoHash}`, { method: "POST" }).catch(() => {});
-
-    v.src = `/api/stream/${infoHash}/${fileIndex}`;
-    if (savedPos > 0) {
-      v.addEventListener("loadedmetadata", function onMeta() {
-        v.removeEventListener("loadedmetadata", onMeta);
-        v.currentTime = savedPos;
-        v.play().catch(() => {});
-      });
-    } else {
-      v.play().catch(() => {});
-    }
-
-    fetchDurationRetry(infoHash, fileIndex);
-
-    // Save position periodically
-    const saveInterval = setInterval(() => {
-      const t = getEffectiveTime();
-      if (t > 0) sessionStorage.setItem(posKey, String(t));
-    }, 3000);
-
+    if (!v) return;
+    setLoading(true);
+    setLoadingReason("initial");
+    function onCanPlay() { setLoading(false); }
+    function onWaiting() { setLoading(true); }
+    function onPlaying() { setLoading(false); }
+    v.addEventListener("canplay", onCanPlay);
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("playing", onPlaying);
+    // If already ready
+    if (v.readyState >= 3) setLoading(false);
     return () => {
-      const t = getEffectiveTime();
-      if (t > 0) sessionStorage.setItem(posKey, String(t));
-      clearInterval(saveInterval);
-      v.pause();
-      v.src = "";
+      v.removeEventListener("canplay", onCanPlay);
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("playing", onPlaying);
+    };
+  }, [infoHash, fileIndex]);
+
+  // Move video element into the fullscreen container
+  useEffect(() => {
+    const v = videoRef.current;
+    const container = videoContainerRef.current;
+    if (!v || !container) return;
+    v.style.display = "";
+    container.appendChild(v);
+    return () => {
+      // Don't hide — mini player will pick it up
+    };
+  }, []);
+
+  // Start or resume stream
+  useEffect(() => {
+    startStream(infoHash, fileIndex, mediaTitle, tags);
+    fetchDurationRetry(infoHash, fileIndex);
+    return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [infoHash, fileIndex]);
@@ -176,7 +232,6 @@ export default function Player() {
     }
   }, [infoHash, fileIndex]);
 
-  // Also get external sub files from status
   useEffect(() => {
     fetchStatus(infoHash).then((data) => {
       if (!data.files) return;
@@ -194,6 +249,13 @@ export default function Player() {
       }
     }).catch(() => {});
   }, [infoHash]);
+
+  // Restore active subtitle when returning from mini player
+  useEffect(() => {
+    if (activeSub && subs.length > 0) {
+      switchSubtitle(activeSub);
+    }
+  }, [subs.length]);
 
   function guessLabel(name) {
     const base = name.replace(/\.[^.]+$/, "").toLowerCase();
@@ -238,13 +300,17 @@ export default function Player() {
     if (track.track) track.track.mode = "showing";
   }
 
-  // Time update
+  // Time update — sync to local state AND push to context for mini player
   useEffect(() => {
     const v = videoRef.current;
+    if (!v) return;
     function onTime() {
-      setCurrentTime(getEffectiveTime());
-      setDuration(getEffectiveDuration());
+      const t = getEffectiveTime();
+      const d = getEffectiveDuration();
+      setCurrentTime(t);
+      setDuration(d);
       setPlaying(!v.paused);
+      effectiveTimeRef.current = { time: t, duration: d, ts: Date.now() };
     }
     v.addEventListener("timeupdate", onTime);
     v.addEventListener("play", onTime);
@@ -256,11 +322,25 @@ export default function Player() {
     };
   }, [getEffectiveTime, getEffectiveDuration]);
 
-  // Mouse movement → show/hide controls
-  function handleMouseMove() {
+  function showControlsBriefly() {
     setShowControls(true);
     clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setShowControls(false), 3000);
+  }
+
+  // Use document-level mousemove for fullscreen reliability
+  useEffect(() => {
+    function onMove() { showControlsBriefly(); }
+    document.addEventListener("mousemove", onMove);
+    return () => document.removeEventListener("mousemove", onMove);
+  }, []);
+
+  function handlePageClick(e) {
+    // If clicking the video area (not a control), toggle play and show controls
+    const tag = e.target.tagName;
+    if (tag === "BUTTON" || tag === "SELECT" || tag === "OPTION" || tag === "SVG" || tag === "PATH") return;
+    togglePlay();
+    showControlsBriefly();
   }
 
   function togglePlay() {
@@ -269,10 +349,39 @@ export default function Player() {
     else v.pause();
   }
 
+  function reloadActiveSub(newOffset) {
+    if (!activeSub) return;
+    const v = videoRef.current;
+    if (!v) return;
+    // Remove all existing tracks and re-add with the new offset
+    for (const t of v.textTracks) t.mode = "hidden";
+    const offsetParam = newOffset > 0 ? `?offset=${newOffset}` : "";
+    let src, key;
+    if (activeSub.startsWith("file:")) {
+      const idx = parseInt(activeSub.split(":")[1], 10);
+      src = `/api/subtitle/${infoHash}/${idx}${offsetParam}`;
+      key = activeSub;
+    } else if (activeSub.startsWith("embedded:")) {
+      const idx = parseInt(activeSub.split(":")[1], 10);
+      src = `/api/subtitle-extract/${infoHash}/${fileIndex}/${idx}${offsetParam}`;
+      key = activeSub;
+    }
+    if (!src) return;
+    const existing = v.querySelector(`track[data-key="${key}"]`);
+    if (existing) existing.remove();
+    const track = document.createElement("track");
+    track.kind = "subtitles";
+    track.src = src;
+    track.label = "Subtitles";
+    track.dataset.key = key;
+    track.default = true;
+    v.appendChild(track);
+    track.addEventListener("load", () => { if (track.track) track.track.mode = "showing"; });
+  }
+
   function seekTo(seconds) {
     const v = videoRef.current;
     if (isLiveRef.current) {
-      // Allow seeking within the downloaded portion
       const dur = getEffectiveDuration();
       if (dur > 0 && dlProgress < 1) {
         const maxSeekable = dur * dlProgress;
@@ -280,9 +389,13 @@ export default function Player() {
       }
       setSeekOffset(seconds);
       setIsLiveTranscode(true);
+      setLoading(true);
+      setLoadingReason("seeking");
       v.src = `/api/stream/${infoHash}/${fileIndex}?t=${seconds}`;
       v.play().catch(() => {});
       if (dur > 0) setKnownDuration(dur);
+      // Reload subtitles with the new offset
+      setTimeout(() => reloadActiveSub(seconds), 500);
     } else {
       v.currentTime = seconds;
     }
@@ -303,7 +416,6 @@ export default function Player() {
     setTooltipX(ratio * 100);
   }
 
-  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
@@ -315,7 +427,7 @@ export default function Player() {
         case "ArrowRight": seekTo(getEffectiveTime() + 10); break;
         case "f": case "F":
           if (document.fullscreenElement) document.exitFullscreen();
-          else v.requestFullscreen?.();
+          else pageRef.current?.requestFullscreen?.();
           break;
         case "Escape":
           if (document.fullscreenElement) document.exitFullscreen();
@@ -329,11 +441,27 @@ export default function Player() {
   const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   return (
-    <div className="player-page" onMouseMove={handleMouseMove}>
-      <video ref={videoRef} className="player-video" onClick={togglePlay} />
+    <div className="player-page" ref={pageRef} onClick={handlePageClick}>
+      <div className="player-video-container" ref={videoContainerRef} />
+
+      {loading && (
+        <div className="player-loading">
+          <button className="player-loading-back" onClick={() => navigate(-1)}>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>
+          </button>
+          <div className="player-loading-center">
+            <div className="player-loading-spinner" />
+            <p className="player-loading-msg" key={`${loadingReason}-${loadingMsg}`}>
+              {(MESSAGES[loadingReason] || MESSAGES.initial)[loadingMsg % (MESSAGES[loadingReason] || MESSAGES.initial).length]}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className={`player-overlay ${showControls ? "visible" : ""}`}>
-        <div className="player-top">
+        <div className="player-top" onClick={(e) => e.stopPropagation()}>
           <button className="player-back" onClick={() => navigate(-1)}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
@@ -347,7 +475,7 @@ export default function Player() {
           )}
         </div>
 
-        <div className="player-bottom">
+        <div className="player-bottom" onClick={(e) => e.stopPropagation()}>
           <div
             className="player-seek"
             ref={seekRef}
@@ -392,7 +520,7 @@ export default function Player() {
               className="player-fullscreen"
               onClick={() => {
                 if (document.fullscreenElement) document.exitFullscreen();
-                else videoRef.current?.requestFullscreen?.();
+                else pageRef.current?.requestFullscreen?.();
               }}
             >
               <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
