@@ -63,6 +63,14 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // After first successful basic auth, set a 30-day cookie so the browser
+  // doesn't prompt again. Fire-and-forget, runs once per page load.
+  useEffect(() => {
+    if (!document.cookie.includes("pc_auth=")) {
+      fetch("/api/auth/persist").catch(() => {});
+    }
+  }, []);
+
   return (
     <PlayerProvider>
       <AppRoutes />
