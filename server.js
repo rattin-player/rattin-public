@@ -927,7 +927,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
   const canCopySeek = doSeek && !useStdin;
   const args = [
     ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
-    ...(doSeek && !useStdin ? ["-ss", String(seekTo), "-noaccurateseek"] : []),
+    ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
     "-i", input,
     ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
     ...(canCopySeek ? ["-c:v", "copy"] : doSeek ? ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"] : ["-c:v", "copy"]),
