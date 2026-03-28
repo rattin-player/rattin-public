@@ -307,7 +307,25 @@ export default function Player() {
     v.querySelectorAll("track").forEach((el) => el.remove());
   }
 
-  function loadSubtitleTrack(src) {
+  // Shift VTT timestamps by a given offset (for live transcode seeking)
+  function shiftVtt(vttText, offsetSeconds) {
+    if (!offsetSeconds || offsetSeconds <= 0) return vttText;
+    return vttText.replace(
+      /(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g,
+      (match, h, m, s, ms) => {
+        let total = parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
+        total -= offsetSeconds;
+        if (total < 0) return match; // keep original if before offset
+        const hh = Math.floor(total / 3600);
+        const mm = Math.floor((total % 3600) / 60);
+        const ss = Math.floor(total % 60);
+        const mss = Math.round((total % 1) * 1000);
+        return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(mss).padStart(3, "0")}`;
+      }
+    );
+  }
+
+  function loadSubtitleTrack(src, timeOffset) {
     const v = videoRef.current;
     if (!v) return;
     clearAllTracks();
@@ -315,7 +333,9 @@ export default function Player() {
       .then((r) => r.ok ? r.text() : null)
       .then((text) => {
         if (!text || !activeSubRef.current) return;
-        const blob = new Blob([text], { type: "text/vtt" });
+        // Shift cue timestamps to match v.currentTime base (which starts at ~0 after seeking)
+        const shifted = shiftVtt(text, timeOffset || 0);
+        const blob = new Blob([shifted], { type: "text/vtt" });
         const url = URL.createObjectURL(blob);
         clearAllTracks();
         const track = document.createElement("track");
@@ -391,17 +411,16 @@ export default function Player() {
     else v.pause();
   }
 
-  function reloadActiveSub(newOffset) {
+  function reloadActiveSub(seekOffset) {
     const sub = activeSubRef.current;
     if (!sub) return;
-    const offsetParam = newOffset > 0 ? `?offset=${newOffset}` : "";
     let src;
     if (sub.startsWith("file:")) {
-      src = `/api/subtitle/${infoHash}/${parseInt(sub.split(":")[1], 10)}${offsetParam}`;
+      src = `/api/subtitle/${infoHash}/${parseInt(sub.split(":")[1], 10)}`;
     } else if (sub.startsWith("embedded:")) {
-      src = `/api/subtitle-extract/${infoHash}/${fileIndex}/${parseInt(sub.split(":")[1], 10)}${offsetParam}`;
+      src = `/api/subtitle-extract/${infoHash}/${fileIndex}/${parseInt(sub.split(":")[1], 10)}`;
     }
-    if (src) loadSubtitleTrack(src);
+    if (src) loadSubtitleTrack(src, seekOffset || 0);
   }
 
   function seekTo(seconds) {
