@@ -27,6 +27,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.1",
+    "uqr": "^0.1.2",
     "webtorrent": "^2.8.5"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { encode } from "uqr";
 import { usePlayer } from "../lib/PlayerContext";
 import "./PairRemoteModal.css";
 
@@ -40,6 +41,20 @@ export default function PairRemoteModal({ onClose }) {
     setRemoteUrl("");
   }
 
+  const qrSvg = useMemo(() => {
+    if (!remoteUrl) return null;
+    const { data, size } = encode(remoteUrl, { ecc: "L" });
+    const mod = 3;
+    const margin = 4;
+    const total = size * mod + margin * 2;
+    let paths = "";
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++)
+        if (data[y * size + x])
+          paths += `M${margin + x * mod},${margin + y * mod}h${mod}v${mod}h-${mod}z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}"><rect width="${total}" height="${total}" fill="#fff" rx="4"/><path d="${paths}" fill="#000"/></svg>`;
+  }, [remoteUrl]);
+
   function copyUrl() {
     navigator.clipboard.writeText(remoteUrl).then(() => {
       setCopied(true);
@@ -70,17 +85,15 @@ export default function PairRemoteModal({ onClose }) {
           </div>
         ) : (
           <div className="pair-body">
-            <p className="pair-desc">
-              Open this URL on your phone to connect as a remote:
-            </p>
+            <p className="pair-desc">Scan with your phone to connect as a remote:</p>
+            {qrSvg && (
+              <div className="pair-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+            )}
             <div className="pair-url-box">
               <code className="pair-url">{remoteUrl}</code>
               <button className="pair-copy-btn" onClick={copyUrl}>
                 {copied ? "Copied!" : "Copy"}
               </button>
-            </div>
-            <div className="pair-session-info">
-              <span className="pair-session-id">Session: {sessionId}</span>
             </div>
             <button className="pair-end-btn" onClick={endSession}>
               End Session

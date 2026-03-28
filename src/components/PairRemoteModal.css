@@ -55,6 +55,17 @@
   line-height: 1.5;
 }
 
+.pair-qr {
+  display: flex;
+  justify-content: center;
+}
+
+.pair-qr svg {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-sm);
+}
+
 .pair-create-btn {
   padding: 12px 20px;
   background: var(--accent);
