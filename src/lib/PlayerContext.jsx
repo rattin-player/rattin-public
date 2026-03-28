@@ -56,6 +56,11 @@ export function PlayerProvider({ children }) {
   const lastReportedState = useRef(null);
   const navigateRef = useRef(null); // set by components that have useNavigate
 
+  // Stable refs for SSE command handler (avoid reconnecting SSE when callbacks change)
+  const startStreamRef = useRef(null);
+  const stopStreamRef = useRef(null);
+  const togglePlayRef = useRef(null);
+
   // Sync video state
   useEffect(() => {
     const v = videoRef.current;
@@ -131,6 +136,10 @@ export function PlayerProvider({ children }) {
     else v.pause();
   }, []);
 
+  startStreamRef.current = startStream;
+  stopStreamRef.current = stopStream;
+  togglePlayRef.current = togglePlay;
+
   // Save position periodically
   useEffect(() => {
     if (!active) return;
@@ -156,7 +165,7 @@ export function PlayerProvider({ children }) {
       const v = videoRef.current;
       switch (action) {
         case "toggle-play":
-          togglePlay();
+          togglePlayRef.current?.();
           break;
         case "seek":
           if (commandRef.current?.seek) commandRef.current.seek(value);
@@ -174,7 +183,7 @@ export function PlayerProvider({ children }) {
           break;
         case "start-stream":
           if (value) {
-            startStream(value.infoHash, value.fileIndex, value.title, value.tags);
+            startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags);
             if (navigateRef.current) {
               navigateRef.current(`/play/${value.infoHash}/${value.fileIndex}`, {
                 state: { tags: value.tags, title: value.title },
@@ -183,7 +192,7 @@ export function PlayerProvider({ children }) {
           }
           break;
         case "stop-stream":
-          stopStream();
+          stopStreamRef.current?.();
           if (navigateRef.current) navigateRef.current("/");
           break;
       }
@@ -197,7 +206,7 @@ export function PlayerProvider({ children }) {
       es.close();
       rcEventSourceRef.current = null;
     };
-  }, [rcSessionId, togglePlay, startStream, stopStream]);
+  }, [rcSessionId]);
 
   // ── TV Mode: Report state to remotes ──
   useEffect(() => {

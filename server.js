@@ -204,8 +204,9 @@ const pcAuthToken = crypto.randomBytes(16).toString("hex");
 app.get("/api/auth/persist", (req, res) => {
   // Only reachable after nginx basic auth succeeded (or a valid token).
   // Set a long-lived cookie so the browser doesn't prompt again.
+  // Not HttpOnly — JS needs to read it to avoid re-fetching every page load.
   res.setHeader("Set-Cookie",
-    `pc_auth=${pcAuthToken}; Path=/; Max-Age=${30 * 24 * 60 * 60}; HttpOnly; SameSite=Lax`);
+    `pc_auth=${pcAuthToken}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`);
   res.json({ ok: true });
 });
 
