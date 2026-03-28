@@ -256,12 +256,12 @@ app.post("/api/rc/session", (req, res) => {
 });
 
 // Verify auth token (used by nginx auth_request)
-// Accepts: pc_auth cookie (PC long-lived), rc_token cookie or token query param (phone remote)
+// Accepts: pc_auth cookie (PC long-lived), X-RC-Token header or rc_token cookie (phone remote)
 app.get("/api/rc/verify", (req, res) => {
   // PC persistent auth cookie
   if (req.cookies?.pc_auth === pcAuthToken) return res.status(200).end();
-  // Phone remote token
-  const token = req.query.token || req.cookies?.rc_token;
+  // Phone remote token — header set by nginx from $arg_token, or cookie
+  const token = req.headers["x-rc-token"] || req.cookies?.rc_token;
   if (token) {
     for (const s of rcSessions.values()) {
       if (s.authToken === token) {
