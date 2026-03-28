@@ -19,7 +19,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
   const videoContainerRef = useRef();
@@ -158,6 +158,18 @@ export default function Player() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [infoHash, fileIndex]);
+
+  // Register command handlers for remote control
+  useEffect(() => {
+    if (commandRef) {
+      commandRef.current = {
+        seek: seekTo,
+        seekRelative: (delta) => seekTo(Math.max(0, getEffectiveTime() + delta)),
+        switchSubtitle,
+      };
+    }
+    return () => { if (commandRef) commandRef.current = null; };
+  }, []);
 
   async function fetchDurationRetry(ih, fi, retries = 5) {
     try {
