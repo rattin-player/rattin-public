@@ -45,6 +45,7 @@ export function PlayerProvider({ children }) {
   const rcEventSourceRef = useRef(null);
   const stateReportTimer = useRef(null);
   const lastReportedState = useRef(null);
+  const navigateRef = useRef(null); // set by components that have useNavigate
 
   // Sync video state
   useEffect(() => {
@@ -162,14 +163,16 @@ export function PlayerProvider({ children }) {
         case "start-stream":
           if (value) {
             startStream(value.infoHash, value.fileIndex, value.title, value.tags);
-            // Navigate to player route
-            window.location.hash = ""; // Clear any hash
-            window.history.pushState({}, "", `/play/${value.infoHash}/${value.fileIndex}`);
-            window.dispatchEvent(new PopStateEvent("popstate"));
+            if (navigateRef.current) {
+              navigateRef.current(`/play/${value.infoHash}/${value.fileIndex}`, {
+                state: { tags: value.tags, title: value.title },
+              });
+            }
           }
           break;
         case "stop-stream":
           stopStream();
+          if (navigateRef.current) navigateRef.current("/");
           break;
       }
     });
@@ -249,7 +252,7 @@ export function PlayerProvider({ children }) {
       videoRef, active, playing, currentTime, duration, volume,
       startStream, stopStream, togglePlay,
       effectiveTimeRef, subsRef, activeSubRef,
-      commandRef,
+      commandRef, navigateRef,
       rcSessionId, setRcSessionId,
     }}>
       <video ref={videoRef} style={{ display: "none" }} />

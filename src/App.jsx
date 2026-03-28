@@ -1,5 +1,6 @@
-import { Routes, Route, useLocation } from "react-router-dom";
-import { PlayerProvider, useRemoteMode } from "./lib/PlayerContext";
+import { useEffect } from "react";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { PlayerProvider, useRemoteMode, usePlayer } from "./lib/PlayerContext";
 import Navbar from "./components/Navbar";
 import MiniPlayer from "./components/MiniPlayer";
 import Home from "./pages/Home";
@@ -19,8 +20,16 @@ function Layout({ children }) {
 
 function AppRoutes() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isRemote } = useRemoteMode();
+  const { navigateRef } = usePlayer();
   const isPlayer = location.pathname.startsWith("/play/");
+
+  // Wire up navigate for remote command handling
+  useEffect(() => {
+    navigateRef.current = navigate;
+    return () => { navigateRef.current = null; };
+  }, [navigate, navigateRef]);
   const isRemotePage = location.pathname === "/remote";
 
   if (isPlayer) {
