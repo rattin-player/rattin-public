@@ -25,6 +25,7 @@ const BROWSER_NATIVE = new Set([".mp4", ".m4v", ".webm"]);
 const transcodeJobs = new Map();
 const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
 const seekIndexCache = new Map(); // "infoHash:fileIndex" -> [{ time, offset }, ...]
+const seekIndexPending = new Set(); // jobKeys currently being indexed (prevents duplicate attempts)
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 
 function log(level, msg, data) {
@@ -772,32 +773,54 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
 
     // Build seek index in background (ready for subsequent seeks)
     // Works even for incomplete files — ffprobe only needs the MKV header (first few MB)
-    if (!seekIndexCache.has(jobKey) && file.progress > 0.05) {
+    if (!seekIndexCache.has(jobKey) && !seekIndexPending.has(jobKey) && file.progress > 0.05) {
+      seekIndexPending.add(jobKey);
       buildSeekIndex(diskPath(torrent, file)).then((index) => {
+        seekIndexPending.delete(jobKey);
         if (index.length > 0) {
           seekIndexCache.set(jobKey, index);
           log("info", "Seek index built", { jobKey, keyframes: index.length });
         }
       }).catch((err) => {
+        seekIndexPending.delete(jobKey);
         log("warn", "Seek index build failed", { jobKey, error: err.message });
       });
     }
 
-    // Smart seek: use piece-aware disk read when index is available
+    // Smart seek: ensure pieces at seek point are on disk, then use fast disk read
     if (seekTo > 0 && seekIndexCache.has(jobKey)) {
       const index = seekIndexCache.get(jobKey);
       const seekPoint = findSeekOffset(index, seekTo);
       if (seekPoint) {
         const { byteStart, byteEnd } = getSeekByteRange(seekPoint, file.length);
-        log("info", "Smart seek", { seekTo, keyframe: seekPoint.time, byteStart, complete });
 
+        // Check if pieces are ALREADY on disk (no waiting needed)
+        const pieceLength = torrent.pieceLength;
+        const firstPiece = Math.floor((file.offset + byteStart) / pieceLength);
+        const lastPiece = Math.floor((file.offset + byteEnd) / pieceLength);
+        let piecesReady = true;
+        for (let i = firstPiece; i <= lastPiece; i++) {
+          if (!torrent.bitfield.get(i)) { piecesReady = false; break; }
+        }
+
+        if (piecesReady) {
+          // Fast path: pieces on disk → input seeking + copy mode (near-instant)
+          log("info", "Smart seek (pieces ready)", { seekTo, keyframe: seekPoint.time });
+          // Prioritize remaining pieces from seek point forward for continued playback
+          torrent.select(firstPiece, file._endPiece, 1);
+          return serveLiveTranscode(torrent, file, true, req, res, seekTo);
+        }
+
+        // Slow path: need to fetch pieces first, then serve
+        log("info", "Smart seek (fetching pieces)", { seekTo, keyframe: seekPoint.time });
         const doSmartSeek = async () => {
           try {
             await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
-            // Pieces are on disk — use input seeking + copy mode (fast path)
+            // Pieces arrived — prioritize rest and use disk fast path
+            torrent.select(firstPiece, file._endPiece, 1);
             return serveLiveTranscode(torrent, file, true, req, res, seekTo);
           } catch {
-            log("warn", "Smart seek failed, falling back to pipe", { seekTo });
+            log("warn", "Smart seek timeout, falling back to pipe", { seekTo });
             return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
           }
         };
