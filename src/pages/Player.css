@@ -217,6 +217,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.player-dl-info {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+
 .player-spacer {
   flex: 1;
 }

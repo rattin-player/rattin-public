@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
 import { fetchStatus, fetchDuration, fetchSubtitleTracks } from "../lib/api";
-import { formatTime } from "../lib/utils";
+import { formatTime, formatBytes } from "../lib/utils";
 import "./Player.css";
 
 const LANG_MAP = {
@@ -27,6 +27,7 @@ export default function Player() {
   const seekRef = useRef();
   const hideTimer = useRef();
   const pollRef = useRef();
+  const pendingSubReload = useRef(null);
 
   const [showControls, setShowControls] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -34,6 +35,8 @@ export default function Player() {
   const [duration, setDuration] = useState(0);
   const [knownDuration, setKnownDuration] = useState(0);
   const [dlProgress, setDlProgress] = useState(0);
+  const [dlSpeed, setDlSpeed] = useState(0);
+  const [numPeers, setNumPeers] = useState(0);
   const [isLiveTranscode, setIsLiveTranscode] = useState(false);
   const [seekOffset, setSeekOffset] = useState(0);
   const [transcodeReady, setTranscodeReady] = useState(false);
@@ -194,6 +197,8 @@ export default function Player() {
       try {
         const data = await fetchStatus(infoHash);
         if (!data.files) return;
+        setDlSpeed(data.downloadSpeed || 0);
+        setNumPeers(data.numPeers || 0);
         const file = data.files.find((f) => f.index === Number(fileIndex));
         if (file) {
           setDlProgress(file.progress || 0);
@@ -307,22 +312,48 @@ export default function Player() {
     v.querySelectorAll("track").forEach((el) => el.remove());
   }
 
-  // Shift VTT timestamps by a given offset (for live transcode seeking)
+  // Shift VTT cue timestamps and remove cues before the offset
   function shiftVtt(vttText, offsetSeconds) {
     if (!offsetSeconds || offsetSeconds <= 0) return vttText;
-    return vttText.replace(
-      /(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g,
-      (match, h, m, s, ms) => {
-        let total = parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
-        total -= offsetSeconds;
-        if (total < 0) return match; // keep original if before offset
-        const hh = Math.floor(total / 3600);
-        const mm = Math.floor((total % 3600) / 60);
-        const ss = Math.floor(total % 60);
-        const mss = Math.round((total % 1) * 1000);
-        return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(mss).padStart(3, "0")}`;
+
+    // Parse timestamp — supports both HH:MM:SS.mmm and MM:SS.mmm
+    function parseTs(ts) {
+      const full = ts.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
+      if (full) return parseInt(full[1]) * 3600 + parseInt(full[2]) * 60 + parseInt(full[3]) + parseInt(full[4]) / 1000;
+      const short = ts.match(/(\d{2}):(\d{2})\.(\d{3})/);
+      if (short) return parseInt(short[1]) * 60 + parseInt(short[2]) + parseInt(short[3]) / 1000;
+      return -1;
+    }
+
+    function fmtTs(t) {
+      const hh = Math.floor(t / 3600);
+      const mm = Math.floor((t % 3600) / 60);
+      const ss = Math.floor(t % 60);
+      const ms = Math.round((t % 1) * 1000);
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+    }
+
+    const lines = vttText.split("\n");
+    const out = [];
+    let skip = false;
+    for (const line of lines) {
+      const arrow = line.match(/^(\d{2}:\d{2}(?::\d{2})?\.\d{3})\s*-->\s*(\d{2}:\d{2}(?::\d{2})?\.\d{3})/);
+      if (arrow) {
+        const start = parseTs(arrow[1]);
+        const end = parseTs(arrow[2]);
+        if (end <= offsetSeconds) {
+          skip = true; // entire cue is before offset — drop it
+          continue;
+        }
+        skip = false;
+        out.push(`${fmtTs(Math.max(0, start - offsetSeconds))} --> ${fmtTs(end - offsetSeconds)}`);
+      } else if (!skip) {
+        out.push(line);
+      } else if (line.trim() === "") {
+        skip = false; // blank line ends a skipped cue block
       }
-    );
+    }
+    return out.join("\n");
   }
 
   function loadSubtitleTrack(src, timeOffset) {
@@ -545,6 +576,11 @@ export default function Player() {
             <span className="player-time">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
+            {dlProgress < 1 && (
+              <span className="player-dl-info">
+                {formatBytes(dlSpeed)}/s · {numPeers} peer{numPeers !== 1 ? "s" : ""} · {Math.round(dlProgress * 100)}%
+              </span>
+            )}
             <div className="player-spacer" />
             {subs.length > 0 && (
               <select
