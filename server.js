@@ -260,8 +260,8 @@ app.post("/api/rc/session", (req, res) => {
 app.get("/api/rc/verify", (req, res) => {
   // PC persistent auth cookie
   if (req.cookies?.pc_auth === pcAuthToken) return res.status(200).end();
-  // Phone remote token — header set by nginx from $arg_token, or cookie
-  const token = req.headers["x-rc-token"] || req.cookies?.rc_token;
+  // Phone remote token — headers set by nginx from parent request context, or cookie
+  const token = req.headers["x-rc-token"] || req.headers["x-rc-cookie"] || req.cookies?.rc_token;
   if (token) {
     for (const s of rcSessions.values()) {
       if (s.authToken === token) {
