@@ -189,6 +189,10 @@ export default function Player() {
         if (file) {
           setDlProgress(file.progress || 0);
           setFileName(file.name || "");
+          // Pick up duration from status poll (may arrive before /api/duration)
+          if (file.duration && file.duration > 0 && knownDurRef.current === 0) {
+            setKnownDuration(file.duration);
+          }
           const ext = (file.name || "").split(".").pop().toLowerCase();
           const needsXcode = !["mp4", "m4v", "webm"].includes(ext);
           if (needsXcode && !transcodeReadyRef.current) {
@@ -209,7 +213,17 @@ export default function Player() {
   function switchToTranscoded() {
     const v = videoRef.current;
     if (!v) return;
+    // Defer if currently seeking — wait for the seek to land first
+    if (loading && loadingReason === "seeking") {
+      v.addEventListener("canplay", function onReady() {
+        v.removeEventListener("canplay", onReady);
+        switchToTranscoded();
+      }, { once: true });
+      return;
+    }
     const pos = getEffectiveTime();
+    setLoading(true);
+    setLoadingReason("initial");
     setIsLiveTranscode(false);
     setSeekOffset(0);
     v.src = `/api/stream/${infoHash}/${fileIndex}`;
@@ -406,8 +420,11 @@ export default function Player() {
       v.src = `/api/stream/${infoHash}/${fileIndex}?t=${seconds}`;
       v.play().catch(() => {});
       if (dur > 0) setKnownDuration(dur);
-      // Reload subtitles with the new offset
-      setTimeout(() => reloadActiveSub(seconds), 500);
+      // Reload subtitles once ffmpeg actually starts producing frames
+      v.addEventListener("canplay", function onReady() {
+        v.removeEventListener("canplay", onReady);
+        reloadActiveSub(seconds);
+      }, { once: true });
     } else {
       v.currentTime = seconds;
     }

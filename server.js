@@ -87,9 +87,17 @@ function probeMedia(filePath) {
           probeCache.set(filePath, result);
           return resolve(result);
         }
-        const result = { valid: true, format: fmt, streams: streams.length };
+        const dur = parseFloat(data.format?.duration);
+        const videoStream = streams.find((s) => s.codec_type === "video");
+        const audioStream = streams.find((s) => s.codec_type === "audio");
+        const result = {
+          valid: true, format: fmt, streams: streams.length,
+          duration: dur && isFinite(dur) ? dur : 0,
+          videoCodec: videoStream?.codec_name || "",
+          audioCodec: audioStream?.codec_name || "",
+        };
         probeCache.set(filePath, result);
-        log("info", "Media probe OK", { file: path.basename(filePath), format: fmt, streams: streams.length });
+        log("info", "Media probe OK", { file: path.basename(filePath), format: fmt, streams: streams.length, duration: result.duration, vcodec: result.videoCodec });
         resolve(result);
       } catch {
         const result = { valid: false, reason: "Failed to parse probe output" };
@@ -115,9 +123,50 @@ function startTranscode(inputPath, jobKey) {
     if ((job.done && !job.error) || (!job.done && !job.error)) return job;
   }
 
-  log("info", "Starting transcode", { input: path.basename(inputPath) });
+  // Check probe cache to decide whether remux is likely to work
+  const cached = probeCache.get(inputPath);
+  const canRemux = !cached?.videoCodec || cached.videoCodec === "h264";
+
+  log("info", "Starting transcode", { input: path.basename(inputPath), canRemux, vcodec: cached?.videoCodec });
   const job = { outputPath, done: false, error: null, process: null };
   transcodeJobs.set(jobKey, job);
+
+  function startEncode() {
+    const proc2 = spawn("ffmpeg", [
+      "-i", inputPath,
+      "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      "-y", outputPath,
+    ], { stdio: ["ignore", "ignore", "pipe"] });
+    job.process = proc2;
+
+    let encodeStderr = "";
+    proc2.stderr.on("data", (d) => {
+      encodeStderr += d.toString();
+      const m = d.toString().match(/time=(\S+)/);
+      if (m) log("info", "Transcode progress", { time: m[1] });
+    });
+
+    proc2.on("close", (code2) => {
+      if (code2 === 0) {
+        job.done = true;
+        log("info", "Transcode complete (re-encode)");
+      } else {
+        job.error = "Transcode failed (code " + code2 + ")";
+        log("err", "Transcode re-encode failed", { code: code2, stderr: encodeStderr.slice(-300) });
+      }
+    });
+    proc2.on("error", (err) => {
+      job.error = "ffmpeg error: " + err.message;
+    });
+  }
+
+  // Skip remux if video codec isn't H.264 — go straight to re-encode
+  if (!canRemux) {
+    startEncode();
+    return job;
+  }
 
   // Try remux first (fast - just repackage, no re-encoding)
   const proc = spawn("ffmpeg", [
@@ -136,41 +185,8 @@ function startTranscode(inputPath, jobKey) {
       job.done = true;
       log("info", "Transcode complete (remux)", { output: path.basename(outputPath) });
     } else {
-      log("info", "Remux failed (code " + code + "), re-encoding with H.264", {
-        stderr: remuxStderr.slice(-200)
-      });
-      const proc2 = spawn("ffmpeg", [
-        "-i", inputPath,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-        "-c:a", "aac",
-        "-movflags", "+faststart",
-        "-y", outputPath,
-      ], { stdio: ["ignore", "ignore", "pipe"] });
-      job.process = proc2;
-
-      let encodeStderr = "";
-      proc2.stderr.on("data", (d) => {
-        encodeStderr += d.toString();
-        const m = d.toString().match(/time=(\S+)/);
-        if (m) log("info", "Transcode progress", { time: m[1] });
-      });
-
-      proc2.on("close", (code2) => {
-        if (code2 === 0) {
-          job.done = true;
-          log("info", "Transcode complete (re-encode)");
-        } else {
-          job.error = "Transcode failed (code " + code2 + ")";
-          log("err", "Transcode re-encode failed", {
-            code: code2, stderr: encodeStderr.slice(-300)
-          });
-        }
-      });
-
-      proc2.on("error", (err) => {
-        job.error = "ffmpeg error: " + err.message;
-        log("err", "ffmpeg spawn error", { error: err.message });
-      });
+      log("info", "Remux failed (code " + code + "), re-encoding with H.264", { stderr: remuxStderr.slice(-200) });
+      startEncode();
     }
   });
 
@@ -434,7 +450,9 @@ app.post("/api/add", (req, res) => {
         if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
           const probe = await probeMedia(diskPath(torrent, f));
           if (probe.valid) {
-            startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
+            const dk = `${torrent.infoHash}:${i}`;
+            if (probe.duration > 0 && !durationCache.has(dk)) durationCache.set(dk, probe.duration);
+            startTranscode(diskPath(torrent, f), dk);
           } else {
             log("warn", "Skipping transcode for fake media", { name: f.name, reason: probe.reason });
           }
@@ -706,6 +724,8 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   const filePath = diskPath(torrent, file);
 
   // Verify file is real media — only when complete (probing partial files can hang)
+  const jobKey = `${torrent.infoHash}:${req.params.fileIndex}`;
+
   if (complete) {
     try {
       const probe = await probeMedia(filePath);
@@ -713,10 +733,12 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
         log("warn", "Blocked fake media file", { name: file.name, reason: probe.reason });
         return res.status(403).json({ error: "File failed media verification: " + probe.reason });
       }
+      // Cache duration from probe so it's immediately available
+      if (probe.duration > 0 && !durationCache.has(jobKey)) {
+        durationCache.set(jobKey, probe.duration);
+      }
     } catch {}
   }
-
-  const jobKey = `${torrent.infoHash}:${req.params.fileIndex}`;
   const xcode = needsTranscode(ext);
 
   // 1) Transcoded MP4 ready - serve it (full seeking works)
@@ -729,6 +751,10 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
     }
     if (job && job.error) return res.status(500).json({ error: "Transcode failed" });
     if (complete && !job) startTranscode(diskPath(torrent, file), jobKey);
+    // Start early transcode if nearly complete (ffmpeg can handle small gaps at the end)
+    if (!complete && !job && file.progress > 0.95) {
+      startTranscode(diskPath(torrent, file), jobKey);
+    }
   }
 
   // 2) Native format, complete on disk
@@ -823,13 +849,15 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
   const input = useStdin ? "pipe:0" : filePath;
 
   const doSeek = seekTo > 0;
+  // For complete files, use input seeking (-ss before -i) with copy — near-instant.
+  // For incomplete files (pipe), must re-encode since pipe seeking is unreliable.
+  const canCopySeek = doSeek && !useStdin;
   const args = [
     ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
-    ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
+    ...(doSeek && !useStdin ? ["-ss", String(seekTo), "-noaccurateseek"] : []),
     "-i", input,
     ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
-    // Re-encode when seeking to avoid audio/video desync at cut point
-    ...(doSeek ? ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"] : ["-c:v", "copy"]),
+    ...(canCopySeek ? ["-c:v", "copy"] : doSeek ? ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"] : ["-c:v", "copy"]),
     "-c:a", "aac",
     "-movflags", "frag_keyframe+empty_moov+default_base_moof",
     "-f", "mp4", "-v", "warning",
