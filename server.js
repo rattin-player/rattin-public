@@ -2,6 +2,7 @@ import express from "express";
 import WebTorrent from "webtorrent";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -184,6 +185,122 @@ function startTranscode(inputPath, jobKey) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// ── Remote Control (SSE + REST relay) ──────────────────────────────────
+const rcSessions = new Map(); // sessionId -> { playerClient, remoteClients, playbackState, lastActivity }
+
+function rcSession(id) {
+  const s = rcSessions.get(id);
+  if (s) s.lastActivity = Date.now();
+  return s || null;
+}
+
+// Expire sessions after 24h of inactivity
+setInterval(() => {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [id, s] of rcSessions) {
+    if (s.lastActivity < cutoff) {
+      if (s.playerClient) s.playerClient.end();
+      for (const c of s.remoteClients) c.end();
+      rcSessions.delete(id);
+      log("info", "RC session expired", { sessionId: id });
+    }
+  }
+}, 60 * 1000);
+
+function sseWrite(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+// Create session
+app.post("/api/rc/session", (req, res) => {
+  const sessionId = crypto.randomBytes(4).toString("hex");
+  rcSessions.set(sessionId, {
+    playerClient: null,
+    remoteClients: [],
+    playbackState: null,
+    lastActivity: Date.now(),
+  });
+  log("info", "RC session created", { sessionId });
+  res.json({ sessionId });
+});
+
+// Delete session
+app.delete("/api/rc/session/:sessionId", (req, res) => {
+  const s = rcSessions.get(req.params.sessionId);
+  if (!s) return res.status(404).json({ error: "session not found" });
+  if (s.playerClient) s.playerClient.end();
+  for (const c of s.remoteClients) c.end();
+  rcSessions.delete(req.params.sessionId);
+  log("info", "RC session deleted", { sessionId: req.params.sessionId });
+  res.json({ ok: true });
+});
+
+// SSE event stream
+app.get("/api/rc/events", (req, res) => {
+  const { session, role } = req.query;
+  const s = rcSession(session);
+  if (!s) return res.status(404).json({ error: "session not found" });
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+
+  if (role === "player") {
+    s.playerClient = res;
+    // Notify remotes that player connected
+    for (const c of s.remoteClients) sseWrite(c, "connected", {});
+    // Send current state if any (for reconnection)
+    if (s.playbackState) sseWrite(res, "state", s.playbackState);
+  } else {
+    s.remoteClients.push(res);
+    // Send player connection status
+    sseWrite(res, s.playerClient ? "connected" : "disconnected", {});
+    // Send current playback state
+    if (s.playbackState) sseWrite(res, "state", s.playbackState);
+  }
+
+  // Heartbeat every 30s
+  const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 30000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    if (role === "player") {
+      if (s.playerClient === res) {
+        s.playerClient = null;
+        for (const c of s.remoteClients) sseWrite(c, "disconnected", {});
+      }
+    } else {
+      s.remoteClients = s.remoteClients.filter((c) => c !== res);
+    }
+  });
+});
+
+// Command (phone → PC)
+app.post("/api/rc/command", (req, res) => {
+  const { sessionId, action, value } = req.body;
+  const s = rcSession(sessionId);
+  if (!s) return res.status(404).json({ error: "session not found" });
+  if (s.playerClient) {
+    sseWrite(s.playerClient, "command", { action, value });
+  }
+  res.json({ ok: true });
+});
+
+// State (PC → phone)
+app.post("/api/rc/state", (req, res) => {
+  const { sessionId, ...state } = req.body;
+  const s = rcSession(sessionId);
+  if (!s) return res.status(404).json({ error: "session not found" });
+  s.playbackState = state;
+  for (const c of s.remoteClients) sseWrite(c, "state", state);
+  res.json({ ok: true });
+});
+
+// ── End Remote Control ─────────────────────────────────────────────────
+
 // Torrent search proxy (avoids CORS, queries apibay)
 app.get("/api/search", async (req, res) => {
   const q = (req.query.q || "").trim();
@@ -222,7 +339,7 @@ app.get("/api/search", async (req, res) => {
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
-    if (!req.url.startsWith("/api/status")) {
+    if (!req.url.startsWith("/api/status") && !req.url.startsWith("/api/rc/")) {
       log("info", `${req.method} ${req.url} ${res.statusCode} ${Date.now() - start}ms`);
     }
   });
