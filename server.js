@@ -27,6 +27,7 @@ const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
 const seekIndexCache = new Map(); // "infoHash:fileIndex" -> [{ time, offset }, ...]
 const seekIndexPending = new Set(); // jobKeys currently being indexed (prevents duplicate attempts)
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
+const streamTracker = new Map(); // infoHash -> { count, idleTimer }
 
 function log(level, msg, data) {
   const ts = new Date().toISOString().slice(11, 23);
@@ -56,6 +57,58 @@ function needsTranscode(ext) {
 function isAllowedFile(name) {
   const ext = path.extname(name).toLowerCase();
   return ALLOWED_EXTENSIONS.has(ext);
+}
+
+// Clean all caches associated with a torrent (call BEFORE torrent.destroy)
+function cleanupTorrentCaches(infoHash, torrent) {
+  if (torrent?.files) {
+    for (const f of torrent.files) {
+      probeCache.delete(diskPath(torrent, f));
+    }
+  }
+  for (const key of [...durationCache.keys()]) {
+    if (key.startsWith(infoHash + ":")) durationCache.delete(key);
+  }
+  for (const key of [...seekIndexCache.keys()]) {
+    if (key.startsWith(infoHash + ":")) seekIndexCache.delete(key);
+  }
+  for (const key of [...seekIndexPending]) {
+    if (key.startsWith(infoHash + ":")) seekIndexPending.delete(key);
+  }
+  activeFiles.delete(infoHash);
+}
+
+function trackStreamOpen(infoHash) {
+  const entry = streamTracker.get(infoHash) || { count: 0, idleTimer: null };
+  entry.count++;
+  if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
+  streamTracker.set(infoHash, entry);
+}
+
+function trackStreamClose(infoHash) {
+  const entry = streamTracker.get(infoHash);
+  if (!entry) return;
+  entry.count = Math.max(0, entry.count - 1);
+  if (entry.count > 0) return;
+  // All streams closed — kill background transcodes and free torrent after 2 min
+  entry.idleTimer = setTimeout(() => {
+    for (const [key, job] of transcodeJobs) {
+      if (key.startsWith(infoHash + ":")) {
+        if (job.process && !job.done) {
+          job.process.kill();
+          log("info", "Killed idle transcode", { jobKey: key });
+        }
+        transcodeJobs.delete(key);
+      }
+    }
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    if (torrent) {
+      cleanupTorrentCaches(infoHash, torrent);
+      log("info", "Auto-removing idle torrent", { name: torrent.name });
+      torrent.destroy({ destroyStore: false });
+    }
+    streamTracker.delete(infoHash);
+  }, 2 * 60 * 1000);
 }
 
 // Verify a file is actually media by probing its content with ffprobe.
@@ -146,8 +199,9 @@ function startTranscode(inputPath, jobKey) {
 
     let encodeStderr = "";
     proc2.stderr.on("data", (d) => {
-      encodeStderr += d.toString();
-      const m = d.toString().match(/time=(\S+)/);
+      const chunk = d.toString();
+      encodeStderr = (encodeStderr + chunk).slice(-1024);
+      const m = chunk.match(/time=(\S+)/);
       if (m) log("info", "Transcode progress", { time: m[1] });
     });
 
@@ -181,7 +235,7 @@ function startTranscode(inputPath, jobKey) {
   job.process = proc;
 
   let remuxStderr = "";
-  proc.stderr.on("data", (d) => { remuxStderr += d.toString(); });
+  proc.stderr.on("data", (d) => { remuxStderr = (remuxStderr + d.toString()).slice(-1024); });
 
   proc.on("close", (code) => {
     if (code === 0) {
@@ -447,20 +501,6 @@ app.post("/api/add", (req, res) => {
     torrent.on("done", () => {
       log("info", "Download complete, stopping seed", { name: torrent.name });
       torrent.pause();
-      // Auto-start transcode for files that need it (after verifying they're real media)
-      torrent.files.forEach(async (f, i) => {
-        const ext = path.extname(f.name).toLowerCase();
-        if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
-          const probe = await probeMedia(diskPath(torrent, f));
-          if (probe.valid) {
-            const dk = `${torrent.infoHash}:${i}`;
-            if (probe.duration > 0 && !durationCache.has(dk)) durationCache.set(dk, probe.duration);
-            startTranscode(diskPath(torrent, f), dk);
-          } else {
-            log("warn", "Skipping transcode for fake media", { name: f.name, reason: probe.reason });
-          }
-        }
-      });
     });
 
     torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
@@ -711,6 +751,9 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
     return res.status(403).json({ error: "File type not allowed" });
   }
 
+  trackStreamOpen(req.params.infoHash);
+  res.on("close", () => trackStreamClose(req.params.infoHash));
+
   const ext = path.extname(file.name).toLowerCase();
   const fileIdx = parseInt(req.params.fileIndex, 10);
 
@@ -753,11 +796,6 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
       return serveFile(job.outputPath, stat.size, "video/mp4", req, res);
     }
     if (job && job.error) return res.status(500).json({ error: "Transcode failed" });
-    if (complete && !job) startTranscode(diskPath(torrent, file), jobKey);
-    // Start early transcode if nearly complete (ffmpeg can handle small gaps at the end)
-    if (!complete && !job && file.progress > 0.95) {
-      startTranscode(diskPath(torrent, file), jobKey);
-    }
   }
 
   // 2) Native format, complete on disk
@@ -962,8 +1000,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
     ffmpeg.stdin.on("error", () => {});
   }
 
-  let stderrBuf = "";
-  ffmpeg.stderr.on("data", (d) => { stderrBuf += d.toString(); });
+  ffmpeg.stderr.on("data", () => {});
 
   res.writeHead(200, {
     "Content-Type": "video/mp4",
@@ -974,8 +1011,21 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
 
   ffmpeg.stdout.pipe(res);
 
+  // Watchdog: kill ffmpeg if no output for 30s (nginx may not detect client disconnect when stalled)
+  let lastOutput = Date.now();
+  ffmpeg.stdout.on("data", () => { lastOutput = Date.now(); });
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastOutput > 30000) {
+      clearInterval(watchdog);
+      log("info", "Watchdog: killing stale ffmpeg (no output for 30s)");
+      if (torrentStream) torrentStream.destroy();
+      ffmpeg.kill("SIGKILL");
+    }
+  }, 10000);
+
   ffmpeg.on("close", (code) => {
-    if (code && code !== 0 && code !== 255) {
+    clearInterval(watchdog);
+    if (code && code !== 0 && code !== 255 && !res.destroyed) {
       log("warn", "First attempt failed, retrying with full re-encode");
       const retryFilters = [];
       if (needsDownscale) retryFilters.push("scale=-2:1080");
@@ -995,21 +1045,31 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
         "pipe:1",
       ];
       const ff2 = spawn("ffmpeg", args2, { stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"] });
+      let lastOutput2 = Date.now();
+      const watchdog2 = setInterval(() => {
+        if (Date.now() - lastOutput2 > 30000) {
+          clearInterval(watchdog2);
+          log("info", "Watchdog: killing stale retry ffmpeg");
+          ff2.kill("SIGKILL");
+        }
+      }, 10000);
+      ff2.stdout.on("data", () => { lastOutput2 = Date.now(); });
+      ff2.on("close", () => { clearInterval(watchdog2); });
       if (useStdin) {
         const ts2 = file.createReadStream();
         ts2.on("error", () => { ts2.destroy(); ff2.kill(); });
         ts2.pipe(ff2.stdin);
         ff2.stdin.on("error", () => {});
-        res.on("close", () => { ts2.destroy(); ff2.kill(); });
+        res.on("close", () => { clearInterval(watchdog2); ts2.destroy(); ff2.kill(); });
       }
       ff2.stderr.on("data", () => {});
       ff2.stdout.pipe(res, { end: true });
-      ff2.on("close", () => {});
-      if (!useStdin) res.on("close", () => ff2.kill());
+      if (!useStdin) res.on("close", () => { clearInterval(watchdog2); ff2.kill(); });
     }
   });
 
   res.on("close", () => {
+    clearInterval(watchdog);
     if (torrentStream) torrentStream.destroy();
     ffmpeg.kill();
   });
@@ -1153,6 +1213,10 @@ app.delete("/api/remove/:infoHash", (req, res) => {
       transcodeJobs.delete(key);
     }
   }
+  cleanupTorrentCaches(torrent.infoHash, torrent);
+  const st = streamTracker.get(torrent.infoHash);
+  if (st?.idleTimer) clearTimeout(st.idleTimer);
+  streamTracker.delete(torrent.infoHash);
   log("info", "Removing torrent", { name: torrent.name });
   torrent.destroy({ destroyStore: true });
   res.json({ ok: true });
@@ -1204,6 +1268,13 @@ app.delete("/api/clear", (req, res) => {
   }
   transcodeJobs.clear();
   durationCache.clear();
+  probeCache.clear();
+  seekIndexCache.clear();
+  seekIndexPending.clear();
+  activeFiles.clear();
+  availabilityCache.clear();
+  for (const [, st] of streamTracker) { if (st.idleTimer) clearTimeout(st.idleTimer); }
+  streamTracker.clear();
   // Destroy all torrents
   const promises = client.torrents.map((t) => new Promise((resolve) => {
     t.destroy({ destroyStore: true }, resolve);
@@ -1797,13 +1868,6 @@ app.post("/api/auto-play", async (req, res) => {
         torrent.on("done", () => {
           log("info", "Download complete", { name: torrent.name });
           torrent.pause();
-          torrent.files.forEach(async (f, i) => {
-            const ext = path.extname(f.name).toLowerCase();
-            if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
-              const probe = await probeMedia(diskPath(torrent, f));
-              if (probe.valid) startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
-            }
-          });
         });
 
         torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
@@ -1899,13 +1963,6 @@ app.post("/api/play-torrent", async (req, res) => {
         clearTimeout(timeout);
         torrent.on("done", () => {
           torrent.pause();
-          torrent.files.forEach(async (f, i) => {
-            const ext = path.extname(f.name).toLowerCase();
-            if (VIDEO_EXTENSIONS.includes(ext) && needsTranscode(ext)) {
-              const probe = await probeMedia(diskPath(torrent, f));
-              if (probe.valid) startTranscode(diskPath(torrent, f), `${torrent.infoHash}:${i}`);
-            }
-          });
         });
         torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
         const videoFile = (season && episode)
@@ -1980,6 +2037,32 @@ function findEpisodeFile(torrent, season, episode) {
   // If no episode match found, fall back to largest (single-episode torrent)
   return best || findLargestVideo(torrent);
 }
+
+// Cache janitor — every 5 min, prune entries for removed torrents
+setInterval(() => {
+  const activeHashes = new Set(client.torrents.map((t) => t.infoHash));
+  let pruned = 0;
+  for (const key of [...durationCache.keys()]) {
+    if (!activeHashes.has(key.split(":")[0])) { durationCache.delete(key); pruned++; }
+  }
+  for (const key of [...seekIndexCache.keys()]) {
+    if (!activeHashes.has(key.split(":")[0])) { seekIndexCache.delete(key); pruned++; }
+  }
+  for (const key of [...seekIndexPending]) {
+    if (!activeHashes.has(key.split(":")[0])) { seekIndexPending.delete(key); pruned++; }
+  }
+  for (const key of [...activeFiles.keys()]) {
+    if (!activeHashes.has(key)) { activeFiles.delete(key); pruned++; }
+  }
+  for (const filePath of [...probeCache.keys()]) {
+    try { statSync(filePath); } catch { probeCache.delete(filePath); pruned++; }
+  }
+  const now = Date.now();
+  for (const [key, entry] of availabilityCache) {
+    if (now - entry.ts > AVAIL_TTL) { availabilityCache.delete(key); pruned++; }
+  }
+  if (pruned > 0) log("info", "Cache janitor", { pruned, probeCache: probeCache.size, seekIndex: seekIndexCache.size, duration: durationCache.size, availability: availabilityCache.size });
+}, 5 * 60 * 1000);
 
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
