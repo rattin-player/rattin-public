@@ -409,10 +409,8 @@ export default function Player() {
     const v = videoRef.current;
     if (isLiveRef.current) {
       const dur = getEffectiveDuration();
-      if (dur > 0 && dlProgress < 1) {
-        const maxSeekable = dur * dlProgress;
-        if (seconds > maxSeekable) return;
-      }
+      // Clamp to duration but allow seeking anywhere — server fetches pieces on demand
+      if (dur > 0 && seconds > dur) return;
       setSeekOffset(seconds);
       setIsLiveTranscode(true);
       setLoading(true);

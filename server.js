@@ -7,6 +7,7 @@ import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
+import { buildSeekIndex, findSeekOffset, waitForPieces, getSeekByteRange } from "./lib/seek-index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +24,7 @@ const BROWSER_NATIVE = new Set([".mp4", ".m4v", ".webm"]);
 
 const transcodeJobs = new Map();
 const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
+const seekIndexCache = new Map(); // "infoHash:fileIndex" -> [{ time, offset }, ...]
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 
 function log(level, msg, data) {
@@ -767,6 +769,42 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   // 3) Needs transcode but not ready yet - live pipe through ffmpeg
   if (xcode) {
     const seekTo = parseFloat(req.query.t) || 0;
+
+    // Build seek index in background (ready for subsequent seeks)
+    // Works even for incomplete files — ffprobe only needs the MKV header (first few MB)
+    if (!seekIndexCache.has(jobKey) && file.progress > 0.05) {
+      buildSeekIndex(diskPath(torrent, file)).then((index) => {
+        if (index.length > 0) {
+          seekIndexCache.set(jobKey, index);
+          log("info", "Seek index built", { jobKey, keyframes: index.length });
+        }
+      }).catch((err) => {
+        log("warn", "Seek index build failed", { jobKey, error: err.message });
+      });
+    }
+
+    // Smart seek: use piece-aware disk read when index is available
+    if (seekTo > 0 && seekIndexCache.has(jobKey)) {
+      const index = seekIndexCache.get(jobKey);
+      const seekPoint = findSeekOffset(index, seekTo);
+      if (seekPoint) {
+        const { byteStart, byteEnd } = getSeekByteRange(seekPoint, file.length);
+        log("info", "Smart seek", { seekTo, keyframe: seekPoint.time, byteStart, complete });
+
+        const doSmartSeek = async () => {
+          try {
+            await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
+            // Pieces are on disk — use input seeking + copy mode (fast path)
+            return serveLiveTranscode(torrent, file, true, req, res, seekTo);
+          } catch {
+            log("warn", "Smart seek failed, falling back to pipe", { seekTo });
+            return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
+          }
+        };
+        return doSmartSeek();
+      }
+    }
+
     log("info", "Live transcode", { file: file.name, complete, seekTo });
     return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
   }
