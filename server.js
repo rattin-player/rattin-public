@@ -194,6 +194,21 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, "public")));
 
+// ── Auth persistence ───────────────────────────────────────────────────
+// Stable token generated once per server start. After the PC passes nginx
+// basic auth once, the app sets a 30-day cookie with this token. Nginx's
+// auth_request accepts the cookie on subsequent requests, skipping the
+// basic auth prompt.
+const pcAuthToken = crypto.randomBytes(16).toString("hex");
+
+app.get("/api/auth/persist", (req, res) => {
+  // Only reachable after nginx basic auth succeeded (or a valid token).
+  // Set a long-lived cookie so the browser doesn't prompt again.
+  res.setHeader("Set-Cookie",
+    `pc_auth=${pcAuthToken}; Path=/; Max-Age=${30 * 24 * 60 * 60}; HttpOnly; SameSite=Lax`);
+  res.json({ ok: true });
+});
+
 // ── Remote Control (SSE + REST relay) ──────────────────────────────────
 const rcSessions = new Map(); // sessionId -> { playerClient, remoteClients, playbackState, lastActivity }
 
@@ -239,14 +254,19 @@ app.post("/api/rc/session", (req, res) => {
   res.json({ sessionId, authToken });
 });
 
-// Verify remote auth token (used by nginx auth_request)
+// Verify auth token (used by nginx auth_request)
+// Accepts: pc_auth cookie (PC long-lived), rc_token cookie or token query param (phone remote)
 app.get("/api/rc/verify", (req, res) => {
+  // PC persistent auth cookie
+  if (req.cookies?.pc_auth === pcAuthToken) return res.status(200).end();
+  // Phone remote token
   const token = req.query.token || req.cookies?.rc_token;
-  if (!token) return res.status(401).end();
-  for (const s of rcSessions.values()) {
-    if (s.authToken === token) {
-      s.lastActivity = Date.now();
-      return res.status(200).end();
+  if (token) {
+    for (const s of rcSessions.values()) {
+      if (s.authToken === token) {
+        s.lastActivity = Date.now();
+        return res.status(200).end();
+      }
     }
   }
   res.status(401).end();
