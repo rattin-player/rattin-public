@@ -19,7 +19,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
   const videoContainerRef = useRef();
@@ -202,6 +202,7 @@ export default function Player() {
         const file = data.files.find((f) => f.index === Number(fileIndex));
         if (file) {
           setDlProgress(file.progress || 0);
+          dlProgressRef.current = file.progress || 0;
           setFileName(file.name || "");
           // Pick up duration from status poll (may arrive before /api/duration)
           if (file.duration && file.duration > 0 && knownDurRef.current === 0) {

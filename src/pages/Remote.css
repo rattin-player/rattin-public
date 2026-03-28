@@ -115,6 +115,15 @@
   border-radius: 3px;
   position: relative;
 }
+.remote-seek-downloaded {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  transition: width 0.3s linear;
+}
 .remote-seek-fill {
   height: 100%;
   background: var(--accent);

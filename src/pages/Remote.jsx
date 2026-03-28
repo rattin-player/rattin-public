@@ -90,7 +90,10 @@ export default function Remote() {
       if (!dragRef.current.dragging) return;
       dragRef.current.dragging = false;
       setSeekDragging(false);
-      sendCommand("seek", dragRef.current.value);
+      // Clamp to downloaded range
+      const maxSeekable = dragRef.current.duration * (state?.dlProgress ?? 1);
+      const clamped = Math.min(dragRef.current.value, maxSeekable);
+      sendCommand("seek", clamped);
     }
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", end);
@@ -119,6 +122,8 @@ export default function Remote() {
   const ct = seekDragging ? seekDragValue : (state?.currentTime || 0);
   const dur = state?.duration || 0;
   const progress = dur > 0 ? (ct / dur) * 100 : 0;
+  const dlProgress = state?.dlProgress ?? 1;
+  const dlPct = dlProgress * 100;
 
   if (!hasPlayback) {
     return (
@@ -172,6 +177,7 @@ export default function Remote() {
           onTouchStart={onSeekStart}
         >
           <div className="remote-seek-track">
+            <div className="remote-seek-downloaded" style={{ width: `${dlPct}%` }} />
             <div className="remote-seek-fill" style={{ width: `${progress}%` }} />
             <div className="remote-seek-thumb" style={{ left: `${progress}%` }} />
           </div>
