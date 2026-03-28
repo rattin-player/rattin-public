@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
+import { usePlayer, useRemoteMode } from "../lib/PlayerContext";
+import PairRemoteModal from "./PairRemoteModal";
 import "./Navbar.css";
 
 export default function Navbar() {
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [showPairing, setShowPairing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { rcSessionId } = usePlayer();
+  const { isRemote } = useRemoteMode();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -52,6 +57,24 @@ export default function Navbar() {
           onChange={(e) => setQuery(e.target.value)}
         />
       </form>
+      {!isRemote && (
+        <button className="navbar-pair-btn" onClick={() => setShowPairing(true)}>
+          {rcSessionId ? (
+            <span className="navbar-pair-connected">
+              <span className="navbar-pair-dot" />
+              Remote
+            </span>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z" />
+              </svg>
+              Pair
+            </>
+          )}
+        </button>
+      )}
+      {showPairing && <PairRemoteModal onClose={() => setShowPairing(false)} />}
     </nav>
   );
 }

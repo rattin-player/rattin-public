@@ -1,0 +1,133 @@
+.pair-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pair-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 420px;
+  overflow: hidden;
+}
+
+.pair-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pair-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pair-close {
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition);
+}
+
+.pair-close:hover {
+  color: var(--text-primary);
+}
+
+.pair-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pair-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.pair-create-btn {
+  padding: 12px 20px;
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--transition);
+}
+
+.pair-create-btn:hover {
+  background: var(--accent-bright);
+}
+
+.pair-create-btn:disabled {
+  opacity: 0.6;
+}
+
+.pair-url-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pair-url {
+  flex: 1;
+  font-size: 12px;
+  padding: 10px 12px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--accent-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.pair-copy-btn {
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+
+.pair-copy-btn:hover {
+  background: var(--bg-hover);
+}
+
+.pair-session-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pair-session-id {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pair-end-btn {
+  padding: 10px;
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  transition: background var(--transition);
+}
+
+.pair-end-btn:hover {
+  background: rgba(248, 113, 113, 0.2);
+}
