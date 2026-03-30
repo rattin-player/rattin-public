@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
 import { usePlayerLoading } from "../lib/usePlayerLoading";
-import { useSubtitles, LANG_MAP } from "../lib/useSubtitles";
-import { fetchStatus, fetchDuration, fetchAudioTracks } from "../lib/api";
+import { useSubtitles } from "../lib/useSubtitles";
+import { useAudioTracks } from "../lib/useAudioTracks";
+import { fetchStatus, fetchDuration } from "../lib/api";
 import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { encode } from "uqr";
@@ -40,21 +41,6 @@ export default function Player() {
     return 0;
   });
   const [transcodeReady, setTranscodeReady] = useState(false);
-  const [audioTracks, setAudioTracksRaw] = useState([]);
-  const [activeAudio, setActiveAudioRaw] = useState(null);
-
-  function setAudioTracks(val) {
-    setAudioTracksRaw((prev) => {
-      const next = typeof val === "function" ? val(prev) : val;
-      audioTracksRef.current = next;
-      return next;
-    });
-  }
-
-  function setActiveAudio(val) {
-    setActiveAudioRaw(val);
-    activeAudioRef.current = val;
-  }
   const [fileName, setFileName] = useState("");
   const [tooltipTime, setTooltipTime] = useState(null);
   const [tooltipX, setTooltipX] = useState(0);
@@ -93,6 +79,12 @@ export default function Player() {
     }
     return 0;
   }, []);
+
+  const { audioTracks, activeAudio, switchAudio } = useAudioTracks(videoRef, {
+    infoHash, fileIndex, audioTracksRef, activeAudioRef,
+    preSelectedAudio, getEffectiveTime, isLiveRef,
+    setLoading, setLoadingReason, pendingSubReload,
+  });
 
   // seekTo is defined below but only used by handleSkipIntro (user-triggered callback)
   const { introRange, showSkipIntro, handleSkipIntro } = useIntro(videoRef, {
@@ -199,56 +191,6 @@ export default function Player() {
       v.currentTime = pos;
       v.play().catch(() => {});
     });
-  }
-
-  // Audio track loading
-  useEffect(() => {
-    loadAudioTracks();
-    const timer = setInterval(loadAudioTracks, 5000);
-    return () => clearInterval(timer);
-
-    async function loadAudioTracks() {
-      try {
-        const data = await fetchAudioTracks(infoHash, fileIndex);
-        if (data.tracks?.length > 0) {
-          setAudioTracks((prev) => {
-            if (prev.length === data.tracks.length) return prev;
-            return data.tracks.map((t) => ({
-              value: t.streamIndex,
-              label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
-            }));
-          });
-          if (activeAudioRef.current === null) {
-            const initial = preSelectedAudio ?? data.tracks[0]?.streamIndex ?? null;
-            setActiveAudio(initial);
-          }
-          clearInterval(timer);
-        }
-      } catch {}
-    }
-  }, [infoHash, fileIndex]);
-
-  function switchAudio(streamIndex) {
-    const idx = parseInt(streamIndex, 10);
-    if (isNaN(idx)) return;
-    if (activeAudioRef.current === idx) return;
-    setActiveAudio(idx);
-    const v = videoRef.current;
-    if (!v) return;
-    const pos = getEffectiveTime();
-    setLoading(true);
-    setLoadingReason("seeking");
-    if (isLiveRef.current) {
-      v.src = `/api/stream/${infoHash}/${fileIndex}?t=${pos}&audio=${idx}`;
-    } else {
-      v.src = `/api/stream/${infoHash}/${fileIndex}?audio=${idx}`;
-      v.addEventListener("loadedmetadata", function onMeta() {
-        v.removeEventListener("loadedmetadata", onMeta);
-        v.currentTime = pos;
-      }, { once: true });
-    }
-    v.play().catch(() => {});
-    pendingSubReload.current = isLiveRef.current ? pos : 0;
   }
 
   // Time update — sync to local state AND push to context for mini player
