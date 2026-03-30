@@ -423,6 +423,15 @@ app.post("/api/rc/command", (req, res) => {
   res.json({ ok: true });
 });
 
+// Phone requests player to show QR for reconnection
+// Broadcasts to ALL active player SSE connections (phone doesn't know which session is current)
+app.post("/api/rc/request-qr", (req, res) => {
+  for (const [, s] of rcSessions) {
+    if (s.playerClient) sseWrite(s.playerClient, "show-qr", {});
+  }
+  res.json({ ok: true });
+});
+
 // State (PC → phone)
 app.post("/api/rc/state", (req, res) => {
   const { sessionId, ...state } = req.body;

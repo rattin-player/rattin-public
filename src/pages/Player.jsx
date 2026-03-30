@@ -20,7 +20,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, setRcSessionId, setRcAuthToken } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
   const videoContainerRef = useRef();
@@ -572,8 +572,8 @@ export default function Player() {
     prevRemoteConnected.current = rcRemoteConnected;
   }, [rcRemoteConnected]);
 
-  // Generate QR code for remote reconnection
-  const showReconnectQr = rcSessionId && rcAuthToken && !rcRemoteConnected;
+  // Generate QR code for remote reconnection — only when phone explicitly requests it
+  const showReconnectQr = rcSessionId && rcAuthToken && rcQrRequested && !rcRemoteConnected;
   const reconnectQrSvg = useMemo(() => {
     if (!showReconnectQr) return null;
     const url = `${window.location.origin}/api/rc/auth?session=${rcSessionId}&token=${rcAuthToken}`;
@@ -695,9 +695,11 @@ export default function Player() {
       </div>
 
       {showReconnectQr && reconnectQrSvg && (
-        <div className="player-reconnect-qr" onClick={(e) => e.stopPropagation()}>
-          <div className="player-reconnect-qr-inner" dangerouslySetInnerHTML={{ __html: reconnectQrSvg }} />
-          <span className="player-reconnect-qr-label">Scan to reconnect remote</span>
+        <div className="player-reconnect-qr-overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="player-reconnect-qr-card">
+            <div className="player-reconnect-qr-inner" dangerouslySetInnerHTML={{ __html: reconnectQrSvg }} />
+            <span className="player-reconnect-qr-label">Scan to reconnect remote</span>
+          </div>
         </div>
       )}
     </div>

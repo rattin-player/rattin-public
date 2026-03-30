@@ -80,6 +80,12 @@ export default function Remote() {
   // ── QR scanner ──
   const [showScanner, setShowScanner] = useState(false);
 
+  function openScanner() {
+    // Tell the player to show its QR code on screen
+    fetch("/api/rc/request-qr", { method: "POST" }).catch(() => {});
+    setShowScanner(true);
+  }
+
   function handleQrScan(url) {
     setShowScanner(false);
     // Parse session and token from the URL: /api/rc/auth?session=X&token=Y
@@ -321,7 +327,7 @@ export default function Remote() {
           </svg>
           <h3>No Session</h3>
           <p>Scan a QR code from the player on your PC to connect this device as a remote.</p>
-          <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
+          <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
         </div>
         {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
@@ -352,7 +358,7 @@ export default function Remote() {
           <p>This remote session no longer exists. The server may have restarted or the session timed out.</p>
           <p>Open the pairing screen on your PC and scan the new QR code.</p>
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
+            <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
             <button className="remote-clear-link" onClick={retry}>Retry</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>
@@ -374,7 +380,7 @@ export default function Remote() {
           <h3>Connection Lost</h3>
           <p>Could not reconnect to the player. Open the pairing screen on your PC and scan the new QR code.</p>
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
+            <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
             <button className="remote-clear-link" onClick={retry}>Retry Connection</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>

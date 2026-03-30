@@ -57,6 +57,7 @@ export function PlayerProvider({ children }) {
   const [rcSessionId, setRcSessionId] = useState(() => sessionStorage.getItem("rc-sessionId") || null);
   const [rcAuthToken, setRcAuthToken] = useState(() => sessionStorage.getItem("rc-authToken") || null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
+  const [rcQrRequested, setRcQrRequested] = useState(false);
 
   useEffect(() => {
     if (rcSessionId) sessionStorage.setItem("rc-sessionId", rcSessionId);
@@ -227,6 +228,10 @@ export function PlayerProvider({ children }) {
 
     es.addEventListener("remote-connected", (e) => {
       setRcRemoteConnected(true);
+      setRcQrRequested(false); // remote connected, hide QR
+    });
+    es.addEventListener("show-qr", () => {
+      setRcQrRequested(true);
     });
     es.addEventListener("remote-disconnected", (e) => {
       const data = JSON.parse(e.data);
@@ -322,7 +327,7 @@ export function PlayerProvider({ children }) {
       startStream, stopStream, togglePlay,
       effectiveTimeRef, subsRef, activeSubRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
-      rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected,
+      rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
     }}>
       <video ref={videoRef} style={{ display: "none" }} />
       {children}
