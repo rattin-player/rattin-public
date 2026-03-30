@@ -764,21 +764,35 @@ app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
 
   if (torrent) {
     // Torrent is active — scan its file list
+    // Only include files where the first ~5 min of data is actually downloaded
+    // (WebTorrent pre-allocates full file size, so stat check is unreliable)
     const fileIdx = parseInt(req.params.fileIndex, 10);
     const file = torrent.files[fileIdx];
     if (file) currentPath = diskPath(torrent, file);
+    const pieceLength = torrent.pieceLength || 262144;
     for (const f of torrent.files) {
       const ext = path.extname(f.name).toLowerCase();
       if (!VIDEO_EXTENSIONS.includes(ext)) continue;
-      const fp = diskPath(torrent, f);
-      try {
-        if (statSync(fp).size > 50_000_000) siblingPaths.push(fp);
-      } catch {}
+      // Check if the first ~10% of the file has been downloaded (enough for 5 min audio)
+      // by verifying the first N pieces are available
+      const fileOffset = getFileOffset(f);
+      const firstPiece = Math.floor(fileOffset / pieceLength);
+      const bytesNeeded = Math.min(f.length * 0.1, 200_000_000); // 10% or 200MB, whichever is less
+      const piecesNeeded = Math.ceil(bytesNeeded / pieceLength);
+      let hasBeginning = true;
+      for (let p = firstPiece; p < firstPiece + piecesNeeded; p++) {
+        if (!hasPiece(torrent, p)) { hasBeginning = false; break; }
+      }
+      if (hasBeginning) {
+        const fp = diskPath(torrent, f);
+        siblingPaths.push(fp);
+      }
     }
   }
 
   // Also scan the download directory for video files from any torrent
   // This finds episodes that persist on disk after torrent idle-timeout
+  // Validate with a quick ffprobe since these may be incomplete downloads
   try {
     for (const dir of fs.readdirSync(DOWNLOAD_PATH)) {
       const dirPath = path.join(DOWNLOAD_PATH, dir);
@@ -788,7 +802,7 @@ app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
           const ext = path.extname(fname).toLowerCase();
           if (!VIDEO_EXTENSIONS.includes(ext)) continue;
           const fp = path.join(dirPath, fname);
-          if (siblingPaths.includes(fp)) continue; // already found via torrent
+          if (siblingPaths.includes(fp)) continue;
           try {
             if (statSync(fp).size > 50_000_000) siblingPaths.push(fp);
           } catch {}
