@@ -518,3 +518,124 @@
 .remote-now-playing-btn:active {
   transform: scale(0.96);
 }
+
+/* ── QR Scanner ── */
+.qr-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.qr-scanner-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 380px;
+  overflow: hidden;
+  animation: fadeUp 0.3s ease-out;
+}
+
+.qr-scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.qr-scanner-header h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.qr-scanner-close {
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: var(--radius-xs);
+}
+
+.qr-scanner-camera {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  overflow: hidden;
+}
+
+.qr-scanner-camera video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.qr-scanner-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60%;
+  height: 60%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.qr-scanner-error {
+  padding: 16px 20px;
+  color: var(--red);
+  font-size: 13px;
+  text-align: center;
+}
+
+.qr-scanner-manual {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.qr-scanner-manual p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.qr-scanner-manual form {
+  display: flex;
+  gap: 8px;
+}
+
+.qr-scanner-manual input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-body);
+  outline: none;
+}
+
+.qr-scanner-manual input:focus {
+  border-color: var(--accent);
+}
+
+.qr-scanner-manual button {
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--bg-deep);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}

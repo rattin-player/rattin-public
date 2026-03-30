@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { formatTime } from "../lib/utils";
+import QrScanner from "../components/QrScanner";
 import "./Remote.css";
 
 // ── State machine constants ──
@@ -61,6 +62,27 @@ export default function Remote() {
 
   // ── Last known good values ──
   const lastGood = useRef({ currentTime: 0, duration: 0 });
+
+  // ── QR scanner ──
+  const [showScanner, setShowScanner] = useState(false);
+
+  function handleQrScan(url) {
+    setShowScanner(false);
+    // Parse session and token from the URL: /api/rc/auth?session=X&token=Y
+    try {
+      const parsed = new URL(url);
+      const newSession = parsed.searchParams.get("session");
+      const newToken = parsed.searchParams.get("token");
+      if (newSession && newToken) {
+        // Set cookie + localStorage, then navigate to the new session
+        document.cookie = `rc_token=${newToken}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+        localStorage.setItem("rc-session", newSession);
+        localStorage.setItem("rc-token", newToken);
+        // Navigate — this triggers a fresh SSE connection via the useEffect
+        navigate(`/remote?session=${newSession}&token=${newToken}`, { replace: true });
+      }
+    } catch {}
+  }
 
   // Persist session
   useEffect(() => {
@@ -281,7 +303,9 @@ export default function Remote() {
           </svg>
           <h3>No Session</h3>
           <p>Scan a QR code from the player on your PC to connect this device as a remote.</p>
+          <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
         </div>
+        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
@@ -308,12 +332,14 @@ export default function Remote() {
           </svg>
           <h3>Session Expired</h3>
           <p>This remote session no longer exists. The server may have restarted or the session timed out.</p>
-          <p>Open the pairing screen on your PC to get a fresh QR code.</p>
+          <p>Open the pairing screen on your PC and scan the new QR code.</p>
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={retry}>Retry</button>
+            <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
+            <button className="remote-clear-link" onClick={retry}>Retry</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>
         </div>
+        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
@@ -328,12 +354,14 @@ export default function Remote() {
             <path d="M2 16l2.83 2.83L12 11.66l7.17 7.17L22 16 12 6 2 16zm10-1.5l4.24 4.24L12 22.98l-4.24-4.24L12 14.5z"/>
           </svg>
           <h3>Connection Lost</h3>
-          <p>Could not reconnect to the player. Open the pairing screen on your PC to scan a new QR code.</p>
+          <p>Could not reconnect to the player. Open the pairing screen on your PC and scan the new QR code.</p>
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={retry}>Retry Connection</button>
+            <button className="remote-action-btn" onClick={() => setShowScanner(true)}>Scan QR Code</button>
+            <button className="remote-clear-link" onClick={retry}>Retry Connection</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>
         </div>
+        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
