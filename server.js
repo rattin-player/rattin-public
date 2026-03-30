@@ -38,6 +38,7 @@ const seekIndexPending = new Set(); // jobKeys currently being indexed (prevents
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 const completedFiles = new Map(); // "infoHash:fileIndex" -> { path, size, name }
 const streamTracker = new Map(); // infoHash -> { count, idleTimer }
+const activeTranscodes = new Map(); // "infoHash:fileIndex" -> { ffmpeg, torrentStream, cleanup() }
 const availabilityCache = new Map(); // "title:year" -> { available: bool, ts: number }
 const AVAIL_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -917,6 +918,18 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
   const fileIdx = parseInt(req.params.fileIndex, 10);
   const audioStreamIdx = req.query.audio ? parseInt(req.query.audio, 10) : null;
 
+  // Kill any previous live transcode for this file (e.g. from before a seek).
+  // When the frontend seeks, it sets v.src to a new URL — but the old HTTP
+  // connection may not close promptly (nginx keep-alive, browser timing),
+  // leaving a zombie ffmpeg process consuming CPU.
+  const streamKey = `${torrent.infoHash}:${fileIdx}`;
+  const prev = activeTranscodes.get(streamKey);
+  if (prev) {
+    log("info", "Killing previous transcode for new stream request", { streamKey });
+    prev.cleanup();
+    activeTranscodes.delete(streamKey);
+  }
+
   // Ensure this file is selected and prioritized
   file.select();
   // Deselect other files so bandwidth goes to the requested file
@@ -1174,6 +1187,17 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0, audio
     ffmpeg.stdin.on("error", () => {});
   }
 
+  // Register this transcode so it can be killed if a new request arrives
+  // (e.g. user seeks — browser may not close the old connection promptly)
+  const fileIdx = torrent.files.indexOf(file);
+  const streamKey = `${torrent.infoHash}:${fileIdx}`;
+  const cleanup = () => {
+    if (torrentStream) torrentStream.destroy();
+    ffmpeg.kill("SIGKILL");
+  };
+  activeTranscodes.set(streamKey, { ffmpeg, torrentStream, cleanup });
+  ffmpeg.on("close", () => activeTranscodes.delete(streamKey));
+
   // Track both stdout data and stderr progress as heartbeat
   let lastActivity = Date.now();
   ffmpeg.stdout.on("data", () => { lastActivity = Date.now(); });
@@ -1222,6 +1246,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0, audio
         "pipe:1",
       ];
       const ff2 = spawn("ffmpeg", args2, { stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"] });
+      activeTranscodes.set(streamKey, { ffmpeg: ff2, torrentStream: null, cleanup: () => ff2.kill("SIGKILL") });
       let lastActivity2 = Date.now();
       ff2.stdout.on("data", () => { lastActivity2 = Date.now(); });
       ff2.stderr.on("data", () => { lastActivity2 = Date.now(); });
@@ -1232,7 +1257,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0, audio
           ff2.kill("SIGKILL");
         }
       }, 10000);
-      ff2.on("close", () => { clearInterval(watchdog2); });
+      ff2.on("close", () => { clearInterval(watchdog2); activeTranscodes.delete(streamKey); });
       if (useStdin) {
         const ts2 = file.createReadStream();
         ts2.on("error", () => { ts2.destroy(); ff2.kill(); });
