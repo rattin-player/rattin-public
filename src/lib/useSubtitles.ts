@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type RefObject, type MutableRefObject } from "react";
 import { fetchStatus, fetchSubtitleTracks } from "./api";
 
-export const LANG_MAP = {
+export const LANG_MAP: Record<string, string> = {
   eng: "English", en: "English", spa: "Spanish", es: "Spanish",
   fre: "French", fr: "French", ger: "German", de: "German",
   por: "Portuguese", pt: "Portuguese", ita: "Italian", it: "Italian",
@@ -11,13 +11,42 @@ export const LANG_MAP = {
   pol: "Polish", pl: "Polish", tur: "Turkish", tr: "Turkish",
 };
 
-export function useSubtitles(videoRef, deps) {
+export interface SubtitleOption {
+  value: string;
+  label: string;
+  streamIndex?: number;
+  fileIndex?: number;
+}
+
+interface UseSubtitlesDeps {
+  infoHash: string;
+  fileIndex: string;
+  subsRef: MutableRefObject<SubtitleOption[]>;
+  activeSubRef: MutableRefObject<string>;
+  preSelectedSub: string | null;
+  isLiveRef: MutableRefObject<boolean>;
+  seekOffsetRef: MutableRefObject<number>;
+}
+
+interface UseSubtitlesReturn {
+  subs: SubtitleOption[];
+  activeSub: string;
+  setSubs: (val: SubtitleOption[] | ((prev: SubtitleOption[]) => SubtitleOption[])) => void;
+  setActiveSub: (val: string) => void;
+  switchSubtitle: (val: string) => void;
+  reloadActiveSub: (seekOffset: number) => void;
+  clearAllTracks: () => void;
+  shiftVtt: (vttText: string, offsetSeconds: number) => string;
+  LANG_MAP: Record<string, string>;
+}
+
+export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps: UseSubtitlesDeps): UseSubtitlesReturn {
   const { infoHash, fileIndex, subsRef, activeSubRef, preSelectedSub, isLiveRef, seekOffsetRef } = deps;
 
-  const [subs, setSubsRaw] = useState(subsRef.current || []);
-  const [activeSub, setActiveSubRaw] = useState(activeSubRef.current || "");
+  const [subs, setSubsRaw] = useState<SubtitleOption[]>(subsRef.current || []);
+  const [activeSub, setActiveSubRaw] = useState<string>(activeSubRef.current || "");
 
-  function setSubs(val) {
+  function setSubs(val: SubtitleOption[] | ((prev: SubtitleOption[]) => SubtitleOption[])) {
     setSubsRaw((prev) => {
       const next = typeof val === "function" ? val(prev) : val;
       subsRef.current = next;
@@ -25,17 +54,17 @@ export function useSubtitles(videoRef, deps) {
     });
   }
 
-  function setActiveSub(val) {
+  function setActiveSub(val: string) {
     setActiveSubRaw(val);
     activeSubRef.current = val;
   }
 
-  function guessLabel(name) {
+  function guessLabel(name: string): string {
     const base = name.replace(/\.[^.]+$/, "").toLowerCase();
     for (const [code, lang] of Object.entries(LANG_MAP)) {
       if (base.includes("." + code) || base.includes("_" + code) || base.includes("-" + code)) return lang;
     }
-    return name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop();
+    return name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop() || name;
   }
 
   function clearAllTracks() {
@@ -46,11 +75,11 @@ export function useSubtitles(videoRef, deps) {
   }
 
   // Shift VTT cue timestamps and remove cues before the offset
-  function shiftVtt(vttText, offsetSeconds) {
+  function shiftVtt(vttText: string, offsetSeconds: number): string {
     if (!offsetSeconds || offsetSeconds <= 0) return vttText;
 
     // Parse timestamp — supports both HH:MM:SS.mmm and MM:SS.mmm
-    function parseTs(ts) {
+    function parseTs(ts: string): number {
       const full = ts.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
       if (full) return parseInt(full[1]) * 3600 + parseInt(full[2]) * 60 + parseInt(full[3]) + parseInt(full[4]) / 1000;
       const short = ts.match(/(\d{2}):(\d{2})\.(\d{3})/);
@@ -58,7 +87,7 @@ export function useSubtitles(videoRef, deps) {
       return -1;
     }
 
-    function fmtTs(t) {
+    function fmtTs(t: number): string {
       const hh = Math.floor(t / 3600);
       const mm = Math.floor((t % 3600) / 60);
       const ss = Math.floor(t % 60);
@@ -67,7 +96,7 @@ export function useSubtitles(videoRef, deps) {
     }
 
     const lines = vttText.split("\n");
-    const out = [];
+    const out: string[] = [];
     let skip = false;
     for (const line of lines) {
       const arrow = line.match(/^(\d{2}:\d{2}(?::\d{2})?\.\d{3})\s*-->\s*(\d{2}:\d{2}(?::\d{2})?\.\d{3})/);
@@ -89,7 +118,7 @@ export function useSubtitles(videoRef, deps) {
     return out.join("\n");
   }
 
-  function loadSubtitleTrack(src, timeOffset) {
+  function loadSubtitleTrack(src: string, timeOffset: number) {
     const v = videoRef.current;
     if (!v) return;
     clearAllTracks();
@@ -119,10 +148,10 @@ export function useSubtitles(videoRef, deps) {
       .catch(() => {});
   }
 
-  const reloadActiveSub = useCallback(function reloadActiveSub(seekOffset) {
+  const reloadActiveSub = useCallback(function reloadActiveSub(seekOffset: number) {
     const sub = activeSubRef.current;
     if (!sub) return;
-    let src;
+    let src: string | undefined;
     if (sub.startsWith("file:")) {
       src = `/api/subtitle/${infoHash}/${parseInt(sub.split(":")[1], 10)}`;
     } else if (sub.startsWith("embedded:")) {
@@ -131,7 +160,7 @@ export function useSubtitles(videoRef, deps) {
     if (src) loadSubtitleTrack(src, seekOffset || 0);
   }, [infoHash, fileIndex]);
 
-  function switchSubtitle(val) {
+  function switchSubtitle(val: string) {
     setActiveSub(val);
     if (!videoRef.current) return;
     if (!val) { clearAllTracks(); return; }
@@ -148,9 +177,11 @@ export function useSubtitles(videoRef, deps) {
       try {
         const data = await fetchSubtitleTracks(infoHash, fileIndex);
         if (data.tracks?.length > 0) {
-          setSubs((prev) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setSubs((prev: SubtitleOption[]) => {
             if (prev.length === data.tracks.length) return prev;
-            return data.tracks.map((t) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return data.tracks.map((t: any) => ({
               value: `embedded:${t.streamIndex}`,
               label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + " (embedded)",
               streamIndex: t.streamIndex,
@@ -158,7 +189,8 @@ export function useSubtitles(videoRef, deps) {
           });
           // Auto-select pre-selected subtitle from navigation state
           if (preSelectedSub && !activeSubRef.current) {
-            const match = data.tracks.find((t) => `embedded:${t.streamIndex}` === preSelectedSub);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const match = data.tracks.find((t: any) => `embedded:${t.streamIndex}` === preSelectedSub);
             if (match) {
               setTimeout(() => switchSubtitle(preSelectedSub), 500);
             }
@@ -173,10 +205,12 @@ export function useSubtitles(videoRef, deps) {
   useEffect(() => {
     fetchStatus(infoHash).then((data) => {
       if (!data.files) return;
-      const subFiles = data.files.filter((f) => f.isSubtitle);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const subFiles = data.files.filter((f: any) => f.isSubtitle);
       if (subFiles.length > 0) {
         setSubs((prev) => {
-          const external = subFiles.map((f) => ({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const external = subFiles.map((f: any) => ({
             value: `file:${f.index}`,
             label: guessLabel(f.name) + " (external)",
             fileIndex: f.index,

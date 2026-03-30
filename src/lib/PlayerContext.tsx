@@ -1,13 +1,72 @@
-import { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject, type RefObject } from "react";
+import type { SubtitleOption } from "./useSubtitles";
+import type { AudioTrackOption } from "./useAudioTracks";
 
-const PlayerContext = createContext(null);
+interface ActiveStream {
+  infoHash: string;
+  fileIndex: string;
+  title: string;
+  tags: string[];
+}
 
-export function usePlayer() {
-  return useContext(PlayerContext);
+interface EffectiveTime {
+  time: number;
+  duration: number;
+  ts: number;
+}
+
+interface IntroRange {
+  start: number;
+  end: number;
+}
+
+interface CommandHandlers {
+  seek: (seconds: number) => void;
+  seekRelative: (delta: number) => void;
+  switchSubtitle: (val: string) => void;
+  switchAudio: (streamIndex: string | number) => void;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NavigateFn = (...args: any[]) => void;
+
+interface PlayerContextValue {
+  videoRef: RefObject<HTMLVideoElement | null>;
+  active: ActiveStream | null;
+  playing: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  startStream: (infoHash: string | number, fileIndex: string | number, title: string, tags: string[]) => void;
+  stopStream: () => void;
+  togglePlay: () => void;
+  effectiveTimeRef: MutableRefObject<EffectiveTime | null>;
+  subsRef: MutableRefObject<SubtitleOption[]>;
+  activeSubRef: MutableRefObject<string>;
+  audioTracksRef: MutableRefObject<AudioTrackOption[]>;
+  activeAudioRef: MutableRefObject<number | null>;
+  dlProgressRef: MutableRefObject<number>;
+  dlSpeedRef: MutableRefObject<number>;
+  dlPeersRef: MutableRefObject<number>;
+  commandRef: MutableRefObject<CommandHandlers | null>;
+  navigateRef: MutableRefObject<NavigateFn | null>;
+  rcSessionId: string | null;
+  setRcSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  rcAuthToken: string | null;
+  setRcAuthToken: React.Dispatch<React.SetStateAction<string | null>>;
+  rcRemoteConnected: boolean;
+  rcQrRequested: boolean;
+  introRangeRef: MutableRefObject<IntroRange | null>;
+}
+
+const PlayerContext = createContext<PlayerContextValue | null>(null);
+
+export function usePlayer(): PlayerContextValue {
+  return useContext(PlayerContext)!;
 }
 
 // Remote mode detection: URL has ?session=<id> or localStorage has rc-session
-export function useRemoteMode() {
+export function useRemoteMode(): { isRemote: boolean; sessionId: string | null } {
   const [state, setState] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get("session") || localStorage.getItem("rc-session") || null;
@@ -37,28 +96,32 @@ export function useRemoteMode() {
   return state;
 }
 
-export function PlayerProvider({ children }) {
-  const videoRef = useRef(null);
-  const [active, setActive] = useState(null); // { infoHash, fileIndex, title, tags }
+interface PlayerProviderProps {
+  children: ReactNode;
+}
+
+export function PlayerProvider({ children }: PlayerProviderProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [active, setActive] = useState<ActiveStream | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
-  const effectiveTimeRef = useRef(null);
-  const subsRef = useRef([]);
+  const effectiveTimeRef = useRef<EffectiveTime | null>(null);
+  const subsRef = useRef<SubtitleOption[]>([]);
   const activeSubRef = useRef("");
-  const audioTracksRef = useRef([]);
-  const activeAudioRef = useRef(null);
-  const commandRef = useRef(null); // Player.jsx registers { seek, seekRelative, switchSubtitle }
-  const dlProgressRef = useRef(0); // set by Player.jsx from status poll
+  const audioTracksRef = useRef<AudioTrackOption[]>([]);
+  const activeAudioRef = useRef<number | null>(null);
+  const commandRef = useRef<CommandHandlers | null>(null);
+  const dlProgressRef = useRef(0);
   const dlSpeedRef = useRef(0);
   const dlPeersRef = useRef(0);
-  const introRangeRef = useRef(null); // { start, end } set by Player.jsx
+  const introRangeRef = useRef<IntroRange | null>(null);
 
   // Remote control session (TV mode — not remote mode)
   // Persist in sessionStorage so PC page reload preserves the session
-  const [rcSessionId, setRcSessionId] = useState(() => sessionStorage.getItem("rc-sessionId") || null);
-  const [rcAuthToken, setRcAuthToken] = useState(() => sessionStorage.getItem("rc-authToken") || null);
+  const [rcSessionId, setRcSessionId] = useState<string | null>(() => sessionStorage.getItem("rc-sessionId") || null);
+  const [rcAuthToken, setRcAuthToken] = useState<string | null>(() => sessionStorage.getItem("rc-authToken") || null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
   const [rcQrRequested, setRcQrRequested] = useState(false);
 
@@ -71,15 +134,15 @@ export function PlayerProvider({ children }) {
     if (rcAuthToken) sessionStorage.setItem("rc-authToken", rcAuthToken);
     else sessionStorage.removeItem("rc-authToken");
   }, [rcAuthToken]);
-  const rcEventSourceRef = useRef(null);
-  const stateReportTimer = useRef(null);
-  const lastReportedState = useRef(null);
-  const navigateRef = useRef(null); // set by components that have useNavigate
+  const rcEventSourceRef = useRef<EventSource | null>(null);
+  const stateReportTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastReportedState = useRef<string | null>(null);
+  const navigateRef = useRef<NavigateFn | null>(null);
 
   // Stable refs for SSE command handler (avoid reconnecting SSE when callbacks change)
-  const startStreamRef = useRef(null);
-  const stopStreamRef = useRef(null);
-  const togglePlayRef = useRef(null);
+  const startStreamRef = useRef<((...args: unknown[]) => void) | null>(null);
+  const stopStreamRef = useRef<(() => void) | null>(null);
+  const togglePlayRef = useRef<(() => void) | null>(null);
 
   // Sync video state
   useEffect(() => {
@@ -91,11 +154,11 @@ export function PlayerProvider({ children }) {
         setCurrentTime(eff.time);
         setDuration(eff.duration);
       } else {
-        setCurrentTime(v.currentTime || 0);
-        if (v.duration && isFinite(v.duration)) setDuration(v.duration);
+        setCurrentTime(v!.currentTime || 0);
+        if (v!.duration && isFinite(v!.duration)) setDuration(v!.duration);
       }
-      setPlaying(!v.paused);
-      setVolume(v.volume);
+      setPlaying(!v!.paused);
+      setVolume(v!.volume);
     }
     v.addEventListener("timeupdate", sync);
     v.addEventListener("play", sync);
@@ -109,18 +172,19 @@ export function PlayerProvider({ children }) {
     };
   }, []);
 
-  const startStream = useCallback((infoHash, fileIndex, title, tags) => {
+  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[]) => {
     const v = videoRef.current;
+    if (!v) return;
     // Coerce to string for comparison — URL params are strings, API returns numbers
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
-    infoHash = String(infoHash);
-    fileIndex = String(fileIndex);
-    const posKey = `playback:${infoHash}:${fileIndex}`;
-    const savedPos = parseFloat(sessionStorage.getItem(posKey)) || 0;
-    fetch(`/api/set-active/${infoHash}`, { method: "POST" }).catch(() => {});
-    v.src = `/api/stream/${infoHash}/${fileIndex}`;
+    const ih = String(infoHash);
+    const fi = String(fileIndex);
+    const posKey = `playback:${ih}:${fi}`;
+    const savedPos = parseFloat(sessionStorage.getItem(posKey) || "0") || 0;
+    fetch(`/api/set-active/${ih}`, { method: "POST" }).catch(() => {});
+    v.src = `/api/stream/${ih}/${fi}`;
     if (savedPos > 0) {
       v.addEventListener("loadedmetadata", function onMeta() {
         v.removeEventListener("loadedmetadata", onMeta);
@@ -139,11 +203,12 @@ export function PlayerProvider({ children }) {
     // Remove any lingering subtitle tracks from the video element
     for (const t of v.textTracks) t.mode = "disabled";
     v.querySelectorAll("track").forEach((el) => el.remove());
-    setActive({ infoHash, fileIndex, title, tags });
+    setActive({ infoHash: ih, fileIndex: fi, title, tags });
   }, [active]);
 
   const stopStream = useCallback(() => {
     const v = videoRef.current;
+    if (!v) return;
     if (active) {
       const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
       const t = effectiveTimeRef.current?.time || v.currentTime || 0;
@@ -161,6 +226,7 @@ export function PlayerProvider({ children }) {
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
+    if (!v) return;
     if (v.paused) v.play().catch(() => {});
     else v.pause();
   }, []);
@@ -189,7 +255,7 @@ export function PlayerProvider({ children }) {
     const es = new EventSource(`/api/rc/events?session=${rcSessionId}&role=player`);
     rcEventSourceRef.current = es;
 
-    es.addEventListener("command", (e) => {
+    es.addEventListener("command", (e: MessageEvent) => {
       const { action, value } = JSON.parse(e.data);
       const v = videoRef.current;
       switch (action) {
@@ -216,9 +282,9 @@ export function PlayerProvider({ children }) {
         case "skip-intro": {
           const range = introRangeRef.current;
           if (range) {
-            const v = videoRef.current;
+            const vid = videoRef.current;
             if (commandRef.current?.seek) commandRef.current.seek(range.end);
-            else if (v) v.currentTime = range.end;
+            else if (vid) vid.currentTime = range.end;
           }
           break;
         }
@@ -245,14 +311,14 @@ export function PlayerProvider({ children }) {
       }
     });
 
-    es.addEventListener("remote-connected", (e) => {
+    es.addEventListener("remote-connected", () => {
       setRcRemoteConnected(true);
       setRcQrRequested(false); // remote connected, hide QR
     });
     es.addEventListener("show-qr", () => {
       setRcQrRequested(true);
     });
-    es.addEventListener("remote-disconnected", (e) => {
+    es.addEventListener("remote-disconnected", (e: MessageEvent) => {
       const data = JSON.parse(e.data);
       setRcRemoteConnected(data.count > 0);
     });
@@ -335,7 +401,7 @@ export function PlayerProvider({ children }) {
     stateReportTimer.current = setInterval(reportState, 1000);
 
     return () => {
-      clearInterval(stateReportTimer.current);
+      if (stateReportTimer.current) clearInterval(stateReportTimer.current);
       if (v) {
         v.removeEventListener("play", onEvent);
         v.removeEventListener("pause", onEvent);

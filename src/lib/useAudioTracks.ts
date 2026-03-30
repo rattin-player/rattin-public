@@ -1,18 +1,42 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type RefObject, type MutableRefObject } from "react";
 import { LANG_MAP } from "./useSubtitles";
 import { fetchAudioTracks } from "./api";
 
-export function useAudioTracks(videoRef, deps) {
+export interface AudioTrackOption {
+  value: number;
+  label: string;
+}
+
+interface UseAudioTracksDeps {
+  infoHash: string;
+  fileIndex: string;
+  audioTracksRef: MutableRefObject<AudioTrackOption[]>;
+  activeAudioRef: MutableRefObject<number | null>;
+  preSelectedAudio: number | null;
+  getEffectiveTime: () => number;
+  isLiveRef: MutableRefObject<boolean>;
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  setLoadingReason: React.Dispatch<React.SetStateAction<string>>;
+  pendingSubReload: MutableRefObject<number | null>;
+}
+
+interface UseAudioTracksReturn {
+  audioTracks: AudioTrackOption[];
+  activeAudio: number | null;
+  switchAudio: (streamIndex: string | number) => void;
+}
+
+export function useAudioTracks(videoRef: RefObject<HTMLVideoElement | null>, deps: UseAudioTracksDeps): UseAudioTracksReturn {
   const {
     infoHash, fileIndex, audioTracksRef, activeAudioRef,
     preSelectedAudio, getEffectiveTime, isLiveRef,
     setLoading, setLoadingReason, pendingSubReload,
   } = deps;
 
-  const [audioTracks, setAudioTracksRaw] = useState([]);
-  const [activeAudio, setActiveAudioRaw] = useState(null);
+  const [audioTracks, setAudioTracksRaw] = useState<AudioTrackOption[]>([]);
+  const [activeAudio, setActiveAudioRaw] = useState<number | null>(null);
 
-  function setAudioTracks(val) {
+  function setAudioTracks(val: AudioTrackOption[] | ((prev: AudioTrackOption[]) => AudioTrackOption[])) {
     setAudioTracksRaw((prev) => {
       const next = typeof val === "function" ? val(prev) : val;
       audioTracksRef.current = next;
@@ -20,7 +44,7 @@ export function useAudioTracks(videoRef, deps) {
     });
   }
 
-  function setActiveAudio(val) {
+  function setActiveAudio(val: number | null) {
     setActiveAudioRaw(val);
     activeAudioRef.current = val;
   }
@@ -37,7 +61,8 @@ export function useAudioTracks(videoRef, deps) {
         if (data.tracks?.length > 0) {
           setAudioTracks((prev) => {
             if (prev.length === data.tracks.length) return prev;
-            return data.tracks.map((t) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return data.tracks.map((t: any) => ({
               value: t.streamIndex,
               label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
             }));
@@ -52,8 +77,8 @@ export function useAudioTracks(videoRef, deps) {
     }
   }, [infoHash, fileIndex]);
 
-  const switchAudio = useCallback((streamIndex) => {
-    const idx = parseInt(streamIndex, 10);
+  const switchAudio = useCallback((streamIndex: string | number) => {
+    const idx = parseInt(String(streamIndex), 10);
     if (isNaN(idx)) return;
     if (activeAudioRef.current === idx) return;
     setActiveAudio(idx);

@@ -1,19 +1,40 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from "react";
 import { fetchIntroTimestamps } from "./api";
 
-export function useIntro(videoRef, deps) {
+interface IntroRange {
+  start: number;
+  end: number;
+}
+
+interface UseIntroDeps {
+  infoHash: string;
+  fileIndex: string;
+  introRangeRef: MutableRefObject<IntroRange | null>;
+  getEffectiveTime: () => number;
+  seekTo: (seconds: number) => void;
+  location: { state?: Record<string, unknown> | null };
+  mediaTitle: string;
+}
+
+interface UseIntroReturn {
+  introRange: IntroRange | null;
+  showSkipIntro: boolean;
+  handleSkipIntro: () => void;
+}
+
+export function useIntro(videoRef: RefObject<HTMLVideoElement | null>, deps: UseIntroDeps): UseIntroReturn {
   const { infoHash, fileIndex, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle } = deps;
 
-  const [introRange, setIntroRange] = useState(null);
+  const [introRange, setIntroRange] = useState<IntroRange | null>(null);
   const [showSkipIntro, setShowSkipIntro] = useState(false);
-  const skipIntroHideTimer = useRef(null);
+  const skipIntroHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasInIntroRange = useRef(false);
 
   // Fetch intro timestamps for skip-intro button
   useEffect(() => {
-    const tmdbId = location.state?.tmdbId;
-    const season = location.state?.season;
-    const episode = location.state?.episode;
+    const tmdbId = (location.state as Record<string, unknown> | null)?.tmdbId as string | undefined;
+    const season = (location.state as Record<string, unknown> | null)?.season as string | undefined;
+    const episode = (location.state as Record<string, unknown> | null)?.episode as string | undefined;
 
     if (!infoHash || !fileIndex) return;
 
@@ -60,16 +81,16 @@ export function useIntro(videoRef, deps) {
 
     function checkIntro() {
       const t = getEffectiveTime();
-      const inRange = t >= introRange.start && t < introRange.end;
+      const inRange = t >= introRange!.start && t < introRange!.end;
       if (inRange && !wasInIntroRange.current) {
         // Entering intro range — show button and start auto-hide timer once
         setShowSkipIntro(true);
-        clearTimeout(skipIntroHideTimer.current);
+        if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
         skipIntroHideTimer.current = setTimeout(() => setShowSkipIntro(false), 10000);
       } else if (!inRange && wasInIntroRange.current) {
         // Leaving intro range — hide button
         setShowSkipIntro(false);
-        clearTimeout(skipIntroHideTimer.current);
+        if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
       }
       wasInIntroRange.current = inRange;
     }
@@ -77,7 +98,7 @@ export function useIntro(videoRef, deps) {
     v.addEventListener("timeupdate", checkIntro);
     return () => {
       v.removeEventListener("timeupdate", checkIntro);
-      clearTimeout(skipIntroHideTimer.current);
+      if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
     };
   }, [introRange, getEffectiveTime]);
 

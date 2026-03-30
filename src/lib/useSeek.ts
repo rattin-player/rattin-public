@@ -1,7 +1,58 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from "react";
 import { fetchStatus, fetchDuration } from "./api";
 
-export function useSeek(videoRef, deps) {
+interface EffectiveTime {
+  time: number;
+  duration: number;
+  ts: number;
+}
+
+interface UseSeekDeps {
+  infoHash: string;
+  fileIndex: string;
+  effectiveTimeRef: MutableRefObject<EffectiveTime | null>;
+  dlProgressRef: MutableRefObject<number>;
+  dlSpeedRef: MutableRefObject<number>;
+  dlPeersRef: MutableRefObject<number>;
+  activeAudioRef: MutableRefObject<number | null>;
+  startStream: (infoHash: string, fileIndex: string, title: string, tags: string[]) => void;
+  mediaTitle: string;
+  tags: string[];
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  setLoadingReason: React.Dispatch<React.SetStateAction<string>>;
+  pendingSubReload: MutableRefObject<number | null>;
+  seekRef: RefObject<HTMLDivElement | null>;
+}
+
+interface UseSeekReturn {
+  currentTime: number;
+  duration: number;
+  playing: boolean;
+  seekOffset: number;
+  isLiveTranscode: boolean;
+  transcodeReady: boolean;
+  knownDuration: number;
+  dlProgress: number;
+  dlSpeed: number;
+  numPeers: number;
+  fileName: string;
+  tooltipTime: number | null;
+  tooltipX: number;
+  seekOffsetRef: MutableRefObject<number>;
+  isLiveRef: MutableRefObject<boolean>;
+  transcodeReadyRef: MutableRefObject<boolean>;
+  knownDurRef: MutableRefObject<number>;
+  getEffectiveTime: () => number;
+  getEffectiveDuration: () => number;
+  seekTo: (seconds: number) => void;
+  handleSeekClick: (e: React.MouseEvent) => void;
+  handleSeekHover: (e: React.MouseEvent) => void;
+  switchToTranscoded: () => void;
+  togglePlay: () => void;
+  setTooltipTime: React.Dispatch<React.SetStateAction<number | null>>;
+}
+
+export function useSeek(videoRef: RefObject<HTMLVideoElement | null>, deps: UseSeekDeps): UseSeekReturn {
   const {
     infoHash, fileIndex,
     effectiveTimeRef, dlProgressRef, dlSpeedRef, dlPeersRef,
@@ -13,7 +64,7 @@ export function useSeek(videoRef, deps) {
   const [seekOffset, setSeekOffset] = useState(() => {
     try {
       const src = videoRef.current?.src;
-      if (src) return parseFloat(new URL(src).searchParams.get("t")) || 0;
+      if (src) return parseFloat(new URL(src).searchParams.get("t") || "0") || 0;
     } catch {}
     return 0;
   });
@@ -27,14 +78,14 @@ export function useSeek(videoRef, deps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [tooltipTime, setTooltipTime] = useState(null);
+  const [tooltipTime, setTooltipTime] = useState<number | null>(null);
   const [tooltipX, setTooltipX] = useState(0);
 
   const seekOffsetRef = useRef(0);
   const isLiveRef = useRef(false);
   const transcodeReadyRef = useRef(false);
   const knownDurRef = useRef(0);
-  const pollRef = useRef();
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const seekingRef = useRef(false);
 
   // Sync state to refs
@@ -60,12 +111,14 @@ export function useSeek(videoRef, deps) {
 
   function togglePlay() {
     const v = videoRef.current;
+    if (!v) return;
     if (v.paused) v.play().catch(() => {});
     else v.pause();
   }
 
-  function seekTo(seconds) {
+  function seekTo(seconds: number) {
     const v = videoRef.current;
+    if (!v) return;
     if (isLiveRef.current) {
       const dur = getEffectiveDuration();
       // Clamp to duration but allow seeking anywhere — server fetches pieces on demand
@@ -86,14 +139,16 @@ export function useSeek(videoRef, deps) {
     }
   }
 
-  function handleSeekClick(e) {
+  function handleSeekClick(e: React.MouseEvent) {
+    if (!seekRef.current) return;
     const rect = seekRef.current.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const dur = duration || getEffectiveDuration();
     if (dur > 0) seekTo(ratio * dur);
   }
 
-  function handleSeekHover(e) {
+  function handleSeekHover(e: React.MouseEvent) {
+    if (!seekRef.current) return;
     const rect = seekRef.current.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const dur = duration || getEffectiveDuration();
@@ -126,7 +181,7 @@ export function useSeek(videoRef, deps) {
     });
   }
 
-  async function fetchDurationRetry(ih, fi, retries = 5) {
+  async function fetchDurationRetry(ih: string, fi: string, retries = 5) {
     try {
       const data = await fetchDuration(ih, fi);
       if (data.duration) { setKnownDuration(data.duration); return; }
@@ -153,7 +208,8 @@ export function useSeek(videoRef, deps) {
         setNumPeers(data.numPeers || 0);
         dlSpeedRef.current = data.downloadSpeed || 0;
         dlPeersRef.current = data.numPeers || 0;
-        const file = data.files.find((f) => f.index === Number(fileIndex));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const file = data.files.find((f: any) => f.index === Number(fileIndex));
         if (file) {
           setDlProgress(file.progress || 0);
           dlProgressRef.current = file.progress || 0;
@@ -162,7 +218,7 @@ export function useSeek(videoRef, deps) {
           if (file.duration && file.duration > 0 && knownDurRef.current === 0) {
             setKnownDuration(file.duration);
           }
-          const ext = (file.name || "").split(".").pop().toLowerCase();
+          const ext = (file.name || "").split(".").pop()!.toLowerCase();
           const needsXcode = !["mp4", "m4v", "webm"].includes(ext);
           if (needsXcode && !transcodeReadyRef.current) {
             setIsLiveTranscode(true);
@@ -188,7 +244,7 @@ export function useSeek(videoRef, deps) {
       const d = getEffectiveDuration();
       setCurrentTime(t);
       setDuration(d);
-      setPlaying(!v.paused);
+      setPlaying(!v!.paused);
       effectiveTimeRef.current = { time: t, duration: d, ts: Date.now() };
     }
     function onCanPlay() { seekingRef.current = false; }
