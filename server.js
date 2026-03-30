@@ -1307,6 +1307,8 @@ async function fetchRedditThreads(title, type) {
   const seen = new Set();
   const threads = [];
 
+  const titleLower = title.toLowerCase();
+
   for (const q of queries) {
     try {
       const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(q)}&restrict_sr=on&sort=relevance&t=all&limit=10`;
@@ -1319,6 +1321,8 @@ async function fetchRedditThreads(title, type) {
       for (const child of (data?.data?.children || [])) {
         const post = child.data;
         if (seen.has(post.id)) continue;
+        // Skip threads that don't mention the title (e.g. weekly megathreads bundling multiple films)
+        if (!post.title.toLowerCase().includes(titleLower)) continue;
         seen.add(post.id);
         threads.push({
           id: post.id,
