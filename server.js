@@ -333,6 +333,7 @@ const idleTracker = createIdleTracker({
     for (const [, st] of streamTracker) { if (st.idleTimer) clearTimeout(st.idleTimer); }
     streamTracker.clear();
     probeCache.clear();
+    introCache.clear();
     for (const torrent of [...client.torrents]) {
       log("info", "Hard idle: removing torrent", { name: torrent.name });
       torrent.destroy({ destroyStore: false });
