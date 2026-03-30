@@ -53,6 +53,7 @@ export function PlayerProvider({ children }) {
   const dlProgressRef = useRef(0); // set by Player.jsx from status poll
   const dlSpeedRef = useRef(0);
   const dlPeersRef = useRef(0);
+  const introRangeRef = useRef(null); // { start, end } set by Player.jsx
 
   // Remote control session (TV mode — not remote mode)
   // Persist in sessionStorage so PC page reload preserves the session
@@ -134,6 +135,7 @@ export function PlayerProvider({ children }) {
     activeSubRef.current = "";
     audioTracksRef.current = [];
     activeAudioRef.current = null;
+    introRangeRef.current = null;
     // Remove any lingering subtitle tracks from the video element
     for (const t of v.textTracks) t.mode = "disabled";
     v.querySelectorAll("track").forEach((el) => el.remove());
@@ -151,6 +153,7 @@ export function PlayerProvider({ children }) {
     v.src = "";
     for (const t of v.textTracks) t.mode = "disabled";
     v.querySelectorAll("track").forEach((el) => el.remove());
+    introRangeRef.current = null;
     setActive(null);
     setPlaying(false);
     effectiveTimeRef.current = null;
@@ -210,6 +213,15 @@ export function PlayerProvider({ children }) {
         case "audio":
           if (commandRef.current?.switchAudio) commandRef.current.switchAudio(value);
           break;
+        case "skip-intro": {
+          const range = introRangeRef.current;
+          if (range) {
+            const v = videoRef.current;
+            if (commandRef.current?.seek) commandRef.current.seek(range.end);
+            else if (v) v.currentTime = range.end;
+          }
+          break;
+        }
         case "start-stream":
           if (value) {
             startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags);
@@ -293,6 +305,8 @@ export function PlayerProvider({ children }) {
         dlProgress: dlProgressRef.current,
         dlSpeed: dlSpeedRef.current,
         dlPeers: dlPeersRef.current,
+        introActive: !!(introRangeRef.current && ct >= introRangeRef.current.start && ct < introRangeRef.current.end),
+        introEnd: introRangeRef.current?.end ?? null,
         connected: true,
       };
 
@@ -337,6 +351,7 @@ export function PlayerProvider({ children }) {
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
+      introRangeRef,
     }}>
       <video ref={videoRef} style={{ display: "none" }} />
       {children}
