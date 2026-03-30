@@ -26,8 +26,7 @@
 - **Universal Format Support** — Play anything: MKV, AVI, MP4, WebM, MOV, FLV, WMV, and more. Non-native formats are transcoded on-the-fly via ffmpeg.
 - **Smart Seeking** — Builds a keyframe index in the background so you can seek anywhere, even in incomplete downloads. Auto-prioritizes the right torrent pieces.
 - **Background Transcoding** — Completed files are transcoded to MP4 with faststart for instant seeking. Tries remux first (fast), falls back to full re-encode if needed.
-- **Download Progress in Seek Bar** — Visual overlay on the seek bar shows how much of the file is downloaded vs. played.
-- **Download Speed & Peers** — Real-time download speed and peer count displayed right in the player controls.
+- **Download Overlay** — Real-time download progress in the seek bar, plus speed and peer count in the controls.
 - **Resume Playback** — Automatically saves your position and resumes where you left off.
 
 ### ⏭️ Skip Intro
@@ -60,12 +59,8 @@
 - **QR Code Pairing** — Scan a QR code from the player to connect your phone as a remote.
 - **Full Playback Control** — Play/pause, seek ±10s, volume slider, subtitle/audio track selection, fullscreen toggle, stop.
 - **Real-Time Sync** — Server-Sent Events keep the remote and player in lockstep. Shows current position, duration, download speed, and peers.
-- **Optimistic UI** — Remote updates feel instant with optimistic state predictions.
-- **Browse from Phone** — Browse and start content directly from the remote interface.
-- **Now Playing Bar** — Floating bar on browse pages shows what's currently playing.
-- **Persistent Sessions** — Auth cookies last 30 days. Sessions persist in localStorage for automatic reconnection.
-- **Auto-Fullscreen** — Player auto-enters fullscreen when the remote reconnects.
-- **Connection Status** — Visual feedback for connecting, reconnecting, session expired, and player offline states.
+- **Browse from Phone** — Browse and start content directly from the remote, with a Now Playing bar showing what's on.
+- **Persistent Sessions** — Auth cookies last 30 days with automatic reconnection. Visual connection-status feedback throughout.
 
 ### 🔤 Subtitles & Audio
 
@@ -79,25 +74,19 @@
 
 - **Keyboard Shortcuts** — `Space` play/pause, `←`/`→` seek ±10s, `F` fullscreen, `Esc` exit fullscreen.
 - **Mini Player** — Keep watching in a corner widget while browsing other content. Shows play/pause, expand, close, time, and progress bar.
-- **Auto-Hide Controls** — Controls fade out after 3 seconds of inactivity, reappear on mouse movement.
-- **Seek Preview Tooltip** — Hover over the seek bar to preview the timestamp at cursor position.
-- **Remote Connected Toast** — On-screen notification when a phone remote connects or disconnects.
+- **Polished Controls** — Auto-hide after inactivity, seek preview tooltip on hover, remote connection toasts.
 
 ### 📦 Torrent Management
 
 - **Multi-File Torrents** — Select which files to download, skip what you don't need.
 - **Season Pack Support** — Detects and tags season packs, lets you pick individual episodes.
 - **Bandwidth Prioritization** — Deselects other files when streaming one to focus bandwidth.
-- **Media Validation** — Files are verified with ffprobe before streaming to catch fakes and corruption.
+- **Media Validation** — Files verified with ffprobe before streaming to catch fakes and corruption.
 - **Auto-Cleanup** — Idle torrents are automatically removed after 2 minutes of inactivity. Background transcodes are killed when streams close.
 
 ### 🎨 UI/UX
 
-- **Dark Theme** — Sleek dark interface throughout.
-- **Skeleton Loaders** — Placeholder animations while content loads.
-- **Lazy Image Loading** — Posters and thumbnails load only when visible.
-- **Horizontal Scroll Rows** — Content rows with smooth left/right arrow navigation.
-- **SPA Routing** — Full single-page app with deep linking via React Router.
+- Dark-themed SPA with skeleton loading, lazy images, smooth horizontal-scroll content rows, and deep linking via React Router.
 
 ---
 
@@ -132,6 +121,14 @@ npm start
 ```
 
 Open **http://localhost:3000** and you're in. 🎉
+
+### Development
+
+```bash
+npm run dev    # Vite dev server with hot reload
+```
+
+The dev server proxies `/api` requests to the backend at `localhost:3000`, so run `node --env-file=.env server.js` in a separate terminal.
 
 ---
 
@@ -169,11 +166,19 @@ Open **http://localhost:3000** and you're in. 🎉
 ```
 rattin/
 ├── server.js              # Express backend — streaming, transcoding, search, remote
+├── index.html             # HTML entry point
+├── vite.config.js         # Frontend build config
 ├── lib/
 │   ├── cache.js           # TMDB cache with TTL + stale-while-revalidate
 │   ├── seek-index.js      # Keyframe index for smart seeking
 │   ├── intro-detect.js    # Intro detection orchestrator
-│   └── fingerprint.js     # Chromaprint audio fingerprinting & cross-correlation
+│   ├── fingerprint.js     # Chromaprint audio fingerprinting & cross-correlation
+│   ├── torrent-scoring.js # Multi-provider torrent ranking
+│   ├── torrent-caches.js  # Bounded caches for torrent state
+│   ├── media-utils.js     # ffprobe helpers & format detection
+│   ├── idle-tracker.js    # Stream idle timeout tracking
+│   ├── torrent-compat.js  # WebTorrent compatibility helpers
+│   └── bounded-map.js     # Size-limited Map implementation
 ├── src/
 │   ├── App.jsx            # Router & layout
 │   ├── components/
@@ -181,9 +186,10 @@ rattin/
 │   │   ├── MiniPlayer.jsx # Persistent mini player widget
 │   │   ├── MovieCard.jsx  # Content thumbnails with ratings
 │   │   ├── ContentRow.jsx # Horizontal scrollable content row
-│   │   ├── HeroSection.jsx# Featured content banner
-│   │   ├── CastList.jsx   # Cast & crew display
-│   │   └── PairRemoteModal.jsx  # QR code pairing modal
+│   │   ├── HeroSection.jsx          # Featured content banner
+│   │   ├── PairRemoteModal.jsx      # QR code pairing modal
+│   │   ├── QrScanner.jsx            # Phone QR scanner
+│   │   └── RemoteNowPlaying.jsx     # Now playing bar for remote
 │   ├── pages/
 │   │   ├── Home.jsx       # Trending, genres, discovery
 │   │   ├── Detail.jsx     # Movie/TV detail, episodes, reviews
@@ -198,18 +204,6 @@ rattin/
 ├── deploy/                # Ansible playbook for server deployment
 └── .env                   # TMDB_API_KEY (create this)
 ```
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Space` | Play / Pause |
-| `←` | Seek back 10 seconds |
-| `→` | Seek forward 10 seconds |
-| `F` | Toggle fullscreen |
-| `Esc` | Exit fullscreen |
 
 ---
 
@@ -236,8 +230,6 @@ Rattin adapts its strategy based on file state:
 | Incomplete file, non-native | ffmpeg transcode from torrent stream |
 | Seeking in incomplete file | Build keyframe index → prioritize pieces at target → serve |
 
-Background transcoding kicks in for completed non-native files: tries remux first (fast, copies codecs), falls back to full re-encode (H.264 + AAC) if needed.
-
 ---
 
 ## 🎬 Supported Formats
@@ -249,13 +241,6 @@ Background transcoding kicks in for completed non-native files: tries remux firs
 | **Subtitles** | SRT, ASS, SSA, VTT, SUB |
 
 ---
-
-## 🛡️ Security
-
-- Only media files are allowed — executables, archives, and documents are blocked
-- Files are validated with ffprobe before streaming
-- Remote sessions use cryptographically random tokens
-- No credentials stored — TMDB key lives in `.env`
 
 ---
 
