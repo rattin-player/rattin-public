@@ -73,6 +73,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
 
     const complete = isFileComplete(torrent, file);
     if (!complete) {
+      res.setHeader("Cache-Control", "no-store");
       return res.status(202).json({ error: "Subtitle file still downloading" });
     }
 

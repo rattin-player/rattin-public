@@ -159,7 +159,7 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
     const v = videoRef.current;
     if (!v) return;
     clearAllTracks();
-    fetch(src)
+    fetch(retries > 0 ? `${src}${src.includes("?") ? "&" : "?"}_t=${Date.now()}` : src)
       .then((r) => {
         // 202 means subtitle file is still downloading — retry after a delay
         if (r.status === 202 && retries < 10) {
