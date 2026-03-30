@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Post-install verification script — runs inside the container after install.sh
-set -euo pipefail
+set -uo pipefail
+# Note: no set -e — we want check() to continue on failures
 
 INSTALL_DIR="/opt/rattin"
 PASS=0
@@ -46,7 +47,7 @@ check "ffprobe runs" "$INSTALL_DIR/runtime/bin/ffprobe" -version
 # Node version
 NODE_VER=$("$INSTALL_DIR/runtime/node/bin/node" --version 2>/dev/null || echo "none")
 echo "  INFO: Node version: $NODE_VER"
-check "node is v20.x" echo "$NODE_VER" | grep -q "^v20\."
+check "node is v20.x" test "$(echo "$NODE_VER" | grep -c "^v20\.")" -gt 0
 
 # App
 echo ""
