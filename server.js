@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
 import { buildSeekIndex, findSeekOffset, waitForPieces } from "./lib/seek-index.js";
 import { jobKey, registerCache, cleanupHash, pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
+import { getFileOffset, getFileEndPiece, hasPiece } from "./lib/torrent-compat.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -779,19 +780,20 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
       if (byteStart !== null) {
         const byteEnd = Math.min(byteStart + 10 * 1024 * 1024, file.length - 1);
         const pieceLength = torrent.pieceLength;
-        const firstPiece = Math.floor((file.offset + byteStart) / pieceLength);
-        const lastPiece = Math.floor((file.offset + byteEnd) / pieceLength);
+        const fileOffset = getFileOffset(file);
+        const firstPiece = Math.floor((fileOffset + byteStart) / pieceLength);
+        const lastPiece = Math.floor((fileOffset + byteEnd) / pieceLength);
 
         // Check if pieces are already on disk
         let piecesReady = true;
         for (let i = firstPiece; i <= lastPiece; i++) {
-          if (!torrent.bitfield.get(i)) { piecesReady = false; break; }
+          if (!hasPiece(torrent, i)) { piecesReady = false; break; }
         }
 
         if (piecesReady) {
           // Fast path: pieces on disk → input seeking + copy mode (near-instant)
           log("info", "Smart seek (instant)", { seekTo, byteStart, method: seekIndexCache.has(jobKey) ? "index" : "estimate" });
-          torrent.select(firstPiece, file._endPiece, 1);
+          torrent.select(firstPiece, getFileEndPiece(file), 1);
           return serveLiveTranscode(torrent, file, true, req, res, seekTo);
         }
 
@@ -800,7 +802,7 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
         const doSmartSeek = async () => {
           try {
             await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
-            torrent.select(firstPiece, file._endPiece, 1);
+            torrent.select(firstPiece, getFileEndPiece(file), 1);
             return serveLiveTranscode(torrent, file, true, req, res, seekTo);
           } catch {
             log("warn", "Smart seek timeout, falling back", { seekTo });
