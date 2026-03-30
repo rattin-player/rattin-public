@@ -7,7 +7,7 @@ import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
-import { buildSeekIndex, findSeekOffset, waitForPieces, getSeekByteRange } from "./lib/seek-index.js";
+import { buildSeekIndex, findSeekOffset, waitForPieces } from "./lib/seek-index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -423,41 +423,6 @@ app.post("/api/rc/state", (req, res) => {
 
 // ── End Remote Control ─────────────────────────────────────────────────
 
-// Torrent search proxy (avoids CORS, queries apibay)
-app.get("/api/search", async (req, res) => {
-  const q = (req.query.q || "").trim();
-  if (!q) return res.json([]);
-
-  try {
-    const url = `https://search-provider-1.example/q.php?q=${encodeURIComponent(q)}`;
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "MagnetPlayer/1.0" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) throw new Error("Search API returned " + resp.status);
-    const data = await resp.json();
-    // apibay returns [{id, name, info_hash, leechers, seeders, num_files, size, ...}]
-    // Filter out the "no results" placeholder (id "0" with name "No results...")
-    const results = (Array.isArray(data) ? data : [])
-      .filter((r) => r.id !== "0" && r.name !== "No results returned")
-      .map((r) => ({
-        name: r.name,
-        infoHash: r.info_hash,
-        size: parseInt(r.size, 10) || 0,
-        seeders: parseInt(r.seeders, 10) || 0,
-        leechers: parseInt(r.leechers, 10) || 0,
-        numFiles: parseInt(r.num_files, 10) || 0,
-        added: r.added,
-        category: r.category,
-      }));
-    log("info", "Search", { query: q, results: results.length });
-    res.json(results);
-  } catch (err) {
-    log("err", "Search failed", { error: err.message });
-    res.status(502).json({ error: "Search failed: " + err.message });
-  }
-});
-
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
@@ -466,52 +431,6 @@ app.use((req, res, next) => {
     }
   });
   next();
-});
-
-// Add magnet
-app.post("/api/add", (req, res) => {
-  const { magnet } = req.body;
-  if (!magnet || !magnet.startsWith("magnet:")) {
-    return res.status(400).json({ error: "Invalid magnet link" });
-  }
-
-  const hash = magnetToInfoHash(magnet);
-  log("info", "Adding magnet", { infoHash: hash });
-
-  const existing = client.torrents.find(
-    (t) => t.magnetURI === magnet || t.infoHash === hash
-  );
-  if (existing) return res.json(torrentInfo(existing));
-
-  client.add(magnet, { path: DOWNLOAD_PATH, deselect: true }, (torrent) => {
-    log("info", "Torrent metadata received", {
-      name: torrent.name, files: torrent.files.length,
-      size: fmtBytes(torrent.length),
-    });
-
-    torrent.on("download", throttle(() => {
-      log("info", "Progress", {
-        name: torrent.name,
-        progress: (torrent.progress * 100).toFixed(1) + "%",
-        down: fmtBytes(torrent.downloadSpeed) + "/s",
-        peers: torrent.numPeers,
-      });
-    }, 10000));
-
-    torrent.on("done", () => {
-      log("info", "Download complete, stopping seed", { name: torrent.name });
-      torrent.pause();
-    });
-
-    torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
-    torrent.on("wire", (wire) => log("info", "Peer connected", { addr: wire.remoteAddress, total: torrent.numPeers }));
-
-    if (!res.headersSent) res.json(torrentInfo(torrent));
-  });
-
-  setTimeout(() => {
-    if (!res.headersSent) res.status(408).json({ error: "Timed out waiting for metadata" });
-  }, 30000);
 });
 
 // Duration endpoint - ffprobe the video to get total duration
@@ -1116,79 +1035,8 @@ app.get("/api/status/:infoHash", (req, res) => {
   });
 });
 
-app.post("/api/deselect/:infoHash/:fileIndex", (req, res) => {
-  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
-  if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-  const fileIdx = parseInt(req.params.fileIndex, 10);
-  const file = torrent.files[fileIdx];
-  if (!file) return res.status(404).json({ error: "File not found" });
 
-  // Remove from our tracking set
-  const active = activeFiles.get(torrent.infoHash) || new Set();
-  active.delete(fileIdx);
-  activeFiles.set(torrent.infoHash, active);
 
-  // Nuclear: clear ALL selections, then re-add only the ones still active
-  torrent._selections.clear();
-  for (const idx of active) {
-    const f = torrent.files[idx];
-    if (f && f.progress < 1) {
-      torrent.select(f._startPiece, f._endPiece, 1);
-    }
-  }
-
-  // If nothing active, pause the torrent to fully stop all traffic
-  if (active.size === 0) {
-    torrent.pause();
-    log("info", "No active files, paused torrent");
-  }
-
-  log("info", "Deselected", { name: file.name, activeFiles: active.size });
-  res.json({ ok: true });
-});
-
-app.post("/api/select/:infoHash/:fileIndex", (req, res) => {
-  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
-  if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-  const fileIdx = parseInt(req.params.fileIndex, 10);
-  const file = torrent.files[fileIdx];
-  if (!file) return res.status(404).json({ error: "File not found" });
-
-  // Block non-media files from being downloaded
-  if (!isAllowedFile(file.name)) {
-    log("warn", "Blocked download of non-media file", { name: file.name });
-    return res.status(403).json({ error: "Only video, audio, and subtitle files can be downloaded" });
-  }
-
-  // Track this file as active
-  const active = activeFiles.get(torrent.infoHash) || new Set();
-  active.add(fileIdx);
-  activeFiles.set(torrent.infoHash, active);
-
-  // Resume if paused
-  if (torrent.paused) torrent.resume();
-  file.select();
-  log("info", "Selected", { name: file.name, activeFiles: active.size });
-  res.json({ ok: true });
-});
-
-// List all active torrents (for persistent dashboard)
-app.get("/api/torrents", (req, res) => {
-  res.json(client.torrents.map((t) => ({
-    infoHash: t.infoHash,
-    name: t.name,
-    progress: t.progress,
-    downloadSpeed: t.downloadSpeed,
-    uploadSpeed: t.uploadSpeed,
-    numPeers: t.numPeers,
-    paused: t.paused,
-    done: t.progress === 1,
-    totalSize: t.length,
-    downloaded: t.downloaded,
-    numFiles: t.files.length,
-    mediaFiles: t.files.filter((f) => isAllowedFile(f.name)).length,
-  })));
-});
 
 // Pause all other torrents, resume this one
 app.post("/api/set-active/:infoHash", (req, res) => {
@@ -1201,24 +1049,6 @@ app.post("/api/set-active/:infoHash", (req, res) => {
       log("info", "Paused inactive torrent", { name: t.name });
     }
   }
-  res.json({ ok: true });
-});
-
-app.delete("/api/remove/:infoHash", (req, res) => {
-  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
-  if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-  for (const [key, job] of transcodeJobs) {
-    if (key.startsWith(torrent.infoHash)) {
-      if (job.process && !job.done) job.process.kill();
-      transcodeJobs.delete(key);
-    }
-  }
-  cleanupTorrentCaches(torrent.infoHash, torrent);
-  const st = streamTracker.get(torrent.infoHash);
-  if (st?.idleTimer) clearTimeout(st.idleTimer);
-  streamTracker.delete(torrent.infoHash);
-  log("info", "Removing torrent", { name: torrent.name });
-  torrent.destroy({ destroyStore: true });
   res.json({ ok: true });
 });
 
@@ -1242,11 +1072,6 @@ function torrentInfo(torrent) {
   return { infoHash: torrent.infoHash, name: torrent.name, files };
 }
 
-function magnetToInfoHash(magnet) {
-  const m = magnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/);
-  return m ? m[1].toLowerCase() : null;
-}
-
 function fmtBytes(b) {
   if (b === 0) return "0 B";
   const k = 1024, s = ["B", "KB", "MB", "GB", "TB"];
@@ -1258,34 +1083,6 @@ function throttle(fn, ms) {
   let last = 0;
   return (...a) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...a); } };
 }
-
-// Explicit clear endpoint - deletes all downloaded files and transcodes
-app.delete("/api/clear", (req, res) => {
-  log("info", "Clearing all data...");
-  // Kill all transcode jobs
-  for (const [, job] of transcodeJobs) {
-    if (job.process && !job.done) job.process.kill();
-  }
-  transcodeJobs.clear();
-  durationCache.clear();
-  probeCache.clear();
-  seekIndexCache.clear();
-  seekIndexPending.clear();
-  activeFiles.clear();
-  availabilityCache.clear();
-  for (const [, st] of streamTracker) { if (st.idleTimer) clearTimeout(st.idleTimer); }
-  streamTracker.clear();
-  // Destroy all torrents
-  const promises = client.torrents.map((t) => new Promise((resolve) => {
-    t.destroy({ destroyStore: true }, resolve);
-  }));
-  Promise.all(promises).then(() => {
-    try { fs.rmSync(DOWNLOAD_PATH, { recursive: true, force: true }); } catch {}
-    try { fs.rmSync(TRANSCODE_PATH, { recursive: true, force: true }); } catch {}
-    log("info", "All data cleared");
-    res.json({ ok: true });
-  });
-});
 
 // ---- TMDB API Proxy (with cache) ----
 
@@ -1407,29 +1204,6 @@ app.get("/api/tmdb/tv/:id", async (req, res) => {
     const data = await fetchTMDB(`/tv/${req.params.id}?append_to_response=credits,similar,videos,external_ids`);
     tmdbCache.set(key, data, CACHE_TTL.TV);
     res.json(data);
-  } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
-  }
-});
-
-// Simple cache: genres
-app.get("/api/tmdb/genres", async (req, res) => {
-  const key = "genres";
-  const cached = tmdbCache.get(key);
-  if (cached) return res.json(cached);
-  try {
-    const [movie, tv] = await Promise.all([
-      fetchTMDB("/genre/movie/list"),
-      fetchTMDB("/genre/tv/list"),
-    ]);
-    const seen = new Set();
-    const genres = [...(movie.genres || []), ...(tv.genres || [])].filter((g) => {
-      if (seen.has(g.id)) return false;
-      seen.add(g.id);
-      return true;
-    });
-    tmdbCache.set(key, genres, CACHE_TTL.GENRES);
-    res.json(genres);
   } catch (e) {
     res.status(tmdbErrorStatus(e)).json({ error: e.message });
   }
@@ -1759,6 +1533,22 @@ app.post("/api/search-streams", async (req, res) => {
   }
 });
 
+function respondWithTorrent(torrent, season, episode, tags) {
+  const videoFile = (season && episode)
+    ? findEpisodeFile(torrent, season, episode)
+    : findLargestVideo(torrent);
+  if (!videoFile) return null;
+  videoFile.file.select();
+  return {
+    infoHash: torrent.infoHash,
+    fileIndex: videoFile.index,
+    fileName: videoFile.file.name,
+    torrentName: torrent.name,
+    totalSize: torrent.length,
+    tags,
+  };
+}
+
 app.post("/api/auto-play", async (req, res) => {
   const { title, year, type, season, episode, imdbId } = req.body;
   if (!title) return res.status(400).json({ error: "Title is required" });
@@ -1801,26 +1591,13 @@ app.post("/api/auto-play", async (req, res) => {
       (t) => t.infoHash === best.infoHash || t.infoHash === best.infoHash.toLowerCase()
     );
 
-    function respondWithTorrent(torrent) {
-      const videoFile = (type === "tv" && season && episode)
-        ? findEpisodeFile(torrent, season, episode)
-        : findLargestVideo(torrent);
-      if (!videoFile) return null;
-      videoFile.file.select();
-      return {
-        infoHash: torrent.infoHash,
-        fileIndex: videoFile.index,
-        fileName: videoFile.file.name,
-        torrentName: torrent.name,
-        totalSize: torrent.length,
-        tags,
-      };
-    }
+    const autoSeason = type === "tv" ? season : undefined;
+    const autoEpisode = type === "tv" ? episode : undefined;
 
     if (existing) {
       // Already ready with files — return immediately
       if (existing.files && existing.files.length > 0) {
-        const result = respondWithTorrent(existing);
+        const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
         if (result) return res.json(result);
       }
       // Still loading metadata — wait for ready
@@ -1831,7 +1608,7 @@ app.post("/api/auto-play", async (req, res) => {
           existing.on("ready", () => { clearTimeout(timeout); resolve(); });
           existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
         });
-        const result = respondWithTorrent(existing);
+        const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
         if (result) return res.json(result);
       } catch {}
       // If still no good, remove the stuck torrent and try fresh
@@ -1872,24 +1649,13 @@ app.post("/api/auto-play", async (req, res) => {
 
         torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
 
-        const videoFile = (type === "tv" && season && episode)
-          ? findEpisodeFile(torrent, season, episode)
-          : findLargestVideo(torrent);
-        if (!videoFile) {
+        const result = respondWithTorrent(torrent, autoSeason, autoEpisode, tags);
+        if (!result) {
           reject(new Error("No video files found in torrent"));
           return;
         }
 
-        videoFile.file.select();
-
-        resolve({
-          infoHash: torrent.infoHash,
-          fileIndex: videoFile.index,
-          fileName: videoFile.file.name,
-          torrentName: torrent.name,
-          totalSize: torrent.length,
-          tags,
-        });
+        resolve(result);
       });
     }).then((data) => {
       if (!res.headersSent) res.json(data);
@@ -1916,26 +1682,10 @@ app.post("/api/play-torrent", async (req, res) => {
     (t) => t.infoHash === infoHash || t.infoHash === infoHash.toLowerCase()
   );
 
-  function respondWithTorrent(torrent) {
-    const videoFile = (season && episode)
-      ? findEpisodeFile(torrent, season, episode)
-      : findLargestVideo(torrent);
-    if (!videoFile) return null;
-    videoFile.file.select();
-    return {
-      infoHash: torrent.infoHash,
-      fileIndex: videoFile.index,
-      fileName: videoFile.file.name,
-      torrentName: torrent.name,
-      totalSize: torrent.length,
-      tags,
-    };
-  }
-
   try {
     if (existing) {
       if (existing.files && existing.files.length > 0) {
-        const result = respondWithTorrent(existing);
+        const result = respondWithTorrent(existing, season, episode, tags);
         if (result) return res.json(result);
       }
       await new Promise((resolve, reject) => {
@@ -1943,7 +1693,7 @@ app.post("/api/play-torrent", async (req, res) => {
         existing.on("ready", () => { clearTimeout(timeout); resolve(); });
         existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
       });
-      const result = respondWithTorrent(existing);
+      const result = respondWithTorrent(existing, season, episode, tags);
       if (result) return res.json(result);
       try { existing.destroy({ destroyStore: false }); } catch {}
     }
@@ -1965,19 +1715,9 @@ app.post("/api/play-torrent", async (req, res) => {
           torrent.pause();
         });
         torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
-        const videoFile = (season && episode)
-          ? findEpisodeFile(torrent, season, episode)
-          : findLargestVideo(torrent);
-        if (!videoFile) { reject(new Error("No video files")); return; }
-        videoFile.file.select();
-        resolve({
-          infoHash: torrent.infoHash,
-          fileIndex: videoFile.index,
-          fileName: videoFile.file.name,
-          torrentName: torrent.name,
-          totalSize: torrent.length,
-          tags,
-        });
+        const result = respondWithTorrent(torrent, season, episode, tags);
+        if (!result) { reject(new Error("No video files")); return; }
+        resolve(result);
       });
     }).then((data) => {
       if (!res.headersSent) res.json(data);

@@ -1,9 +1,8 @@
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
-export const img = (path, size = "w500") => (path ? `${TMDB_IMG}/${size}${path}` : null);
+const img = (path, size = "w500") => (path ? `${TMDB_IMG}/${size}${path}` : null);
 export const backdrop = (path) => img(path, "original");
 export const poster = (path, size = "w342") => img(path, size);
-export const profile = (path) => img(path, "w185");
 
 async function get(url) {
   const res = await fetch(url);
@@ -33,10 +32,6 @@ export function fetchTV(id) {
 
 export function fetchSeason(tvId, seasonNum) {
   return get(`/api/tmdb/tv/${tvId}/season/${seasonNum}`);
-}
-
-export function fetchGenres() {
-  return get("/api/tmdb/genres");
 }
 
 export async function autoPlay(title, year, type, season, episode, imdbId) {

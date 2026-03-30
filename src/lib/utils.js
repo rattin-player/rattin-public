@@ -15,13 +15,6 @@ export function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function formatEta(seconds) {
-  if (!seconds || !isFinite(seconds)) return "—";
-  if (seconds < 60) return `${Math.ceil(seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-}
-
 export function ratingColor(vote) {
   if (vote >= 7) return "var(--green)";
   if (vote >= 5) return "var(--yellow)";

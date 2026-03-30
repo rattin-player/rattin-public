@@ -18,7 +18,6 @@ export default function Detail() {
   const [playError, setPlayError] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [streams, setStreams] = useState(null);
-  const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerSeason, setPickerSeason] = useState(null);
   const [pickerEpisode, setPickerEpisode] = useState(null);
 
@@ -41,7 +40,6 @@ export default function Detail() {
     setPickerEpisode(episode);
     setShowPicker(true);
     setStreams(null);
-    setPickerLoading(true);
     try {
       const title = data.title || data.name;
       const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
@@ -51,7 +49,6 @@ export default function Detail() {
     } catch {
       setStreams([]);
     }
-    setPickerLoading(false);
   }
 
   function sendRemoteStart(result, tags) {
