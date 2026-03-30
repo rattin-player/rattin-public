@@ -235,6 +235,196 @@ uninstall() {
     log info "Rattin uninstalled successfully."
 }
 
+# ---------------------------------------------------------------------------
+# create_dirs() — create the directory structure
+# ---------------------------------------------------------------------------
+create_dirs() {
+    log info "Creating directory structure..."
+    mkdir -p "$INSTALL_DIR"/{runtime/node,runtime/bin,app,data/downloads,data/transcoded}
+    log info "Directory structure created"
+}
+
+# ---------------------------------------------------------------------------
+# install_node() — download and install Node.js v20 LTS
+# ---------------------------------------------------------------------------
+install_node() {
+    log info "Installing Node.js..."
+
+    # Query latest v20 LTS version
+    local version_json
+    version_json="$(download "https://nodejs.org/dist/index.json")"
+
+    # Find first v20.x entry where "lts" is not false
+    local latest_version
+    latest_version="$(echo "$version_json" \
+        | tr '{' '\n' \
+        | grep '"version":"v20\.' \
+        | grep -v '"lts":false' \
+        | head -1 \
+        | sed 's/.*"version":"\(v20\.[^"]*\)".*/\1/')"
+
+    if [ -z "$latest_version" ]; then
+        die "Could not determine latest Node.js v20 LTS version"
+    fi
+    log info "Latest Node.js v20 LTS: $latest_version"
+
+    # On update: check if already installed at this version
+    if [ "$MODE" = "update" ] && [ -x "$INSTALL_DIR/runtime/node/bin/node" ]; then
+        local installed_version
+        installed_version="$("$INSTALL_DIR/runtime/node/bin/node" --version 2>/dev/null || echo "")"
+        if [ "$installed_version" = "$latest_version" ]; then
+            log info "Node.js $latest_version already installed — skipping"
+            return 0
+        fi
+        log info "Node.js version change: $installed_version -> $latest_version"
+        # Back up existing installation
+        rm -rf "$INSTALL_DIR/runtime/node.bak"
+        mv "$INSTALL_DIR/runtime/node" "$INSTALL_DIR/runtime/node.bak"
+        mkdir -p "$INSTALL_DIR/runtime/node"
+    fi
+
+    # Download
+    local url="https://nodejs.org/dist/$latest_version/node-$latest_version-linux-$ARCH.tar.xz"
+    local tmpfile="/tmp/rattin-node-download.tar.xz"
+    log info "Downloading Node.js from $url"
+    download "$url" > "$tmpfile"
+
+    # Verify file size > 20MB
+    local filesize
+    filesize="$(stat -c%s "$tmpfile")"
+    if [ "$filesize" -lt 20000000 ]; then
+        rm -f "$tmpfile"
+        die "Node.js download too small (${filesize} bytes). Download may have failed."
+    fi
+
+    # Extract
+    rm -rf "$INSTALL_DIR/runtime/node"
+    mkdir -p "$INSTALL_DIR/runtime/node"
+    tar -xJf "$tmpfile" -C "$INSTALL_DIR/runtime/node/" --strip-components=1
+
+    # Clean up
+    rm -f "$tmpfile"
+
+    # Verify
+    if ! "$INSTALL_DIR/runtime/node/bin/node" --version >/dev/null 2>&1; then
+        die "Node.js installation verification failed"
+    fi
+    log info "Node.js $("$INSTALL_DIR/runtime/node/bin/node" --version) installed successfully"
+}
+
+# ---------------------------------------------------------------------------
+# install_ffmpeg() — download static ffmpeg + ffprobe binaries
+# ---------------------------------------------------------------------------
+install_ffmpeg() {
+    log info "Installing ffmpeg..."
+
+    local url
+    case "$ARCH" in
+        x64)    url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" ;;
+        arm64)  url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz" ;;
+        *)      die "Unsupported architecture for ffmpeg: $ARCH" ;;
+    esac
+
+    # Download
+    local tmpfile="/tmp/rattin-ffmpeg-download.tar.xz"
+    log info "Downloading ffmpeg from $url"
+    download "$url" > "$tmpfile"
+
+    # Verify file size > 30MB
+    local filesize
+    filesize="$(stat -c%s "$tmpfile")"
+    if [ "$filesize" -lt 30000000 ]; then
+        rm -f "$tmpfile"
+        die "ffmpeg download too small (${filesize} bytes). Download may have failed."
+    fi
+
+    # Extract to a temp directory first, then copy binaries
+    local tmpdir="/tmp/rattin-ffmpeg-extract"
+    rm -rf "$tmpdir"
+    mkdir -p "$tmpdir"
+    tar -xJf "$tmpfile" -C "$tmpdir"
+
+    # Find ffmpeg and ffprobe in the extracted archive
+    local ffmpeg_bin ffprobe_bin
+    ffmpeg_bin="$(find "$tmpdir" -name ffmpeg -type f | head -1)"
+    ffprobe_bin="$(find "$tmpdir" -name ffprobe -type f | head -1)"
+
+    if [ -z "$ffmpeg_bin" ] || [ -z "$ffprobe_bin" ]; then
+        rm -rf "$tmpdir" "$tmpfile"
+        die "Could not find ffmpeg/ffprobe binaries in the downloaded archive"
+    fi
+
+    # Install binaries
+    mkdir -p "$INSTALL_DIR/runtime/bin"
+    cp "$ffmpeg_bin" "$INSTALL_DIR/runtime/bin/ffmpeg"
+    cp "$ffprobe_bin" "$INSTALL_DIR/runtime/bin/ffprobe"
+    chmod +x "$INSTALL_DIR/runtime/bin/ffmpeg" "$INSTALL_DIR/runtime/bin/ffprobe"
+
+    # Clean up
+    rm -rf "$tmpdir" "$tmpfile"
+
+    # Verify
+    if ! "$INSTALL_DIR/runtime/bin/ffmpeg" -version >/dev/null 2>&1; then
+        die "ffmpeg installation verification failed"
+    fi
+    log info "ffmpeg installed successfully: $("$INSTALL_DIR/runtime/bin/ffmpeg" -version 2>&1 | head -1)"
+}
+
+# ---------------------------------------------------------------------------
+# install_fpcalc() — install chromaprint fpcalc (best-effort, system-wide)
+# ---------------------------------------------------------------------------
+install_fpcalc() {
+    log info "Installing fpcalc (chromaprint)..."
+
+    case "$PKG_MANAGER" in
+        apt-get)
+            if ! (apt-get update -qq && apt-get install -y libchromaprint-tools); then
+                log warn "fpcalc not available — acoustic fingerprinting will be disabled"
+            fi
+            ;;
+        dnf)
+            if ! dnf install -y chromaprint-tools; then
+                log warn "fpcalc not available — acoustic fingerprinting will be disabled"
+            fi
+            ;;
+        *)
+            log warn "Unknown package manager — skipping fpcalc install. Acoustic fingerprinting may not work."
+            ;;
+    esac
+
+    if command -v fpcalc >/dev/null 2>&1; then
+        log info "fpcalc installed successfully: $(fpcalc -version 2>&1 | head -1)"
+    else
+        log warn "fpcalc not found in PATH after install attempt"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# install_build_tools() — install C++ compiler, make, python3 for native addons
+# ---------------------------------------------------------------------------
+install_build_tools() {
+    log info "Installing build tools..."
+
+    case "$PKG_MANAGER" in
+        apt-get)
+            if ! apt-get install -y build-essential python3; then
+                die "Failed to install build tools"
+            fi
+            ;;
+        dnf)
+            if ! dnf install -y gcc-c++ make python3; then
+                die "Failed to install build tools"
+            fi
+            ;;
+        *)
+            log warn "Unknown package manager — skipping build tools install. Native addons may fail to compile."
+            return 0
+            ;;
+    esac
+
+    log info "Build tools installed successfully"
+}
+
 # ==============================================================================
 # Main
 # ==============================================================================
@@ -264,11 +454,20 @@ main() {
         log info "Wipe complete — continuing as fresh install"
     fi
 
-    # Future tasks will add:
-    # - Node.js download/install
-    # - ffmpeg download/install
-    # - App download/build
-    # - systemd service setup
+    # Create directory structure (on fresh install; dirs already exist on update)
+    if [ "$MODE" = "fresh" ]; then
+        create_dirs
+    fi
+
+    install_node
+    install_ffmpeg
+    install_fpcalc
+    install_build_tools
+
+    # Mark as installer-managed
+    echo "$INSTALLER_VERSION" > "$INSTALL_DIR/.installer-version"
+
+    log info "Runtime dependencies installed successfully"
 }
 
 main
