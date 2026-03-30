@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, type RefObject, type MutableRefObject } from "react";
 
-const MESSAGES = {
+const MESSAGES: Record<string, string[]> = {
   initial: [
     "Getting everything ready...",
     "Finding the best source...",
@@ -22,7 +22,25 @@ const MESSAGES = {
   ],
 };
 
-export function usePlayerLoading(videoRef, deps) {
+interface UsePlayerLoadingDeps {
+  infoHash: string;
+  fileIndex: string;
+  reloadActiveSub: ((offset: number) => void) | null;
+}
+
+interface UsePlayerLoadingReturn {
+  loading: boolean;
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  loadingReason: string;
+  setLoadingReason: React.Dispatch<React.SetStateAction<string>>;
+  loadingMsg: number;
+  currentMessage: string;
+  pendingSubReload: MutableRefObject<number | null>;
+  reloadActiveSubRef: MutableRefObject<((offset: number) => void) | null>;
+  MESSAGES: Record<string, string[]>;
+}
+
+export function usePlayerLoading(videoRef: RefObject<HTMLVideoElement | null>, deps: UsePlayerLoadingDeps): UsePlayerLoadingReturn {
   const { infoHash, fileIndex, reloadActiveSub: reloadActiveSubProp } = deps;
   const reloadActiveSubRef = useRef(reloadActiveSubProp);
   useEffect(() => { reloadActiveSubRef.current = reloadActiveSubProp; }, [reloadActiveSubProp]);
@@ -30,7 +48,7 @@ export function usePlayerLoading(videoRef, deps) {
   const [loading, setLoading] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [loadingReason, setLoadingReason] = useState("initial"); // "initial" | "seeking"
-  const pendingSubReload = useRef(null);
+  const pendingSubReload = useRef<number | null>(null);
 
   // Rotate loading messages
   useEffect(() => {

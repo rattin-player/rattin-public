@@ -1,0 +1,133 @@
+const TMDB_IMG = "https://image.tmdb.org/t/p";
+
+const img = (path: string | null, size = "w500"): string | null => (path ? `${TMDB_IMG}/${size}${path}` : null);
+export const backdrop = (path: string | null): string | null => img(path, "original");
+export const poster = (path: string | null, size = "w342"): string | null => img(path, size);
+export const still = (path: string | null): string | null => img(path, "w300");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function get(url: string): Promise<any> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchTrending(page = 1): Promise<any> {
+  return get(`/api/tmdb/trending?page=${page}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchDiscover(type: string, genre: string | number, page = 1, sort = "popularity.desc", extra = ""): Promise<any> {
+  return get(`/api/tmdb/discover?type=${type}&genre=${genre}&page=${page}&sort=${sort}${extra}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function searchTMDB(query: string, page = 1): Promise<any> {
+  return get(`/api/tmdb/search?q=${encodeURIComponent(query)}&page=${page}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchMovie(id: string | number): Promise<any> {
+  return get(`/api/tmdb/movie/${id}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchTV(id: string | number): Promise<any> {
+  return get(`/api/tmdb/tv/${id}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchSeason(tvId: string | number, seasonNum: number): Promise<any> {
+  return get(`/api/tmdb/tv/${tvId}/season/${seasonNum}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function autoPlay(title: string, year: number | undefined, type: string, season?: number, episode?: number, imdbId?: string): Promise<any> {
+  const res = await fetch("/api/auto-play", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, year, type, season, episode, imdbId }),
+  });
+  if (!res.ok) {
+    const code = (await res.json().catch(() => ({} as Record<string, string>))).error;
+    if (code === "not_found") throw new Error("not_found");
+    throw new Error("stream_failed");
+  }
+  return res.json();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function searchStreams(title: string, year: number | undefined, type: string, season?: number, episode?: number, imdbId?: string): Promise<any[]> {
+  const res = await fetch("/api/search-streams", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, year, type, season, episode, imdbId }),
+  });
+  const data = await res.json();
+  return data.results || [];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function playTorrent(infoHash: string, name: string, season?: number | null, episode?: number | null): Promise<any> {
+  const res = await fetch("/api/play-torrent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ infoHash, name, season, episode }),
+  });
+  if (!res.ok) throw new Error("stream_failed");
+  return res.json();
+}
+
+export async function checkAvailability(items: Array<{ id: number; title: string; year?: number; type: string }>): Promise<Set<number>> {
+  const res = await fetch("/api/check-availability", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  const data = await res.json();
+  return new Set(data.available || []);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchStatus(infoHash: string): Promise<any> {
+  return get(`/api/status/${infoHash}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchDuration(infoHash: string, fileIndex: string | number): Promise<any> {
+  return get(`/api/duration/${infoHash}/${fileIndex}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchSubtitleTracks(infoHash: string, fileIndex: string | number): Promise<any> {
+  return get(`/api/subtitles/${infoHash}/${fileIndex}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchAudioTracks(infoHash: string, fileIndex: string | number): Promise<any> {
+  return get(`/api/audio-tracks/${infoHash}/${fileIndex}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchReviews(type: string, id: string | number): Promise<any> {
+  return get(`/api/reviews/${type}/${id}`);
+}
+
+interface IntroParams {
+  tmdbId?: string;
+  season?: string | number;
+  episode?: string | number;
+  title?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchIntroTimestamps(infoHash: string, fileIndex: string | number, { tmdbId, season, episode, title }: IntroParams = {}): Promise<any> {
+  const params = new URLSearchParams();
+  if (tmdbId) params.set("tmdbId", tmdbId);
+  if (season) params.set("season", String(season));
+  if (episode) params.set("episode", String(episode));
+  if (title) params.set("title", title);
+  const qs = params.toString();
+  return get(`/api/intro/${infoHash}/${fileIndex}${qs ? `?${qs}` : ""}`);
+}
