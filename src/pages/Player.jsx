@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
-import { fetchStatus, fetchDuration, fetchSubtitleTracks } from "../lib/api";
+import { fetchStatus, fetchDuration, fetchSubtitleTracks, fetchAudioTracks } from "../lib/api";
 import { formatTime, formatBytes } from "../lib/utils";
 import { encode } from "uqr";
 import "./Player.css";
@@ -20,9 +20,11 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
+  const preSelectedAudio = location.state?.audioTrack ?? null;
+  const preSelectedSub = location.state?.subtitle ?? null;
   const videoContainerRef = useRef();
   const pageRef = useRef();
   const seekRef = useRef();
@@ -55,6 +57,21 @@ export default function Player() {
   function setActiveSub(val) {
     setActiveSubRaw(val);
     activeSubRef.current = val;
+  }
+  const [audioTracks, setAudioTracksRaw] = useState([]);
+  const [activeAudio, setActiveAudioRaw] = useState(null);
+
+  function setAudioTracks(val) {
+    setAudioTracksRaw((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      audioTracksRef.current = next;
+      return next;
+    });
+  }
+
+  function setActiveAudio(val) {
+    setActiveAudioRaw(val);
+    activeAudioRef.current = val;
   }
   const [fileName, setFileName] = useState("");
   const [tooltipTime, setTooltipTime] = useState(null);
@@ -178,6 +195,7 @@ export default function Player() {
       seek: seekTo,
       seekRelative: (delta) => seekTo(Math.max(0, getEffectiveTime() + delta)),
       switchSubtitle,
+      switchAudio,
     };
   }
   useEffect(() => {
@@ -270,6 +288,40 @@ export default function Player() {
               streamIndex: t.streamIndex,
             }));
           });
+          // Auto-select pre-selected subtitle from navigation state
+          if (preSelectedSub && !activeSubRef.current) {
+            const match = data.tracks.find((t) => `embedded:${t.streamIndex}` === preSelectedSub);
+            if (match) {
+              setTimeout(() => switchSubtitle(preSelectedSub), 500);
+            }
+          }
+          clearInterval(timer);
+        }
+      } catch {}
+    }
+  }, [infoHash, fileIndex]);
+
+  // Audio track loading
+  useEffect(() => {
+    loadAudioTracks();
+    const timer = setInterval(loadAudioTracks, 5000);
+    return () => clearInterval(timer);
+
+    async function loadAudioTracks() {
+      try {
+        const data = await fetchAudioTracks(infoHash, fileIndex);
+        if (data.tracks?.length > 0) {
+          setAudioTracks((prev) => {
+            if (prev.length === data.tracks.length) return prev;
+            return data.tracks.map((t) => ({
+              value: t.streamIndex,
+              label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
+            }));
+          });
+          if (activeAudioRef.current === null) {
+            const initial = preSelectedAudio ?? data.tracks[0]?.streamIndex ?? null;
+            setActiveAudio(initial);
+          }
           clearInterval(timer);
         }
       } catch {}
@@ -397,6 +449,29 @@ export default function Player() {
     reloadActiveSub(isLiveRef.current ? seekOffsetRef.current : 0);
   }
 
+  function switchAudio(streamIndex) {
+    const idx = parseInt(streamIndex, 10);
+    if (isNaN(idx)) return;
+    if (activeAudioRef.current === idx) return;
+    setActiveAudio(idx);
+    const v = videoRef.current;
+    if (!v) return;
+    const pos = getEffectiveTime();
+    setLoading(true);
+    setLoadingReason("seeking");
+    if (isLiveRef.current) {
+      v.src = `/api/stream/${infoHash}/${fileIndex}?t=${pos}&audio=${idx}`;
+    } else {
+      v.src = `/api/stream/${infoHash}/${fileIndex}?audio=${idx}`;
+      v.addEventListener("loadedmetadata", function onMeta() {
+        v.removeEventListener("loadedmetadata", onMeta);
+        v.currentTime = pos;
+      }, { once: true });
+    }
+    v.play().catch(() => {});
+    pendingSubReload.current = isLiveRef.current ? pos : 0;
+  }
+
   // Time update — sync to local state AND push to context for mini player
   useEffect(() => {
     const v = videoRef.current;
@@ -468,7 +543,8 @@ export default function Player() {
       setIsLiveTranscode(true);
       setLoading(true);
       setLoadingReason("seeking");
-      v.src = `/api/stream/${infoHash}/${fileIndex}?t=${seconds}`;
+      const audioParam = activeAudioRef.current !== null ? `&audio=${activeAudioRef.current}` : "";
+      v.src = `/api/stream/${infoHash}/${fileIndex}?t=${seconds}${audioParam}`;
       v.play().catch(() => {});
       if (dur > 0) setKnownDuration(dur);
       // Defer subtitle reload — track must be added after new source loads
@@ -676,6 +752,17 @@ export default function Player() {
                 <option value="">Subtitles Off</option>
                 {subs.map((s) => (
                   <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            )}
+            {audioTracks.length > 1 && (
+              <select
+                className="player-sub-select"
+                value={activeAudio ?? ""}
+                onChange={(e) => switchAudio(e.target.value)}
+              >
+                {audioTracks.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             )}

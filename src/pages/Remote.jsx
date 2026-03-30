@@ -557,6 +557,21 @@ export default function Remote() {
         </div>
       )}
 
+      {state?.audioTracks?.length > 1 && (
+        <div className="remote-sub-row">
+          <select
+            className="remote-sub-select"
+            value={state.activeAudio ?? ""}
+            onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
+            disabled={isReconnecting}
+          >
+            {state.audioTracks.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="remote-bottom-row">
         <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isReconnecting}>
           Browse

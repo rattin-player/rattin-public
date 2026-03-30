@@ -90,3 +90,7 @@ export function fetchDuration(infoHash, fileIndex) {
 export function fetchSubtitleTracks(infoHash, fileIndex) {
   return get(`/api/subtitles/${infoHash}/${fileIndex}`);
 }
+
+export function fetchAudioTracks(infoHash, fileIndex) {
+  return get(`/api/audio-tracks/${infoHash}/${fileIndex}`);
+}

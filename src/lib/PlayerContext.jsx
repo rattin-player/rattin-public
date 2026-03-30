@@ -47,6 +47,8 @@ export function PlayerProvider({ children }) {
   const effectiveTimeRef = useRef(null);
   const subsRef = useRef([]);
   const activeSubRef = useRef("");
+  const audioTracksRef = useRef([]);
+  const activeAudioRef = useRef(null);
   const commandRef = useRef(null); // Player.jsx registers { seek, seekRelative, switchSubtitle }
   const dlProgressRef = useRef(0); // set by Player.jsx from status poll
   const dlSpeedRef = useRef(0);
@@ -130,6 +132,8 @@ export function PlayerProvider({ children }) {
     effectiveTimeRef.current = null;
     subsRef.current = [];
     activeSubRef.current = "";
+    audioTracksRef.current = [];
+    activeAudioRef.current = null;
     // Remove any lingering subtitle tracks from the video element
     for (const t of v.textTracks) t.mode = "disabled";
     v.querySelectorAll("track").forEach((el) => el.remove());
@@ -202,6 +206,9 @@ export function PlayerProvider({ children }) {
           break;
         case "subtitle":
           if (commandRef.current?.switchSubtitle) commandRef.current.switchSubtitle(value);
+          break;
+        case "audio":
+          if (commandRef.current?.switchAudio) commandRef.current.switchAudio(value);
           break;
         case "start-stream":
           if (value) {
@@ -280,6 +287,8 @@ export function PlayerProvider({ children }) {
         fileIndex: active?.fileIndex ?? "",
         subs: subsRef.current,
         activeSub: activeSubRef.current,
+        audioTracks: audioTracksRef.current,
+        activeAudio: activeAudioRef.current,
         volume: v.volume,
         dlProgress: dlProgressRef.current,
         dlSpeed: dlSpeedRef.current,
@@ -325,7 +334,7 @@ export function PlayerProvider({ children }) {
     <PlayerContext.Provider value={{
       videoRef, active, playing, currentTime, duration, volume,
       startStream, stopStream, togglePlay,
-      effectiveTimeRef, subsRef, activeSubRef, dlProgressRef, dlSpeedRef, dlPeersRef,
+      effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
     }}>
