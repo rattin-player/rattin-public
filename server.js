@@ -106,7 +106,9 @@ function trackStreamClose(infoHash) {
   if (!entry) return;
   entry.count = Math.max(0, entry.count - 1);
   if (entry.count > 0) return;
-  // All streams closed — kill background transcodes and free torrent after 2 min
+  // All streams closed — kill background transcodes after 2 min
+  // If torrent has completed files on disk, just pause it instead of destroying
+  // (destroying forces a slow re-add from peers next time the user plays it)
   entry.idleTimer = setTimeout(() => {
     for (const [key, job] of transcodeJobs) {
       if (key.startsWith(infoHash.toLowerCase() + ":")) {
@@ -119,9 +121,18 @@ function trackStreamClose(infoHash) {
     }
     const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (torrent) {
-      cleanupTorrentCaches(infoHash, torrent);
-      log("info", "Auto-removing idle torrent", { name: torrent.name });
-      torrent.destroy({ destroyStore: false });
+      const hasCompleteFiles = torrent.files.some((f) => {
+        try { return f.length > 0 && statSync(diskPath(torrent, f)).size === f.length; }
+        catch { return false; }
+      });
+      if (hasCompleteFiles) {
+        if (!torrent.paused) torrent.pause();
+        log("info", "Paused idle torrent (files on disk)", { name: torrent.name });
+      } else {
+        cleanupTorrentCaches(infoHash, torrent);
+        log("info", "Auto-removing idle torrent", { name: torrent.name });
+        torrent.destroy({ destroyStore: false });
+      }
     }
     streamTracker.delete(infoHash);
   }, 2 * 60 * 1000);
@@ -730,57 +741,72 @@ app.get("/api/audio-tracks/:infoHash/:fileIndex", (req, res) => {
 
 // Intro detection — returns skip timestamps for TV episode intros
 app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
-  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
-  if (!torrent) return res.json({ detected: false });
-
-  const fileIdx = parseInt(req.params.fileIndex, 10);
-  const file = torrent.files[fileIdx];
-  if (!file) return res.json({ detected: false });
-
-  // Need TMDB context from query params for cache key and external lookup
   const tmdbId = req.query.tmdbId;
   const season = parseInt(req.query.season, 10);
   const episode = parseInt(req.query.episode, 10);
   const title = req.query.title || "";
 
-  // Check cache
+  // Check cache first (works even if torrent is gone)
   if (tmdbId && season) {
     const cacheKey = `${tmdbId}:${season}`;
     const cached = introCache.get(cacheKey);
     if (cached && cached.source === "fingerprint") {
       return res.json({ detected: true, ...cached });
     }
-    // If cached from external, still try fingerprint if we now have 2+ episodes
   }
 
-  // Find sibling episode files from same torrent (season pack)
+  // Collect sibling video files for fingerprinting
   const siblingPaths = [];
-  const currentPath = diskPath(torrent, file);
-  for (const f of torrent.files) {
-    const ext = path.extname(f.name).toLowerCase();
-    if (![".mp4", ".m4v", ".mkv", ".avi", ".webm", ".mov", ".ts", ".flv", ".wmv"].includes(ext)) continue;
-    const fp = diskPath(torrent, f);
-    try {
-      const stat = statSync(fp);
-      // Need at least ~50MB to have 5 minutes of audio (conservative estimate)
-      if (stat.size > 50_000_000) siblingPaths.push(fp);
-    } catch {
-      // File not on disk yet
+  let currentPath = null;
+  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+
+  if (torrent) {
+    // Torrent is active — scan its file list
+    const fileIdx = parseInt(req.params.fileIndex, 10);
+    const file = torrent.files[fileIdx];
+    if (file) currentPath = diskPath(torrent, file);
+    for (const f of torrent.files) {
+      const ext = path.extname(f.name).toLowerCase();
+      if (!VIDEO_EXTENSIONS.includes(ext)) continue;
+      const fp = diskPath(torrent, f);
+      try {
+        if (statSync(fp).size > 50_000_000) siblingPaths.push(fp);
+      } catch {}
     }
   }
 
-  // If current file isn't in siblings (e.g. too small), add it if it exists
-  if (!siblingPaths.includes(currentPath)) {
-    try {
-      statSync(currentPath);
-      siblingPaths.push(currentPath);
-    } catch {}
+  // Also scan the download directory for video files from any torrent
+  // This finds episodes that persist on disk after torrent idle-timeout
+  try {
+    for (const dir of fs.readdirSync(DOWNLOAD_PATH)) {
+      const dirPath = path.join(DOWNLOAD_PATH, dir);
+      try {
+        if (!fs.statSync(dirPath).isDirectory()) continue;
+        for (const fname of fs.readdirSync(dirPath)) {
+          const ext = path.extname(fname).toLowerCase();
+          if (!VIDEO_EXTENSIONS.includes(ext)) continue;
+          const fp = path.join(dirPath, fname);
+          if (siblingPaths.includes(fp)) continue; // already found via torrent
+          try {
+            if (statSync(fp).size > 50_000_000) siblingPaths.push(fp);
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+
+  // If we don't have a currentPath from the torrent, try to find the streaming file
+  // from the /api/stream endpoint's perspective (it may have been served from disk)
+  if (!currentPath && siblingPaths.length > 0) {
+    // Use the first file as a fallback — fingerprinting just needs any 2 episodes
+    currentPath = siblingPaths[0];
   }
 
   // Try fingerprint detection if we have 2+ files
   if (siblingPaths.length >= 2) {
-    // Put current file first so offsetA corresponds to the current episode
-    const ordered = [currentPath, ...siblingPaths.filter((p) => p !== currentPath)].slice(0, 2);
+    const ordered = currentPath
+      ? [currentPath, ...siblingPaths.filter((p) => p !== currentPath)].slice(0, 2)
+      : siblingPaths.slice(0, 2);
     try {
       const result = await detectIntro(ordered);
       if (result) {
@@ -795,9 +821,8 @@ app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
 
   // Fallback: AniSkip external lookup
   if (title && episode) {
-    // Get duration for AniSkip
-    const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
-    const dur = durationCache.get(cacheKey) || 0;
+    const cacheKey = torrent ? jobKey(torrent.infoHash, req.params.fileIndex) : null;
+    const dur = cacheKey ? (durationCache.get(cacheKey) || 0) : 0;
     try {
       const result = await lookupExternal(title, season || 1, episode, dur);
       if (result) {
