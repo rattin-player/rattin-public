@@ -7,41 +7,54 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 48px;
+  padding: 18px 48px;
   background: transparent;
-  transition: background var(--transition);
+  transition: background var(--transition-slow), border-color var(--transition-slow);
+  border-bottom: 1px solid transparent;
 }
 
 .navbar.scrolled {
-  background: rgba(8, 8, 12, 0.9);
-  backdrop-filter: blur(12px);
+  background: rgba(5, 5, 7, 0.92);
+  backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom-color: var(--border);
 }
 
 .navbar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: lowercase;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
   color: var(--accent-bright);
+  transition: color var(--transition);
+}
+
+.navbar-brand:hover {
+  color: var(--accent);
+}
+
+.navbar-brand svg {
+  filter: drop-shadow(0 0 6px var(--accent-glow));
 }
 
 .navbar-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--bg-surface);
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 14px;
-  width: 320px;
-  transition: border-color var(--transition);
+  border-radius: 28px;
+  padding: 9px 18px;
+  width: 340px;
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
 
 .navbar-search:focus-within {
   border-color: var(--accent);
+  background: rgba(201, 168, 76, 0.03);
+  box-shadow: 0 0 20px rgba(201, 168, 76, 0.06);
 }
 
 .navbar-search input {
@@ -49,9 +62,11 @@
   border: none;
   outline: none;
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   width: 100%;
-  font-family: inherit;
+  font-family: var(--font-body);
+  font-weight: 400;
+  letter-spacing: 0.2px;
 }
 
 .navbar-search input::placeholder {
@@ -61,40 +76,46 @@
 .navbar-pair-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: var(--bg-surface);
+  gap: 7px;
+  padding: 9px 16px;
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
+  border-radius: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   color: var(--text-secondary);
-  transition: border-color var(--transition), color var(--transition);
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
 .navbar-pair-btn:hover {
   border-color: var(--accent);
-  color: var(--text-primary);
+  color: var(--accent-bright);
+  background: var(--accent-subtle);
 }
 
 .navbar-pair-connected {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
 
 .navbar-pair-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--green);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 }
 
 @media (max-width: 768px) {
   .navbar {
-    padding: 12px 16px;
+    padding: 14px 16px;
   }
   .navbar-search {
-    width: 200px;
+    width: 180px;
+    padding: 8px 14px;
   }
   .navbar-pair-btn span {
     display: none;
