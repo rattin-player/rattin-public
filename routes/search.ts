@@ -291,6 +291,60 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
   }
 });
 
+// Resolve metadata for a list of infoHashes to determine file formats
+app.post("/api/resolve-formats", async (req: Request, res: Response) => {
+  const { infoHashes } = req.body as { infoHashes: string[] };
+  if (!infoHashes || !Array.isArray(infoHashes)) {
+    return res.status(400).json({ error: "infoHashes array required" });
+  }
+
+  const results: Record<string, { native: boolean; files: string[] }> = {};
+
+  await Promise.all(infoHashes.map((hash) => {
+    return new Promise<void>((resolve) => {
+      // Already loaded?
+      const existing = client.torrents.find((t) => t.infoHash === hash);
+      if (existing && existing.files.length > 0) {
+        const files = existing.files.map((f) => f.name);
+        const native = files.some((name) => !needsTranscode(path.extname(name).toLowerCase()));
+        results[hash] = { native, files };
+        resolve();
+        return;
+      }
+
+      // Resolve metadata (just file list, deselect all files to avoid downloading)
+      const magnet = `magnet:?xt=urn:btih:${hash}&tr=${TRACKERS.map(encodeURIComponent).join("&tr=")}`;
+      const timeout = setTimeout(() => {
+        // Timed out — remove if we added it just for metadata
+        if (!existing) {
+          const t = client.torrents.find((t) => t.infoHash === hash);
+          if (t) try { t.destroy({ destroyStore: true }); } catch {}
+        }
+        resolve();
+      }, 8000);
+
+      try {
+        const t = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+        t.on("ready", () => {
+          clearTimeout(timeout);
+          const files = t.files.map((f) => f.name);
+          const native = files.some((name) => !needsTranscode(path.extname(name).toLowerCase()));
+          results[hash] = { native, files };
+          // Don't destroy — keep for potential playback
+          t.files.forEach((f) => { try { f.deselect(); } catch {} });
+          resolve();
+        });
+        t.on("error", () => { clearTimeout(timeout); resolve(); });
+      } catch {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+  }));
+
+  res.json(results);
+});
+
 interface TorrentPlayResult {
   infoHash: string;
   fileIndex: number;

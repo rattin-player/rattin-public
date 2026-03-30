@@ -75,6 +75,28 @@ export default function Detail() {
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const results = await searchStreams(title, year, type, season, episode, imdbId);
       setStreams(results);
+      // Resolve actual file formats in background
+      if (results.length > 0) {
+        const hashes = results.map((s: { infoHash: string }) => s.infoHash).filter(Boolean);
+        fetch("/api/resolve-formats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ infoHashes: hashes }),
+        })
+          .then((r) => r.json())
+          .then((formats: Record<string, { native: boolean }>) => {
+            setStreams((prev) =>
+              prev?.map((s: { infoHash: string; tags: string[] }) => {
+                const info = formats[s.infoHash];
+                if (info?.native && !s.tags.includes("Native")) {
+                  return { ...s, tags: [...s.tags, "Native"] };
+                }
+                return s;
+              }) ?? null
+            );
+          })
+          .catch(() => {});
+      }
     } catch {
       setStreams([]);
     }
