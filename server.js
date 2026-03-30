@@ -108,6 +108,17 @@ function trackStreamClose(infoHash) {
   }, 2 * 60 * 1000);
 }
 
+// Middleware that auto-tracks stream open/close for any /api/stream* route.
+// INVARIANT: Every endpoint that serves torrent data MUST go through this
+// middleware, or the idle timer will destroy the torrent prematurely.
+function streamTracking(req, res, next) {
+  const infoHash = req.params.infoHash;
+  if (!infoHash) return next();
+  trackStreamOpen(infoHash);
+  res.on("close", () => trackStreamClose(infoHash));
+  next();
+}
+
 // Verify a file is actually media by probing its content with ffprobe.
 // Returns { valid, format, streams } or { valid: false, reason }.
 const probeCache = new Map(); // filePath -> result
@@ -672,7 +683,7 @@ app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req, res) =>
 });
 
 // Stream endpoint
-app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
+app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
   if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
@@ -682,9 +693,6 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   if (!isAllowedFile(file.name)) {
     return res.status(403).json({ error: "File type not allowed" });
   }
-
-  trackStreamOpen(req.params.infoHash);
-  res.on("close", () => trackStreamClose(req.params.infoHash));
 
   const ext = path.extname(file.name).toLowerCase();
   const fileIdx = parseInt(req.params.fileIndex, 10);
