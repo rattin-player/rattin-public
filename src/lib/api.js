@@ -3,6 +3,7 @@ const TMDB_IMG = "https://image.tmdb.org/t/p";
 const img = (path, size = "w500") => (path ? `${TMDB_IMG}/${size}${path}` : null);
 export const backdrop = (path) => img(path, "original");
 export const poster = (path, size = "w342") => img(path, size);
+export const still = (path) => img(path, "w300");
 
 async function get(url) {
   const res = await fetch(url);

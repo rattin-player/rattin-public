@@ -286,18 +286,34 @@
 
 .episode-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
+  align-items: stretch;
+  gap: 0;
   background: var(--bg-surface);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  overflow: hidden;
   transition: border-color var(--transition), background var(--transition);
 }
 
 .episode-card:hover {
   border-color: var(--border-light);
   background: var(--bg-elevated);
+}
+
+.episode-thumb {
+  width: 120px;
+  height: auto;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.episode-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
 }
 
 .episode-info {
@@ -336,6 +352,17 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.episode-overview:hover {
+  color: var(--text-primary);
+}
+
+.episode-overview.expanded {
+  -webkit-line-clamp: unset;
+  display: block;
 }
 
 .episode-actions {
@@ -588,4 +615,40 @@
   min-width: 60px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Mobile: picker stacks vertically, names wrap ── */
+@media (max-width: 768px) {
+  .picker-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .picker-item-name {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .picker-item-meta {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  .picker-size {
+    min-width: auto;
+    text-align: left;
+  }
+  /* Episode cards stack on mobile */
+  .episode-card {
+    flex-direction: column;
+  }
+  .episode-thumb {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
 }

@@ -3,6 +3,29 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { formatTime } from "../lib/utils";
 import "./Remote.css";
 
+// ── State machine constants ──
+const S = {
+  NO_SESSION: "NO_SESSION",
+  CONNECTING: "CONNECTING",
+  SESSION_EXPIRED: "SESSION_EXPIRED",
+  CONNECTED_IDLE: "CONNECTED_IDLE",
+  CONNECTED_PLAYING: "CONNECTED_PLAYING",
+  PLAYER_OFFLINE: "PLAYER_OFFLINE",
+  RECONNECTING: "RECONNECTING",
+  CONNECTION_LOST: "CONNECTION_LOST",
+};
+
+async function probeSession(sessionId) {
+  try {
+    const res = await fetch(`/api/rc/session/${sessionId}`);
+    if (res.status === 404) return "expired";
+    const data = await res.json();
+    return data.playerOnline ? "online" : "offline";
+  } catch {
+    return "unreachable";
+  }
+}
+
 export default function Remote() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -17,113 +40,106 @@ export default function Remote() {
     }
   }, [token]);
 
-  // ── Connection state ──
-  const [connStatus, setConnStatus] = useState("connecting"); // "connecting" | "connected" | "offline" | "reconnecting" | "lost"
-  const [state, setState] = useState(null);
+  // ── Core state ──
+  const [remoteState, setRemoteState] = useState(sessionId ? S.CONNECTING : S.NO_SESSION);
+  const [state, setState] = useState(null); // playback state from PC
+  const [connectAttempt, setConnectAttempt] = useState(0); // increment to retry SSE
   const esRef = useRef(null);
-  const lastStateTs = useRef(0);
-  const reconnectCount = useRef(0);
-  const offlineSince = useRef(null);
+  const failCount = useRef(0);
 
-  // ── Optimistic local state (volume, seek, play/pause) ──
-  const [localVolume, setLocalVolume] = useState(null); // null = use server value
+  // ── Optimistic local state ──
+  const [localVolume, setLocalVolume] = useState(null);
   const localVolumeTimeout = useRef(null);
   const [seekDragging, setSeekDragging] = useState(false);
   const [seekDragValue, setSeekDragValue] = useState(0);
   const seekBarRef = useRef(null);
   const dragRef = useRef({ dragging: false, value: 0, duration: 0 });
-
-  // ── Last known good values (never show 0:00 / 0:00) ──
-  const lastGood = useRef({ currentTime: 0, duration: 0 });
-  const [optimisticPlaying, setOptimisticPlaying] = useState(null); // null = use server
+  const [optimisticPlaying, setOptimisticPlaying] = useState(null);
   const optimisticPlayingTimeout = useRef(null);
-  const [optimisticSeekTime, setOptimisticSeekTime] = useState(null); // null = use server
+  const [optimisticSeekTime, setOptimisticSeekTime] = useState(null);
   const optimisticSeekTimeout = useRef(null);
+
+  // ── Last known good values ──
+  const lastGood = useRef({ currentTime: 0, duration: 0 });
 
   // Persist session
   useEffect(() => {
     if (sessionId) localStorage.setItem("rc-session", sessionId);
   }, [sessionId]);
 
-  // ── SSE connection with resilience ──
+  // ── SSE connection with probe-based expiry detection ──
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) { setRemoteState(S.NO_SESSION); return; }
     let closed = false;
+    failCount.current = 0;
 
-    function connect() {
+    async function connect() {
       if (closed) return;
+
+      // Probe session first to detect expiry before opening SSE
+      const probe = await probeSession(sessionId);
+      if (closed) return;
+      if (probe === "expired") { setRemoteState(S.SESSION_EXPIRED); return; }
+
       const es = new EventSource(`/api/rc/events?session=${sessionId}&role=remote`);
       esRef.current = es;
 
       es.addEventListener("state", (e) => {
         const parsed = JSON.parse(e.data);
-        lastStateTs.current = Date.now();
-        reconnectCount.current = 0;
-
-        // Update lastGood only with meaningful values
+        failCount.current = 0;
         if (parsed.duration > 0) lastGood.current.duration = parsed.duration;
         if (parsed.currentTime > 0 || (parsed.duration > 0 && parsed.currentTime === 0)) {
           lastGood.current.currentTime = parsed.currentTime;
         }
-
-        // Clear optimistic seek if server caught up (within 2s of target)
+        // Clear optimistic overrides when server catches up
         if (optimisticSeekTimeout.current && parsed.currentTime > 0) {
           clearTimeout(optimisticSeekTimeout.current);
           optimisticSeekTimeout.current = null;
           setOptimisticSeekTime(null);
         }
-
-        // Clear optimistic play/pause if server matches
-        if (optimisticPlaying !== null && parsed.playing === optimisticPlaying) {
-          setOptimisticPlaying(null);
-        }
-
         setState(parsed);
+        setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
       });
 
       es.addEventListener("connected", () => {
-        setConnStatus("connected");
-        reconnectCount.current = 0;
-        offlineSince.current = null;
+        failCount.current = 0;
+        // We know player is online, but we wait for state event to determine idle vs playing
+        setRemoteState((prev) =>
+          prev === S.CONNECTED_PLAYING ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE
+        );
       });
+
       es.addEventListener("disconnected", () => {
-        setConnStatus("offline");
-        if (!offlineSince.current) offlineSince.current = Date.now();
+        setRemoteState(S.PLAYER_OFFLINE);
       });
 
-      es.onopen = () => {
-        setConnStatus((prev) => prev === "reconnecting" ? "reconnecting" : "connecting");
-      };
-
-      es.onerror = () => {
-        reconnectCount.current++;
-        if (reconnectCount.current > 1) {
-          setConnStatus("reconnecting");
+      es.onerror = async () => {
+        failCount.current++;
+        if (failCount.current > 10) {
+          es.close();
+          // Final probe to distinguish expired vs network
+          const finalProbe = await probeSession(sessionId);
+          if (finalProbe === "expired") setRemoteState(S.SESSION_EXPIRED);
+          else setRemoteState(S.CONNECTION_LOST);
+        } else if (failCount.current > 2) {
+          // Probe to check if session expired during reconnection
+          const midProbe = await probeSession(sessionId);
+          if (midProbe === "expired") {
+            es.close();
+            setRemoteState(S.SESSION_EXPIRED);
+          } else {
+            setRemoteState(S.RECONNECTING);
+          }
         }
-        // After many failed reconnects, mark as lost
-        if (reconnectCount.current > 15) {
-          setConnStatus("lost");
-        }
       };
-
-      return es;
     }
 
-    const es = connect();
-
-    // Watchdog: if no state received in 10s while supposedly connected, mark as reconnecting
-    const watchdog = setInterval(() => {
-      if (state?.infoHash && Date.now() - lastStateTs.current > 10000 && connStatus === "connected") {
-        setConnStatus("reconnecting");
-      }
-    }, 5000);
-
+    connect();
     return () => {
       closed = true;
-      clearInterval(watchdog);
-      if (esRef.current) esRef.current.close();
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
-  }, [sessionId]);
+  }, [sessionId, connectAttempt]);
 
   // ── Send command ──
   const sendCommand = useCallback((action, value) => {
@@ -135,7 +151,22 @@ export default function Remote() {
     }).catch(() => {});
   }, [sessionId]);
 
-  // ── Optimistic play/pause ──
+  // ── Actions ──
+  function retry() {
+    failCount.current = 0;
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setRemoteState(S.CONNECTING);
+    setConnectAttempt((c) => c + 1);
+  }
+
+  function clearSession() {
+    localStorage.removeItem("rc-session");
+    localStorage.removeItem("rc-token");
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setRemoteState(S.NO_SESSION);
+    setState(null);
+  }
+
   function handleTogglePlay() {
     const newPlaying = !(state?.playing);
     setOptimisticPlaying(newPlaying);
@@ -144,17 +175,14 @@ export default function Remote() {
     sendCommand("toggle-play");
   }
 
-  // ── Optimistic volume ──
   function handleVolumeChange(e) {
     const vol = parseFloat(e.target.value);
     setLocalVolume(vol);
     sendCommand("volume", vol);
-    // Clear local override after server state should have caught up
     clearTimeout(localVolumeTimeout.current);
     localVolumeTimeout.current = setTimeout(() => setLocalVolume(null), 2000);
   }
 
-  // ── Optimistic skip ──
   function handleSkip(delta) {
     const ct = getDisplayTime();
     const dur = getDisplayDuration();
@@ -165,7 +193,7 @@ export default function Remote() {
     sendCommand("seek-relative", delta);
   }
 
-  // ── Seek bar touch/mouse handling ──
+  // ── Seek bar ──
   function getSeekRatio(e) {
     const rect = seekBarRef.current.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -201,7 +229,6 @@ export default function Remote() {
       setSeekDragging(false);
       const maxSeekable = dragRef.current.duration * (state?.dlProgress ?? 1);
       const clamped = Math.min(dragRef.current.value, maxSeekable);
-      // Optimistic: show seek target immediately
       setOptimisticSeekTime(clamped);
       clearTimeout(optimisticSeekTimeout.current);
       optimisticSeekTimeout.current = setTimeout(() => setOptimisticSeekTime(null), 5000);
@@ -219,19 +246,17 @@ export default function Remote() {
     };
   }, [seekDragging, sendCommand]);
 
-  // ── Display helpers: never show 0/0, use optimistic values ──
+  // ── Display helpers ──
   function getDisplayTime() {
     if (seekDragging) return seekDragValue;
     if (optimisticSeekTime !== null) return optimisticSeekTime;
-    const serverTime = state?.currentTime || 0;
-    if (serverTime > 0) return serverTime;
-    return lastGood.current.currentTime;
+    const st = state?.currentTime || 0;
+    return st > 0 ? st : lastGood.current.currentTime;
   }
 
   function getDisplayDuration() {
-    const serverDur = state?.duration || 0;
-    if (serverDur > 0) return serverDur;
-    return lastGood.current.duration;
+    const sd = state?.duration || 0;
+    return sd > 0 ? sd : lastGood.current.duration;
   }
 
   function getDisplayPlaying() {
@@ -244,106 +269,107 @@ export default function Remote() {
     return state?.volume ?? 1;
   }
 
-  // ── Connection status label ──
-  function connLabel() {
-    switch (connStatus) {
-      case "connected": return "Connected";
-      case "connecting": return "Connecting...";
-      case "reconnecting": return "Reconnecting...";
-      case "offline": return "Player offline";
-      default: return "Unknown";
-    }
-  }
+  // ── Render by state ──
 
-  function connClass() {
-    if (connStatus === "connected") return "online";
-    if (connStatus === "reconnecting" || connStatus === "connecting") return "reconnecting";
-    return "offline";
-  }
-
-  // ── No session ──
-  if (!sessionId) {
+  // NO_SESSION
+  if (remoteState === S.NO_SESSION) {
     return (
       <div className="remote-page">
-        <div className="remote-no-session">
-          <p>No session found. Scan a QR code or open the remote link from your PC.</p>
-          <button onClick={() => navigate("/")}>Go Home</button>
+        <div className="remote-center-state">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--text-muted)">
+            <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z" />
+          </svg>
+          <h3>No Session</h3>
+          <p>Scan a QR code from the player on your PC to connect this device as a remote.</p>
         </div>
       </div>
     );
   }
 
-  // ── Connection irrevocably lost ──
-  if (connStatus === "lost") {
+  // CONNECTING
+  if (remoteState === S.CONNECTING) {
     return (
       <div className="remote-page">
-        <div className="remote-lost">
-          <div className="remote-lost-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--text-muted)">
-              <path d="M24 8.98C20.93 5.9 16.69 4 12 4S3.07 5.9 0 8.98l2.83 2.83C5.24 9.4 8.42 8 12 8s6.76 1.4 9.17 3.81L24 8.98z" opacity="0.3"/>
-              <path d="M2 16l2.83 2.83L12 11.66l7.17 7.17L22 16 12 6 2 16zm10-1.5l4.24 4.24L12 22.98l-4.24-4.24L12 14.5z"/>
+        <div className="remote-center-state">
+          <div className="remote-spinner" />
+          <p>Connecting to player...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // SESSION_EXPIRED
+  if (remoteState === S.SESSION_EXPIRED) {
+    return (
+      <div className="remote-page">
+        <div className="remote-center-state">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--yellow)">
+            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+          </svg>
+          <h3>Session Expired</h3>
+          <p>This remote session no longer exists. The server may have restarted or the session timed out.</p>
+          <p>Open the pairing screen on your PC to get a fresh QR code.</p>
+          <div className="remote-state-actions">
+            <button className="remote-action-btn" onClick={retry}>Retry</button>
+            <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // CONNECTION_LOST
+  if (remoteState === S.CONNECTION_LOST) {
+    return (
+      <div className="remote-page">
+        <div className="remote-center-state">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--red)">
+            <path d="M24 8.98C20.93 5.9 16.69 4 12 4S3.07 5.9 0 8.98l2.83 2.83C5.24 9.4 8.42 8 12 8s6.76 1.4 9.17 3.81L24 8.98z" opacity="0.3"/>
+            <path d="M2 16l2.83 2.83L12 11.66l7.17 7.17L22 16 12 6 2 16zm10-1.5l4.24 4.24L12 22.98l-4.24-4.24L12 14.5z"/>
+          </svg>
+          <h3>Connection Lost</h3>
+          <p>Could not reconnect to the player. Open the pairing screen on your PC to scan a new QR code.</p>
+          <div className="remote-state-actions">
+            <button className="remote-action-btn" onClick={retry}>Retry Connection</button>
+            <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // PLAYER_OFFLINE
+  if (remoteState === S.PLAYER_OFFLINE) {
+    return (
+      <div className="remote-page">
+        <div className="remote-center-state">
+          <div className="remote-pulse-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--yellow)">
+              <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
             </svg>
           </div>
-          <h3 className="remote-lost-title">Connection Lost</h3>
-          <p className="remote-lost-desc">
-            The remote session was disconnected. Open the pairing screen on your PC player to get a fresh QR code, then scan it to reconnect.
-          </p>
-          <button className="remote-action-btn" onClick={() => {
-            // Clear stale session and retry
-            reconnectCount.current = 0;
-            offlineSince.current = null;
-            setConnStatus("connecting");
-            // Re-trigger SSE effect by toggling state
-            if (esRef.current) { esRef.current.close(); esRef.current = null; }
-            const es = new EventSource(`/api/rc/events?session=${sessionId}&role=remote`);
-            esRef.current = es;
-            es.addEventListener("state", (e) => {
-              const parsed = JSON.parse(e.data);
-              lastStateTs.current = Date.now();
-              reconnectCount.current = 0;
-              if (parsed.duration > 0) lastGood.current.duration = parsed.duration;
-              if (parsed.currentTime > 0) lastGood.current.currentTime = parsed.currentTime;
-              if (optimisticSeekTimeout.current) {
-                clearTimeout(optimisticSeekTimeout.current);
-                optimisticSeekTimeout.current = null;
-                setOptimisticSeekTime(null);
-              }
-              setState(parsed);
-            });
-            es.addEventListener("connected", () => { setConnStatus("connected"); reconnectCount.current = 0; offlineSince.current = null; });
-            es.addEventListener("disconnected", () => { setConnStatus("offline"); });
-            es.onerror = () => {
-              reconnectCount.current++;
-              if (reconnectCount.current > 15) setConnStatus("lost");
-              else if (reconnectCount.current > 1) setConnStatus("reconnecting");
-            };
-          }}>
-            Retry Connection
-          </button>
+          <h3>Player Offline</h3>
+          <p>Waiting for the player to come back online...</p>
+          <button className="remote-clear-link" onClick={clearSession}>Forget Session</button>
         </div>
       </div>
     );
   }
 
-  const hasPlayback = state && state.infoHash;
-  const ct = getDisplayTime();
-  const dur = getDisplayDuration();
-  const progress = dur > 0 ? (ct / dur) * 100 : 0;
-  const dlProgress = state?.dlProgress ?? 1;
-  const dlPct = dlProgress * 100;
-  const isPlaying = getDisplayPlaying();
-  const volume = getDisplayVolume();
+  // ── CONNECTED states (IDLE, PLAYING, RECONNECTING) ──
+  const isReconnecting = remoteState === S.RECONNECTING;
+  const hasPlayback = state?.infoHash;
 
-  // ── No active playback ──
-  if (!hasPlayback) {
+  // CONNECTED_IDLE (no playback)
+  if (remoteState === S.CONNECTED_IDLE || (!hasPlayback && !isReconnecting)) {
     return (
       <div className="remote-page">
-        <div className="remote-waiting">
-          <div className={`remote-status ${connClass()}`}>
+        <div className="remote-center-state">
+          <div className={`remote-status online`}>
             <span className="remote-status-dot" />
-            {connLabel()}
+            Connected
           </div>
-          <p className="remote-waiting-text">No active playback. Browse content to start playing.</p>
+          <p>No active playback. Browse content to start playing.</p>
           <button className="remote-action-btn" onClick={() => navigate(`/?session=${sessionId}`)}>
             Browse Content
           </button>
@@ -352,17 +378,31 @@ export default function Remote() {
     );
   }
 
-  // ── Active playback — remote controls ──
+  // CONNECTED_PLAYING (+ RECONNECTING overlay)
+  const ct = getDisplayTime();
+  const dur = getDisplayDuration();
+  const progress = dur > 0 ? (ct / dur) * 100 : 0;
+  const dlPct = (state?.dlProgress ?? 1) * 100;
+  const isPlaying = getDisplayPlaying();
+  const volume = getDisplayVolume();
+
   return (
-    <div className="remote-page">
-      <div className={`remote-status ${connClass()}`}>
+    <div className={`remote-page ${isReconnecting ? "remote-dimmed" : ""}`}>
+      {isReconnecting && (
+        <div className="remote-reconnecting-overlay">
+          <div className="remote-spinner" />
+          <span>Reconnecting...</span>
+        </div>
+      )}
+
+      <div className={`remote-status ${isReconnecting ? "reconnecting" : "online"}`}>
         <span className="remote-status-dot" />
-        {connLabel()}
+        {isReconnecting ? "Reconnecting..." : "Connected"}
       </div>
 
       <div className="remote-title-area">
-        <h2 className="remote-title">{state.title || "Playing"}</h2>
-        {state.tags?.length > 0 && (
+        <h2 className="remote-title">{state?.title || "Playing"}</h2>
+        {state?.tags?.length > 0 && (
           <div className="remote-tags">
             {state.tags.map((t) => <span key={t} className="remote-tag">{t}</span>)}
           </div>
@@ -370,20 +410,20 @@ export default function Remote() {
       </div>
 
       <div className="remote-play-area">
-        <button className="remote-skip-btn" onClick={() => handleSkip(-10)}>
+        <button className="remote-skip-btn" onClick={() => handleSkip(-10)} disabled={isReconnecting}>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
           </svg>
           <span>10</span>
         </button>
-        <button className="remote-play-btn" onClick={handleTogglePlay}>
+        <button className="remote-play-btn" onClick={handleTogglePlay} disabled={isReconnecting}>
           {isPlaying ? (
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
           ) : (
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           )}
         </button>
-        <button className="remote-skip-btn" onClick={() => handleSkip(10)}>
+        <button className="remote-skip-btn" onClick={() => handleSkip(10)} disabled={isReconnecting}>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M11.5 8c2.65 0 5.05.99 6.9 2.6L22 7v9h-9l3.62-3.62C15.23 11.22 13.46 10.5 11.5 10.5c-3.54 0-6.55 2.31-7.6 5.5L1.53 15.22C2.92 11.03 6.85 8 11.5 8z"/>
           </svg>
@@ -396,8 +436,8 @@ export default function Remote() {
         <div
           className="remote-seek-bar"
           ref={seekBarRef}
-          onMouseDown={onSeekStart}
-          onTouchStart={onSeekStart}
+          onMouseDown={isReconnecting ? undefined : onSeekStart}
+          onTouchStart={isReconnecting ? undefined : onSeekStart}
         >
           <div className="remote-seek-track">
             <div className="remote-seek-downloaded" style={{ width: `${dlPct}%` }} />
@@ -415,20 +455,20 @@ export default function Remote() {
         <input
           type="range"
           className="remote-volume-slider"
-          min="0"
-          max="1"
-          step="0.05"
+          min="0" max="1" step="0.05"
           value={volume}
           onChange={handleVolumeChange}
+          disabled={isReconnecting}
         />
       </div>
 
-      {state.subs?.length > 0 && (
+      {state?.subs?.length > 0 && (
         <div className="remote-sub-row">
           <select
             className="remote-sub-select"
             value={state.activeSub || ""}
             onChange={(e) => sendCommand("subtitle", e.target.value)}
+            disabled={isReconnecting}
           >
             <option value="">Subtitles Off</option>
             {state.subs.map((s) => (
@@ -439,15 +479,15 @@ export default function Remote() {
       )}
 
       <div className="remote-bottom-row">
-        <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)}>
+        <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isReconnecting}>
           Browse
         </button>
-        <button className="remote-fullscreen-btn" onClick={() => sendCommand("toggle-fullscreen")}>
+        <button className="remote-fullscreen-btn" onClick={() => sendCommand("toggle-fullscreen")} disabled={isReconnecting}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
           </svg>
         </button>
-        <button className="remote-stop-btn" onClick={() => sendCommand("stop-stream")}>
+        <button className="remote-stop-btn" onClick={() => sendCommand("stop-stream")} disabled={isReconnecting}>
           Stop
         </button>
       </div>

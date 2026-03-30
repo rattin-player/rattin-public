@@ -51,9 +51,20 @@ export function PlayerProvider({ children }) {
   const dlProgressRef = useRef(0); // set by Player.jsx from status poll
 
   // Remote control session (TV mode — not remote mode)
-  const [rcSessionId, setRcSessionId] = useState(null);
-  const [rcAuthToken, setRcAuthToken] = useState(null);
+  // Persist in sessionStorage so PC page reload preserves the session
+  const [rcSessionId, setRcSessionId] = useState(() => sessionStorage.getItem("rc-sessionId") || null);
+  const [rcAuthToken, setRcAuthToken] = useState(() => sessionStorage.getItem("rc-authToken") || null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
+
+  useEffect(() => {
+    if (rcSessionId) sessionStorage.setItem("rc-sessionId", rcSessionId);
+    else sessionStorage.removeItem("rc-sessionId");
+  }, [rcSessionId]);
+
+  useEffect(() => {
+    if (rcAuthToken) sessionStorage.setItem("rc-authToken", rcAuthToken);
+    else sessionStorage.removeItem("rc-authToken");
+  }, [rcAuthToken]);
   const rcEventSourceRef = useRef(null);
   const stateReportTimer = useRef(null);
   const lastReportedState = useRef(null);
