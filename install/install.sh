@@ -9,6 +9,8 @@ set -euo pipefail
 INSTALLER_VERSION="1.0.0"
 INSTALL_DIR="/opt/rattin"
 
+trap 'rm -rf /tmp/rattin-node-download.tar.xz /tmp/rattin-ffmpeg-download.tar.xz /tmp/rattin-app-download.tar.gz /tmp/rattin-ffmpeg-extract' EXIT
+
 # ---------------------------------------------------------------------------
 # Color helpers
 # ---------------------------------------------------------------------------
@@ -234,6 +236,18 @@ uninstall() {
     rm -rf "$INSTALL_DIR"
 
     log info "Rattin uninstalled successfully."
+}
+
+# ---------------------------------------------------------------------------
+# create_user() — create the rattin system user
+# ---------------------------------------------------------------------------
+create_user() {
+    if ! id rattin >/dev/null 2>&1; then
+        useradd --system --shell /usr/sbin/nologin --home-dir "$INSTALL_DIR" rattin
+        log info "Created system user: rattin"
+    else
+        log info "System user rattin already exists"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -474,10 +488,15 @@ install_app() {
         mkdir -p "$INSTALL_DIR/app"
 
         # Extract new tarball
-        tar -xzf "$tmpfile" -C "$INSTALL_DIR/app/" --strip-components=1
+        if ! tar -xzf "$tmpfile" -C "$INSTALL_DIR/app/" --strip-components=1; then
+            rollback
+            die "Failed to extract app update"
+        fi
 
         # Restore .env from backup
-        cp "$INSTALL_DIR/app.bak/.env" "$INSTALL_DIR/app/.env" 2>/dev/null || true
+        if ! cp "$INSTALL_DIR/app.bak/.env" "$INSTALL_DIR/app/.env" 2>/dev/null; then
+            log warn "No .env found in backup to restore"
+        fi
     else
         # Fresh install — extract directly
         mkdir -p "$INSTALL_DIR/app"
@@ -544,7 +563,7 @@ configure_tmdb() {
     echo ""
 
     local TMDB_KEY
-    read -p "Paste your TMDB API key: " TMDB_KEY < /dev/tty
+    read -rp "Paste your TMDB API key: " TMDB_KEY < /dev/tty
 
     if [ -z "$TMDB_KEY" ]; then
         log warn "No TMDB API key provided. You can add it later to $INSTALL_DIR/app/.env"
@@ -565,7 +584,11 @@ configure_tmdb() {
         log info "TMDB API key validated successfully"
     fi
 
-    echo "TMDB_API_KEY=$TMDB_KEY" > "$INSTALL_DIR/app/.env"
+    if [ -f "$INSTALL_DIR/app/.env" ]; then
+        # Remove existing TMDB_API_KEY line if present, then append
+        sed -i '/^TMDB_API_KEY=/d' "$INSTALL_DIR/app/.env"
+    fi
+    echo "TMDB_API_KEY=$TMDB_KEY" >> "$INSTALL_DIR/app/.env"
     log info "TMDB API key saved to $INSTALL_DIR/app/.env"
 }
 
@@ -576,7 +599,7 @@ set_permissions() {
     log info "Setting permissions..."
 
     chown -R rattin:rattin "$INSTALL_DIR"
-    chmod 0600 "$INSTALL_DIR/app/.env"
+    [ -f "$INSTALL_DIR/app/.env" ] && chmod 0600 "$INSTALL_DIR/app/.env"
 
     if [ "$SELINUX_ENFORCING" = "true" ]; then
         log info "Configuring SELinux contexts..."
@@ -715,7 +738,9 @@ start_and_verify() {
     if [ "$MODE" = "update" ]; then
         rollback
         systemctl start rattin 2>/dev/null || true
-        log warn "Update failed health check — rolled back to previous version."
+        die "Update failed. Rolled back to previous version."
+    else
+        log warn "Fresh install health check failed. The app may need a manual restart."
     fi
 }
 
@@ -777,6 +802,7 @@ main() {
 
     # Create directory structure (on fresh install; dirs already exist on update)
     if [ "$MODE" = "fresh" ]; then
+        create_user
         create_dirs
     fi
 
