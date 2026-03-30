@@ -804,9 +804,10 @@ app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
 
   // Try fingerprint detection if we have 2+ files
   if (siblingPaths.length >= 2) {
+    // Pass all siblings (not just 2) so detectIntro can skip corrupt files
     const ordered = currentPath
-      ? [currentPath, ...siblingPaths.filter((p) => p !== currentPath)].slice(0, 2)
-      : siblingPaths.slice(0, 2);
+      ? [currentPath, ...siblingPaths.filter((p) => p !== currentPath)]
+      : [...siblingPaths];
     try {
       const result = await detectIntro(ordered);
       if (result) {
