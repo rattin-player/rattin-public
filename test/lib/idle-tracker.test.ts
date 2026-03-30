@@ -1,6 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createIdleTracker, IDLE_SOFT, IDLE_HARD } from "../../lib/idle-tracker.js";
+import type { IdleTracker } from "../../lib/types.js";
 
 describe("idle-tracker constants", () => {
   it("IDLE_SOFT is 5 minutes", () => {
@@ -17,7 +18,7 @@ describe("idle-tracker constants", () => {
 });
 
 describe("createIdleTracker", () => {
-  let tracker;
+  let tracker: IdleTracker;
 
   beforeEach(() => {
     tracker = createIdleTracker();
@@ -46,8 +47,8 @@ describe("createIdleTracker", () => {
 
   it("middleware calls next() and touches activity", () => {
     let nextCalled = false;
-    const req = {};
-    const res = {};
+    const req = {} as Parameters<typeof tracker.middleware>[0];
+    const res = {} as Parameters<typeof tracker.middleware>[1];
     tracker.middleware(req, res, () => { nextCalled = true; });
     assert.equal(nextCalled, true);
     assert.ok(tracker.idleDuration() < 10);

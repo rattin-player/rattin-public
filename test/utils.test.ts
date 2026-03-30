@@ -55,8 +55,8 @@ describe("formatTime", () => {
   });
 
   it("handles null/undefined", () => {
-    assert.equal(formatTime(null), "0:00");
-    assert.equal(formatTime(undefined), "0:00");
+    assert.equal(formatTime(null as unknown as number), "0:00");
+    assert.equal(formatTime(undefined as unknown as number), "0:00");
   });
 });
 

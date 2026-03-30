@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
 
 describe("TMDB routes", () => {
-  let baseUrl, close;
+  let baseUrl: string, close: () => Promise<void>;
 
   before(async () => {
     ({ baseUrl, close } = await startTestServer());
@@ -79,7 +79,7 @@ describe("TMDB routes", () => {
     it("returns 400 for invalid type", async () => {
       const res = await fetch(`${baseUrl}/api/reviews/invalid/123`);
       assert.equal(res.status, 400);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Invalid type");
     });
 

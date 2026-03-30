@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "build:exe": "pkg . --targets node20-win-x64 --output dist/rattin.exe --options max-old-space-size=4096",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx/esm --test test/*.test.js test/lib/*.test.js test/routes/*.test.js"
+    "test": "node --import tsx/esm --test test/*.test.ts test/lib/*.test.ts test/routes/*.test.ts"
   },
   "pkg": {
     "assets": [

@@ -1,9 +1,10 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, mockClient } from "../helpers/mock-app.js";
+import type { MockClient } from "../helpers/mock-app.js";
 
 describe("GET /api/stream/:infoHash/:fileIndex", () => {
-  let baseUrl, close, client;
+  let baseUrl: string, close: () => Promise<void>, client: MockClient;
 
   before(async () => {
     client = mockClient();
@@ -17,7 +18,7 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
   it("returns 404 for unknown torrent", async () => {
     const res = await fetch(`${baseUrl}/api/stream/unknownhash/0`);
     assert.equal(res.status, 404);
-    const body = await res.json();
+    const body = await res.json() as { error: string };
     assert.equal(body.error, "Torrent not found");
   });
 
@@ -46,7 +47,7 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
 
     const res = await fetch(`${baseUrl}/api/stream/streamtest-nofile/0`);
     assert.equal(res.status, 404);
-    const body = await res.json();
+    const body = await res.json() as { error: string };
     assert.equal(body.error, "File not found");
   });
 
@@ -84,7 +85,7 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
 
     const res = await fetch(`${baseUrl}/api/stream/streamtest/0`);
     assert.equal(res.status, 403);
-    const body = await res.json();
+    const body = await res.json() as { error: string };
     assert.equal(body.error, "File type not allowed");
   });
 });

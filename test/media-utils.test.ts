@@ -115,7 +115,7 @@ Actual text`;
     const vtt = srtToVtt(srt);
     assert.ok(vtt.includes("Actual text"));
     // The empty block should be skipped
-    const blocks = vtt.split("\n\n").filter(b => b.trim() && b.trim() !== "WEBVTT");
+    const blocks = vtt.split("\n\n").filter((b: string) => b.trim() && b.trim() !== "WEBVTT");
     assert.equal(blocks.length, 1);
   });
 });
@@ -183,10 +183,10 @@ describe("throttle", () => {
   });
 
   it("passes arguments through", () => {
-    let received;
-    const fn = throttle((...args) => { received = args; }, 1000);
+    let received: unknown[];
+    const fn = throttle((...args: unknown[]) => { received = args; }, 1000);
     fn("a", "b");
-    assert.deepEqual(received, ["a", "b"]);
+    assert.deepEqual(received!, ["a", "b"]);
   });
 });
 

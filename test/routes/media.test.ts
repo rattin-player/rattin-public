@@ -1,6 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, mockClient } from "../helpers/mock-app.js";
+import type { MockClient, TestServerResult } from "../helpers/mock-app.js";
 
 /** Build a mock torrent that the media routes can find and work with. */
 function makeMockTorrent(infoHash = "mediatest") {
@@ -35,11 +36,11 @@ function makeMockTorrent(infoHash = "mediatest") {
 }
 
 describe("Media routes", () => {
-  let baseUrl, close, client;
+  let baseUrl: string, close: () => Promise<void>, client: MockClient;
 
   before(async () => {
     client = mockClient();
-    ({ baseUrl, close } = await startTestServer({ client }));
+    ({ baseUrl, close } = await startTestServer({ client }) as TestServerResult);
   });
 
   after(async () => {
@@ -52,7 +53,7 @@ describe("Media routes", () => {
     it("returns 404 when torrent not found", async () => {
       const res = await fetch(`${baseUrl}/api/duration/nonexistent/0`);
       assert.equal(res.status, 404);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Torrent not found");
     });
 
@@ -62,7 +63,7 @@ describe("Media routes", () => {
       try {
         const res = await fetch(`${baseUrl}/api/duration/mediatest-duration/0`);
         assert.equal(res.status, 200);
-        const body = await res.json();
+        const body = await res.json() as { duration: number | null };
         assert.ok(Object.hasOwn(body, "duration"), "response should have duration key");
         assert.equal(body.duration, null);
       } finally {
@@ -77,7 +78,7 @@ describe("Media routes", () => {
     it("returns 404 when torrent not found", async () => {
       const res = await fetch(`${baseUrl}/api/subtitles/nonexistent/0`);
       assert.equal(res.status, 404);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Torrent not found");
     });
   });
@@ -88,7 +89,7 @@ describe("Media routes", () => {
     it("returns 404 when torrent not found", async () => {
       const res = await fetch(`${baseUrl}/api/audio-tracks/nonexistent/0`);
       assert.equal(res.status, 404);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Torrent not found");
     });
   });
@@ -99,7 +100,7 @@ describe("Media routes", () => {
     it("returns 404 when torrent not found", async () => {
       const res = await fetch(`${baseUrl}/api/subtitle/nonexistent/0`);
       assert.equal(res.status, 404);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Torrent not found");
     });
   });
@@ -113,7 +114,7 @@ describe("Media routes", () => {
       try {
         const res = await fetch(`${baseUrl}/api/intro/mediatest-intro/0`);
         assert.equal(res.status, 200);
-        const body = await res.json();
+        const body = await res.json() as { detected: boolean };
         assert.ok(Object.hasOwn(body, "detected"), "response should have detected key");
         assert.equal(typeof body.detected, "boolean");
       } finally {

@@ -1,12 +1,14 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
+import type { TestServerResult } from "../helpers/mock-app.js";
+import type { TorrentClient } from "../../lib/types.js";
 
 describe("Status routes", () => {
-  let baseUrl, close, client;
+  let baseUrl: string, close: () => Promise<void>, client: TorrentClient;
 
   before(async () => {
-    ({ baseUrl, close, client } = await startTestServer());
+    ({ baseUrl, close, client } = await startTestServer() as TestServerResult);
   });
 
   after(async () => {
@@ -19,7 +21,7 @@ describe("Status routes", () => {
     it("returns 404 for unknown torrent", async () => {
       const res = await fetch(`${baseUrl}/api/status/unknownhash`);
       assert.equal(res.status, 404);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.equal(body.error, "Torrent not found");
     });
 
@@ -43,12 +45,18 @@ describe("Status routes", () => {
           },
         ],
       };
-      client.torrents.push(mockTorrent);
+      (client.torrents as unknown[]).push(mockTorrent);
 
       try {
         const res = await fetch(`${baseUrl}/api/status/abc123`);
         assert.equal(res.status, 200);
-        const body = await res.json();
+        const body = await res.json() as {
+          infoHash: string;
+          files: unknown[];
+          downloadSpeed: number;
+          numPeers: number;
+          progress: number;
+        };
         assert.equal(body.infoHash, "abc123");
         assert.ok(Array.isArray(body.files), "files should be an array");
         assert.equal(body.files.length, 1);
@@ -69,7 +77,7 @@ describe("Status routes", () => {
         method: "POST",
       });
       assert.equal(res.status, 200);
-      const body = await res.json();
+      const body = await res.json() as { ok: boolean };
       assert.equal(body.ok, true);
     });
   });
