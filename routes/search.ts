@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile } from "../lib/torrent-scoring.js";
-import { fmtBytes, throttle } from "../lib/media-utils.js";
+import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
+import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
 
 interface SearchResult {
@@ -257,17 +258,28 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
 
   try {
     const scored = results
-      .map((r) => ({
-        name: r.name,
-        infoHash: r.infoHash,
-        seeders: r.seeders,
-        leechers: r.leechers,
-        size: r.size,
-        source: r.source,
-        score: scoreTorrent(r, title, year, type || "movie"),
-        tags: parseTags(r.name),
-        seasonPack: r.seasonPack || false,
-      }))
+      .map((r) => {
+        const tags = parseTags(r.name);
+        // Check if torrent is already loaded — if so, inspect actual file extensions
+        const loaded = client.torrents.find((t) => t.infoHash === r.infoHash);
+        if (loaded && loaded.files.length > 0) {
+          const hasNativeFile = loaded.files.some((f) =>
+            !needsTranscode(path.extname(f.name).toLowerCase())
+          );
+          if (hasNativeFile) tags.push("Native");
+        }
+        return {
+          name: r.name,
+          infoHash: r.infoHash,
+          seeders: r.seeders,
+          leechers: r.leechers,
+          size: r.size,
+          source: r.source,
+          score: scoreTorrent(r, title, year, type || "movie"),
+          tags,
+          seasonPack: r.seasonPack || false,
+        };
+      })
       .filter((r) => r.score > 0)
       .sort((a, b) => b.seeders - a.seeders || b.score - a.score)
       .slice(0, 20);

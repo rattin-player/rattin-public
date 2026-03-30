@@ -76,12 +76,6 @@ export function parseTags(name: string): string[] {
   if (/remux/i.test(n)) tags.push("Remux");
   if (/hdr10\+/i.test(n)) tags.push("HDR10+");
   else if (/hdr/i.test(n)) tags.push("HDR");
-  // Browser-native: MP4/M4V/WebM containers support full seeking via Range requests.
-  // H264/H.264 in torrent names almost always means MP4 container.
-  // MKV/x265/HEVC/AV1 need transcoding so exclude those.
-  const hasNonNative = /\.mkv\b|\bMKV\b|\bx265\b|\bHEVC\b|\bAV1\b/i.test(n);
-  const hasNative = /\.mp4\b|\bMP4\b|\.m4v\b|\.webm\b|\bWEBM\b|\bH\.?264\b|\bx264\b|\bAVC\b/i.test(n);
-  if (hasNative && !hasNonNative) tags.push("Native");
   return tags;
 }
 
