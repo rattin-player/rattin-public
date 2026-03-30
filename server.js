@@ -137,6 +137,7 @@ function trackStreamClose(infoHash) {
     }
     streamTracker.delete(infoHash);
   }, 2 * 60 * 1000);
+  if (entry.idleTimer.unref) entry.idleTimer.unref();
 }
 
 // Middleware that auto-tracks stream open/close for any /api/stream* route.
