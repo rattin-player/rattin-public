@@ -70,7 +70,16 @@ export function startTestServer(overrides = {}) {
       resolve({
         baseUrl,
         server,
-        close: () => new Promise((res) => server.close(res)),
+        close: () => {
+          // Stop the idle tracker to prevent process from hanging
+          if (appResult.idleTracker) appResult.idleTracker.stop();
+          return new Promise((res) => {
+            // Stop accepting new connections
+            server.close(res);
+            // Force-close existing keep-alive/SSE connections
+            if (server.closeAllConnections) server.closeAllConnections();
+          });
+        },
         ...appResult,
       });
     });

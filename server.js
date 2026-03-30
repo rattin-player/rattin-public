@@ -370,7 +370,7 @@ function rcSession(id) {
 }
 
 // Expire sessions after 24h of inactivity
-setInterval(() => {
+const _rcExpiry = setInterval(() => {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const [id, s] of rcSessions) {
     if (s.lastActivity < cutoff) {
@@ -381,6 +381,7 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
+if (_rcExpiry.unref) _rcExpiry.unref();
 
 function sseWrite(res, event, data) {
   try {
@@ -1456,7 +1457,8 @@ function torrentInfo(torrent) {
 
 // ---- TMDB API Proxy (with cache) ----
 
-startCacheJanitor(log);
+const _cacheJanitorTmdb = startCacheJanitor(log);
+if (_cacheJanitorTmdb?.unref) _cacheJanitorTmdb.unref();
 
 function tmdbErrorStatus(e) {
   return e.message === "TMDB_API_KEY not set" ? 503 : 502;
@@ -2149,7 +2151,7 @@ function findEpisodeFile(torrent, season, episode) {
 }
 
 // Cache janitor — every 5 min, prune entries for removed torrents
-setInterval(() => {
+const _cacheJanitor = setInterval(() => {
   const activeHashes = new Set(client.torrents.map((t) => t.infoHash));
   let pruned = pruneOrphans(activeHashes, statSync);
   // Availability cache has its own TTL — prune separately
@@ -2159,6 +2161,7 @@ setInterval(() => {
   }
   if (pruned > 0) log("info", "Cache janitor", { pruned, ...cacheStats(), availability: availabilityCache.size });
 }, 5 * 60 * 1000);
+if (_cacheJanitor.unref) _cacheJanitor.unref();
 
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -2171,7 +2174,11 @@ app.get("/{*splat}", (req, res) => {
   };
 }
 
-const isMain = !process.env.TEST_MODE;
+// Detect if this file is being run directly (not imported by tests)
+const isMain = process.argv[1] && (
+  process.argv[1] === fileURLToPath(import.meta.url) ||
+  process.argv[1].endsWith("/server.js")
+);
 if (isMain) {
   const { app, client, transcodeJobs } = createApp();
 
