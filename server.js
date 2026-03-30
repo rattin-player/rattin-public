@@ -10,6 +10,8 @@ import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.
 import { buildSeekIndex, findSeekOffset, waitForPieces, getSeekByteRange } from "./lib/seek-index.js";
 import { jobKey, registerCache, cleanupHash, pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 import { getFileOffset, getFileEndPiece, hasPiece } from "./lib/torrent-compat.js";
+import { BoundedMap } from "./lib/bounded-map.js";
+import { createIdleTracker } from "./lib/idle-tracker.js";
 import {
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
   ALLOWED_EXTENSIONS, BROWSER_NATIVE,
@@ -30,10 +32,12 @@ const TRANSCODE_PATH = "/tmp/rattin-transcoded";
 
 const transcodeJobs = new Map();
 const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
-const seekIndexCache = new Map(); // "infoHash:fileIndex" -> [{ time, offset }, ...]
+const seekIndexCache = new BoundedMap(20); // "infoHash:fileIndex" -> [{ time, offset }, ...]
 const seekIndexPending = new Set(); // jobKeys currently being indexed (prevents duplicate attempts)
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 const streamTracker = new Map(); // infoHash -> { count, idleTimer }
+const availabilityCache = new Map(); // "title:year" -> { available: bool, ts: number }
+const AVAIL_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 registerCache("transcodeJobs", transcodeJobs, "hash:index");
 registerCache("durationCache", durationCache, "hash:index");
@@ -117,7 +121,7 @@ function streamTracking(req, res, next) {
 
 // Verify a file is actually media by probing its content with ffprobe.
 // Returns { valid, format, streams } or { valid: false, reason }.
-const probeCache = new Map(); // filePath -> result
+const probeCache = new BoundedMap(50); // filePath -> result
 registerCache("probeCache", probeCache, "path");
 function probeMedia(filePath) {
   if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath));
@@ -267,6 +271,47 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, "public")));
+
+// ── Idle detection — escalating cleanup when app is unused ──
+const idleTracker = createIdleTracker({
+  logFn: log,
+  onSoftIdle() {
+    // Purge expired TMDB entries
+    tmdbCache.purgeExpired();
+    // Destroy torrents that have no active streams
+    for (const torrent of [...client.torrents]) {
+      const st = streamTracker.get(torrent.infoHash);
+      if (!st || st.count === 0) {
+        cleanupTorrentCaches(torrent.infoHash, torrent);
+        log("info", "Soft idle: removing unstreamed torrent", { name: torrent.name });
+        torrent.destroy({ destroyStore: false });
+        if (st?.idleTimer) clearTimeout(st.idleTimer);
+        streamTracker.delete(torrent.infoHash);
+      }
+    }
+  },
+  onHardIdle() {
+    // Nuclear option: clear everything
+    for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
+    transcodeJobs.clear();
+    durationCache.clear();
+    seekIndexCache.clear();
+    seekIndexPending.clear();
+    activeFiles.clear();
+    availabilityCache.clear();
+    tmdbCache.clear();
+    for (const [, st] of streamTracker) { if (st.idleTimer) clearTimeout(st.idleTimer); }
+    streamTracker.clear();
+    probeCache.clear();
+    for (const torrent of [...client.torrents]) {
+      log("info", "Hard idle: removing torrent", { name: torrent.name });
+      torrent.destroy({ destroyStore: false });
+    }
+    log("info", "Hard idle cleanup complete");
+  },
+});
+app.use("/api", idleTracker.middleware);
+idleTracker.start();
 
 // ── Auth persistence ───────────────────────────────────────────────────
 // Stable token generated once per server start. After the PC passes nginx
@@ -1390,9 +1435,6 @@ async function searchTorrents(query, imdbId) {
 
 
 // ---- Availability Check ----
-
-const availabilityCache = new Map(); // "title:year" -> { available: bool, ts: number }
-const AVAIL_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 async function checkOneAvailability(title, year, type) {
   const cacheKey = `${title.toLowerCase()}:${year || ""}`;

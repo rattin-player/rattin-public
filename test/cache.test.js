@@ -120,16 +120,20 @@ describe("TTLCache", () => {
   });
 
   describe("eviction", () => {
-    it("evicts oldest entries when exceeding max", () => {
-      // TTLCache has MAX_ENTRIES = 5000, we can't easily test that without
-      // inserting 5001 entries. Instead, verify the mechanism works by checking
-      // that the cache doesn't grow unbounded.
+    it("evicts oldest entries when exceeding default max (500)", () => {
       cache = new TTLCache(60000);
-      for (let i = 0; i < 5100; i++) {
+      for (let i = 0; i < 550; i++) {
         cache.set(`key${i}`, i);
       }
-      // After eviction, size should be <= MAX_ENTRIES
-      assert.ok(cache.size <= 5000, `Cache size ${cache.size} exceeds max`);
+      assert.ok(cache.size <= 500, `Cache size ${cache.size} exceeds default max`);
+    });
+
+    it("respects custom maxEntries", () => {
+      cache = new TTLCache(60000, { maxEntries: 10 });
+      for (let i = 0; i < 15; i++) {
+        cache.set(`key${i}`, i);
+      }
+      assert.ok(cache.size <= 10, `Cache size ${cache.size} exceeds custom max`);
     });
   });
 
@@ -139,7 +143,13 @@ describe("TTLCache", () => {
       cache.set("b", 2);
       const s = cache.stats();
       assert.equal(s.entries, 2);
-      assert.equal(s.maxEntries, 5000);
+      assert.equal(s.maxEntries, 500);
+    });
+
+    it("reflects custom maxEntries in stats", () => {
+      cache = new TTLCache(60000, { maxEntries: 100 });
+      const s = cache.stats();
+      assert.equal(s.maxEntries, 100);
     });
   });
 });
