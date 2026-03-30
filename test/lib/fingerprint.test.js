@@ -80,10 +80,10 @@ describe("crossCorrelate", () => {
     assert.equal(result, null);
   });
 
-  it("rejects match shorter than MIN_INTRO_SECS (30s)", () => {
-    const intro = lcgArr(0x55667788, 20);
-    const fpA = [...noiseA(100), ...intro, ...noiseA(80)];
-    const fpB = [...noiseB(100), ...intro, ...noiseB(80)];
+  it("rejects match shorter than MIN_INTRO_SECS (20s)", () => {
+    const intro = lcgArr(0x55667788, 15);
+    const fpA = [...noiseA(100), ...intro, ...noiseA(85)];
+    const fpB = [...noiseB(100), ...intro, ...noiseB(85)];
     const result = crossCorrelate(fpA, fpB);
     assert.equal(result, null);
   });
