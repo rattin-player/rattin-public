@@ -85,15 +85,21 @@ export default function Detail() {
         })
           .then((r) => r.json())
           .then((formats: Record<string, { native: boolean }>) => {
-            setStreams((prev) =>
-              prev?.map((s: { infoHash: string; tags: string[] }) => {
+            setStreams((prev) => {
+              if (!prev) return null;
+              const updated = prev.map((s: { infoHash: string; tags: string[] }) => {
                 const info = formats[s.infoHash];
                 if (info?.native && !s.tags.includes("Native")) {
                   return { ...s, tags: [...s.tags, "Native"] };
                 }
                 return s;
-              }) ?? null
-            );
+              });
+              // Sort native sources to the top, preserve order within each group
+              return [
+                ...updated.filter((s: { tags: string[] }) => s.tags.includes("Native")),
+                ...updated.filter((s: { tags: string[] }) => !s.tags.includes("Native")),
+              ];
+            });
           })
           .catch(() => {});
       }
