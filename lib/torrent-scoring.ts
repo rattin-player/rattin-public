@@ -76,10 +76,8 @@ export function parseTags(name: string): string[] {
   if (/remux/i.test(n)) tags.push("Remux");
   if (/hdr10\+/i.test(n)) tags.push("HDR10+");
   else if (/hdr/i.test(n)) tags.push("HDR");
-  // Browser-native format: MP4 container with H.264 = full seeking without transcode
-  const isNativeContainer = /\.mp4\b/i.test(n) || /\.m4v\b/i.test(n) || /\.webm\b/i.test(n);
-  const isNonNativeCodec = /\bx265\b|\bhevc\b|\bav1\b/i.test(n);
-  if (isNativeContainer && !isNonNativeCodec) tags.push("Native");
+  // Browser-native container: MP4/M4V/WebM served directly with Range support = full seeking
+  if (/\.mp4\b/i.test(n) || /\.m4v\b/i.test(n) || /\.webm\b/i.test(n)) tags.push("Native");
   return tags;
 }
 
