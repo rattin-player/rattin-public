@@ -160,21 +160,15 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
       }
 
       // Smart seek: check if pieces at seek target are on disk → use fast disk read
+      // Only works with keyframe-precise offsets (Method 1). Byte estimates (Method 2)
+      // are not keyframe-aligned and can land on sparse data, breaking -c:v copy mode.
       if (seekTo > 0) {
         let byteStart: number | null = null;
 
-        // Method 1: precise keyframe index
+        // Method 1: precise keyframe index (required for disk-read + copy seek)
         if (seekIndexCache.has(cacheKey)) {
           const seekPoint = findSeekOffset(seekIndexCache.get(cacheKey)!, seekTo);
           if (seekPoint) byteStart = seekPoint.offset;
-        }
-
-        // Method 2: estimate from duration
-        if (byteStart === null) {
-          const dur = durationCache.get(cacheKey);
-          if (dur && dur > 0) {
-            byteStart = Math.floor((seekTo / dur) * file.length);
-          }
         }
 
         if (byteStart !== null) {
