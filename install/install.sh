@@ -629,8 +629,8 @@ setup_service() {
             cat > "$INSTALL_DIR/start.sh" <<'LAUNCHER'
 #!/bin/bash
 export PATH="/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:$PATH"
-export DOWNLOAD_DIR="/opt/rattin/data/downloads"
-export TRANSCODE_DIR="/opt/rattin/data/transcoded"
+export DOWNLOAD_PATH="/opt/rattin/data/downloads"
+export TRANSCODE_PATH="/opt/rattin/data/transcoded"
 export HOST="127.0.0.1"
 cd /opt/rattin/app
 exec /opt/rattin/runtime/node/bin/node --max-old-space-size=256 --env-file=.env server.js
@@ -659,8 +659,8 @@ WorkingDirectory=/opt/rattin/app
 Environment=PATH=/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:/usr/bin:/bin
 Environment=PORT=3000
 Environment=HOST=127.0.0.1
-Environment=DOWNLOAD_DIR=/opt/rattin/data/downloads
-Environment=TRANSCODE_DIR=/opt/rattin/data/transcoded
+Environment=DOWNLOAD_PATH=/opt/rattin/data/downloads
+Environment=TRANSCODE_PATH=/opt/rattin/data/transcoded
 ExecStart=/opt/rattin/runtime/node/bin/node --max-old-space-size=256 --env-file=.env server.js
 Restart=always
 RestartSec=5
