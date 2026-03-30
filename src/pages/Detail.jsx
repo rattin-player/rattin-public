@@ -360,6 +360,47 @@ export default function Detail() {
 
         {reviews && (reviews.reviews.length > 0 || reviews.reddit.length > 0) && (
           <div className="reviews-section">
+            {reviews.reddit.length > 0 && (
+              <div className="reviews-block">
+                <div className="reviews-header">
+                  <h3>Reddit Discussions</h3>
+                </div>
+                <div className="reddit-list">
+                  {reviews.reddit.map((t) => (
+                    <a
+                      key={t.id}
+                      className="reddit-card"
+                      href={t.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <div className="reddit-card-main">
+                        <span className="reddit-title">{t.title}</span>
+                        <div className="reddit-meta">
+                          <span className="reddit-sub">{t.subreddit}</span>
+                          {t.flair && <span className="reddit-flair">{t.flair}</span>}
+                        </div>
+                      </div>
+                      <div className="reddit-stats">
+                        <span className="reddit-score">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                          </svg>
+                          {t.score >= 1000 ? `${(t.score / 1000).toFixed(1)}k` : t.score}
+                        </span>
+                        <span className="reddit-comments">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                          </svg>
+                          {t.comments >= 1000 ? `${(t.comments / 1000).toFixed(1)}k` : t.comments}
+                        </span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {reviews.reviews.length > 0 && (
               <div className="reviews-block">
                 <div className="reviews-header">
@@ -410,47 +451,6 @@ export default function Detail() {
                       </div>
                     );
                   })}
-                </div>
-              </div>
-            )}
-
-            {reviews.reddit.length > 0 && (
-              <div className="reviews-block">
-                <div className="reviews-header">
-                  <h3>Reddit Discussions</h3>
-                </div>
-                <div className="reddit-list">
-                  {reviews.reddit.map((t) => (
-                    <a
-                      key={t.id}
-                      className="reddit-card"
-                      href={t.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <div className="reddit-card-main">
-                        <span className="reddit-title">{t.title}</span>
-                        <div className="reddit-meta">
-                          <span className="reddit-sub">{t.subreddit}</span>
-                          {t.flair && <span className="reddit-flair">{t.flair}</span>}
-                        </div>
-                      </div>
-                      <div className="reddit-stats">
-                        <span className="reddit-score">
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
-                          </svg>
-                          {t.score >= 1000 ? `${(t.score / 1000).toFixed(1)}k` : t.score}
-                        </span>
-                        <span className="reddit-comments">
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                          </svg>
-                          {t.comments >= 1000 ? `${(t.comments / 1000).toFixed(1)}k` : t.comments}
-                        </span>
-                      </div>
-                    </a>
-                  ))}
                 </div>
               </div>
             )}
