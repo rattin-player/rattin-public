@@ -69,6 +69,7 @@ download() {
 # Argument parsing
 # ---------------------------------------------------------------------------
 UNINSTALL=false
+USE_SERVICE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -588,6 +589,163 @@ set_permissions() {
     log info "Permissions set successfully"
 }
 
+# ---------------------------------------------------------------------------
+# setup_service() — configure systemd service or manual launcher
+# ---------------------------------------------------------------------------
+setup_service() {
+    log info "Configuring service..."
+
+    local answer
+    read -p "Start rattin automatically on boot? [Y/n]: " answer < /dev/tty || answer=""
+
+    case "$answer" in
+        [nN]|[nN][oO])
+            USE_SERVICE=false
+            log info "User declined auto-start — writing manual launcher"
+
+            cat > "$INSTALL_DIR/start.sh" <<'LAUNCHER'
+#!/bin/bash
+export PATH="/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:$PATH"
+export DOWNLOAD_DIR="/opt/rattin/data/downloads"
+export TRANSCODE_DIR="/opt/rattin/data/transcoded"
+export HOST="127.0.0.1"
+cd /opt/rattin/app
+exec /opt/rattin/runtime/node/bin/node --max-old-space-size=256 --env-file=.env server.js
+LAUNCHER
+            chmod +x "$INSTALL_DIR/start.sh"
+            log info "Manual launcher written to $INSTALL_DIR/start.sh"
+            return 0
+            ;;
+        *)
+            USE_SERVICE=true
+            log info "Setting up systemd service..."
+            ;;
+    esac
+
+    # Write rattin.service
+    cat > /etc/systemd/system/rattin.service <<'EOF'
+[Unit]
+Description=Rattin
+After=network.target
+
+[Service]
+Type=simple
+User=rattin
+Group=rattin
+WorkingDirectory=/opt/rattin/app
+Environment=PATH=/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:/usr/bin:/bin
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+Environment=DOWNLOAD_DIR=/opt/rattin/data/downloads
+Environment=TRANSCODE_DIR=/opt/rattin/data/transcoded
+ExecStart=/opt/rattin/runtime/node/bin/node --max-old-space-size=256 --env-file=.env server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Write rattin-cleanup.timer
+    cat > /etc/systemd/system/rattin-cleanup.timer <<'EOF'
+[Unit]
+Description=Clean old rattin data
+
+[Timer]
+OnCalendar=*-*-* */6:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Write rattin-cleanup.service
+    cat > /etc/systemd/system/rattin-cleanup.service <<'EOF'
+[Unit]
+Description=Clean old rattin data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find /opt/rattin/data -type f -mmin +1440 -delete
+ExecStart=/usr/bin/find /opt/rattin/data -type d -empty -delete
+EOF
+
+    systemctl daemon-reload
+    systemctl enable rattin
+    systemctl enable rattin-cleanup.timer
+
+    log info "Systemd service configured and enabled"
+}
+
+# ---------------------------------------------------------------------------
+# start_and_verify() — start the app and health-check it
+# ---------------------------------------------------------------------------
+start_and_verify() {
+    if [ "$USE_SERVICE" = "false" ]; then
+        echo ""
+        log info "To start Rattin, run: $INSTALL_DIR/start.sh"
+        return 0
+    fi
+
+    log info "Starting rattin service..."
+    systemctl start rattin
+
+    log info "Waiting for health check..."
+    local attempts=0
+    while [ "$attempts" -lt 10 ]; do
+        if command -v curl >/dev/null 2>&1; then
+            if curl -sf http://localhost:3000 >/dev/null 2>&1; then
+                log info "Health check passed"
+                return 0
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -qO /dev/null http://localhost:3000 2>/dev/null; then
+                log info "Health check passed"
+                return 0
+            fi
+        fi
+        attempts=$((attempts + 1))
+        sleep 2
+    done
+
+    log warn "Health check failed after 10 attempts. Service may still be starting."
+    log warn "Recent logs:"
+    journalctl -u rattin --no-pager -n 20 2>/dev/null || true
+
+    if [ "$MODE" = "update" ]; then
+        rollback
+        systemctl start rattin 2>/dev/null || true
+        log warn "Update failed health check — rolled back to previous version."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# print_success() — display final success banner
+# ---------------------------------------------------------------------------
+print_success() {
+    echo ""
+    echo "============================================"
+    echo "  Rattin installed successfully!"
+    echo "============================================"
+    echo ""
+    echo "  URL:        http://localhost:3000"
+    echo "  Install:    $INSTALL_DIR"
+    echo "  Data:       $INSTALL_DIR/data"
+    echo "  Config:     $INSTALL_DIR/app/.env"
+
+    if [ "$USE_SERVICE" = "true" ]; then
+        echo "  Logs:       journalctl -u rattin"
+    else
+        echo "  Start:      $INSTALL_DIR/start.sh"
+        echo "  Logs:       (run start.sh to see output)"
+    fi
+
+    echo "  Uninstall:  curl -fsSL URL | sudo bash -s -- --uninstall"
+    echo ""
+    echo "============================================"
+    echo ""
+}
+
 # ==============================================================================
 # Main
 # ==============================================================================
@@ -634,11 +792,20 @@ main() {
     fi
 
     set_permissions
+    setup_service
+    start_and_verify
 
     # Mark as installer-managed
     echo "$INSTALLER_VERSION" > "$INSTALL_DIR/.installer-version"
 
-    log info "Installation completed successfully"
+    # Clean up backups on successful update
+    if [ "$MODE" = "update" ]; then
+        rm -rf "$INSTALL_DIR/app.bak"
+        rm -rf "$INSTALL_DIR/runtime/node.bak"
+        log info "Update backups cleaned up"
+    fi
+
+    print_success
 }
 
 main
