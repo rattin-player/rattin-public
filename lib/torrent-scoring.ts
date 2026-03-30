@@ -77,7 +77,10 @@ export function parseTags(name: string): string[] {
   if (/hdr10\+/i.test(n)) tags.push("HDR10+");
   else if (/hdr/i.test(n)) tags.push("HDR");
   // Browser-native container: MP4/M4V/WebM served directly with Range support = full seeking
-  if (/\.mp4\b/i.test(n) || /\.m4v\b/i.test(n) || /\.webm\b/i.test(n)) tags.push("Native");
+  // Torrent names use both ".mp4" (extension) and "MP4" (tag) conventions
+  const hasMkv = /\.mkv\b|\bMKV\b/i.test(n);
+  const hasMp4 = /\.mp4\b|\bMP4\b|\.m4v\b|\.webm\b|\bWEBM\b/i.test(n);
+  if (hasMp4 && !hasMkv) tags.push("Native");
   return tags;
 }
 
