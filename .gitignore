@@ -7,4 +7,7 @@ public/index.html
 .env
 .npm/
 .claude/
+CLAUDE.md
+HANDOFF.md
+PRE-MORTEM.md
 docs/superpowers/
