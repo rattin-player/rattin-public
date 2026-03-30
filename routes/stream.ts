@@ -90,7 +90,13 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
       if (i === fileIdx) return;
       const ext = path.extname(f.name).toLowerCase();
       if (SUBTITLE_EXTENSIONS.includes(ext)) {
-        try { f.select(); } catch {}
+        // Use deselect then torrent.select with priority to force download
+        try {
+          f.deselect();
+          const startPiece = Math.floor(f.offset / torrent.pieceLength);
+          const endPiece = Math.floor((f.offset + f.length - 1) / torrent.pieceLength);
+          torrent.select(startPiece, endPiece, 1);
+        } catch {}
       } else if (f.length > 0) {
         try { f.deselect(); } catch {}
       }
