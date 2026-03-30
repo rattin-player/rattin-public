@@ -82,6 +82,7 @@ export default function Player() {
   const [introRange, setIntroRange] = useState(null); // { start, end }
   const [showSkipIntro, setShowSkipIntro] = useState(false);
   const skipIntroHideTimer = useRef(null);
+  const wasInIntroRange = useRef(false);
 
   const seekOffsetRef = useRef(0);
   const isLiveRef = useRef(false);
@@ -284,12 +285,17 @@ export default function Player() {
     function checkIntro() {
       const t = getEffectiveTime();
       const inRange = t >= introRange.start && t < introRange.end;
-      setShowSkipIntro(inRange);
-      if (inRange) {
-        // Auto-hide after 10s
+      if (inRange && !wasInIntroRange.current) {
+        // Entering intro range — show button and start auto-hide timer once
+        setShowSkipIntro(true);
         clearTimeout(skipIntroHideTimer.current);
         skipIntroHideTimer.current = setTimeout(() => setShowSkipIntro(false), 10000);
+      } else if (!inRange && wasInIntroRange.current) {
+        // Leaving intro range — hide button
+        setShowSkipIntro(false);
+        clearTimeout(skipIntroHideTimer.current);
       }
+      wasInIntroRange.current = inRange;
     }
 
     v.addEventListener("timeupdate", checkIntro);

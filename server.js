@@ -48,7 +48,8 @@ registerCache("seekIndexPending", seekIndexPending, "hash:index");
 registerCache("activeFiles", activeFiles, "hash");
 
 const introCache = new BoundedMap(100); // "tmdbId:season" -> { intro_start, intro_end, source }
-registerCache("introCache", introCache, "hash:index");
+// Not registered with torrent-caches — keyed by tmdbId, not infoHash.
+// BoundedMap LRU eviction handles size; entries are cross-torrent so cleanup-by-hash doesn't apply.
 
 function log(level, msg, data) {
   const ts = new Date().toISOString().slice(11, 23);
