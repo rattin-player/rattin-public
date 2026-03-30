@@ -40,6 +40,39 @@ interface UseSubtitlesReturn {
   LANG_MAP: Record<string, string>;
 }
 
+/** Extract episode identifiers (e.g. "S01E03", "E03", "03") from a filename */
+export function extractEpisodeId(name: string): string | null {
+  const base = name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop() || "";
+  // Match S01E03, s1e3, etc.
+  const se = base.match(/[Ss]\d{1,2}[Ee](\d{1,3})/);
+  if (se) return se[0].toUpperCase();
+  // Match standalone E03, EP03
+  const ep = base.match(/[Ee][Pp]?(\d{1,3})/);
+  if (ep) return `E${ep[1].padStart(2, "0")}`;
+  // Match " - 03" or ".03." patterns common in anime (but not years like 2024)
+  const dash = base.match(/(?:^|[\s._-])(\d{2,3})(?:[\s._-]|$)/);
+  if (dash && parseInt(dash[1]) < 500) return `E${dash[1]}`;
+  return null;
+}
+
+/** Check if a subtitle file likely belongs to the given video file */
+export function subtitleMatchesVideo(subName: string, videoName: string): boolean {
+  const subBase = subName.replace(/\.[^.]+$/, "").split(/[/\\]/).pop()?.toLowerCase() || "";
+  const vidBase = videoName.replace(/\.[^.]+$/, "").split(/[/\\]/).pop()?.toLowerCase() || "";
+
+  // Exact base name match (e.g. "movie.srt" for "movie.mkv")
+  if (subBase === vidBase) return true;
+  // Sub starts with video base (e.g. "movie.en.srt" for "movie.mkv")
+  if (subBase.startsWith(vidBase)) return true;
+
+  // Episode-based matching for season packs
+  const subEp = extractEpisodeId(subName);
+  const vidEp = extractEpisodeId(videoName);
+  if (subEp && vidEp && subEp === vidEp) return true;
+
+  return false;
+}
+
 export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps: UseSubtitlesDeps): UseSubtitlesReturn {
   const { infoHash, fileIndex, subsRef, activeSubRef, preSelectedSub, isLiveRef, seekOffsetRef } = deps;
 
@@ -210,16 +243,24 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
     }
   }, [infoHash, fileIndex]);
 
-  // Load external subtitle files
+  // Load external subtitle files — only those matching the current video
   useEffect(() => {
     fetchStatus(infoHash).then((data) => {
       if (!data.files) return;
+      const fi = parseInt(fileIndex, 10);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const subFiles = data.files.filter((f: any) => f.isSubtitle);
-      if (subFiles.length > 0) {
+      const videoFile = data.files.find((f: any) => f.index === fi);
+      const videoName = videoFile?.name || "";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allSubs = data.files.filter((f: any) => f.isSubtitle);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let matched = allSubs.filter((f: any) => subtitleMatchesVideo(f.name, videoName));
+      // If no match (e.g. single video with loose subs), fall back to all
+      if (matched.length === 0 && allSubs.length > 0) matched = allSubs;
+      if (matched.length > 0) {
         setSubs((prev) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const external = subFiles.map((f: any) => ({
+          const external = matched.map((f: any) => ({
             value: `file:${f.index}`,
             label: guessLabel(f.name) + " (external)",
             fileIndex: f.index,
@@ -229,7 +270,7 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
         });
       }
     }).catch(() => {});
-  }, [infoHash]);
+  }, [infoHash, fileIndex]);
 
   // Restore active subtitle when returning from mini player
   useEffect(() => {
