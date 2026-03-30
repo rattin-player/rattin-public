@@ -13,7 +13,7 @@
     "rootDir": ".",
     "jsx": "react-jsx",
     "types": ["node"],
-    "allowJs": true,
+    "allowJs": false,
     "noEmit": true
   },
   "include": ["lib/**/*", "routes/**/*", "server.*", "test/**/*"],
