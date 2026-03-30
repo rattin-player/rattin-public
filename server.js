@@ -23,10 +23,10 @@ import {
   findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile,
 } from "./lib/torrent-scoring.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const app = express();
-const client = new WebTorrent();
+export function createApp(overrides = {}) {
+  const __dirname = overrides.__dirname || path.dirname(fileURLToPath(import.meta.url));
+  const app = express();
+  const client = overrides.client || new WebTorrent();
 
 const DOWNLOAD_PATH = "/tmp/rattin";
 const TRANSCODE_PATH = "/tmp/rattin-transcoded";
@@ -2164,20 +2164,32 @@ app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-function cleanup() {
-  log("info", "Shutting down...");
-  for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
-  client.destroy(() => {
-    log("info", "Stopped");
-    process.exit(0);
-  });
-  setTimeout(() => process.exit(1), 5000);
+  return {
+    app, client, transcodeJobs, durationCache, seekIndexCache, seekIndexPending,
+    activeFiles, completedFiles, streamTracker, activeTranscodes, availabilityCache,
+    probeCache, introCache, rcSessions, idleTracker, pcAuthToken,
+  };
 }
 
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
+const isMain = !process.env.TEST_MODE;
+if (isMain) {
+  const { app, client, transcodeJobs } = createApp();
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  log("info", `Rattin running at http://localhost:${PORT}`);
-});
+  function cleanup() {
+    console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
+    for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
+    client.destroy(() => {
+      console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 5000);
+  }
+
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://localhost:${PORT}`);
+  });
+}
