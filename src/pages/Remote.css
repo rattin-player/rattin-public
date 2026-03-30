@@ -682,3 +682,37 @@
   white-space: nowrap;
   font-family: var(--font-body);
 }
+
+/* Skip Intro Button */
+.remote-skip-intro {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  animation: skipIntroFadeIn 0.3s ease;
+  transition: background 0.15s;
+}
+
+.remote-skip-intro:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.remote-skip-intro:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@keyframes skipIntroFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -502,6 +502,19 @@ export default function Remote() {
         </button>
       </div>
 
+      {state?.introActive && state?.introEnd && (
+        <button
+          className="remote-skip-intro"
+          onClick={() => sendCommand("skip-intro")}
+          disabled={isReconnecting}
+        >
+          Skip Intro
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+          </svg>
+        </button>
+      )}
+
       <div className="remote-seek-area">
         <span className="remote-time">{formatTime(ct)}</span>
         <div
