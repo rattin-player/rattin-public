@@ -41,7 +41,13 @@ export default function Player() {
   const [dlSpeed, setDlSpeed] = useState(0);
   const [numPeers, setNumPeers] = useState(0);
   const [isLiveTranscode, setIsLiveTranscode] = useState(false);
-  const [seekOffset, setSeekOffset] = useState(0);
+  const [seekOffset, setSeekOffset] = useState(() => {
+    try {
+      const src = videoRef.current?.src;
+      if (src) return parseFloat(new URL(src).searchParams.get("t")) || 0;
+    } catch {}
+    return 0;
+  });
   const [transcodeReady, setTranscodeReady] = useState(false);
   const [subs, setSubsRaw] = useState(subsRef.current || []);
   const [activeSub, setActiveSubRaw] = useState(activeSubRef.current || "");
