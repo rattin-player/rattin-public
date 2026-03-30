@@ -98,3 +98,13 @@ export function fetchAudioTracks(infoHash, fileIndex) {
 export function fetchReviews(type, id) {
   return get(`/api/reviews/${type}/${id}`);
 }
+
+export function fetchIntroTimestamps(infoHash, fileIndex, { tmdbId, season, episode, title } = {}) {
+  const params = new URLSearchParams();
+  if (tmdbId) params.set("tmdbId", tmdbId);
+  if (season) params.set("season", season);
+  if (episode) params.set("episode", episode);
+  if (title) params.set("title", title);
+  const qs = params.toString();
+  return get(`/api/intro/${infoHash}/${fileIndex}${qs ? `?${qs}` : ""}`);
+}
