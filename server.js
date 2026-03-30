@@ -1623,21 +1623,25 @@ app.post("/api/auto-play", async (req, res) => {
       if (existing.files && existing.files.length > 0) {
         const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
         if (result) return res.json(result);
+        // Torrent is ready but no matching video — don't wait for "ready" (it already fired)
+        log("info", "Existing torrent has no matching video, retrying fresh", { infoHash: existing.infoHash });
+        try { existing.destroy({ destroyStore: false }); } catch {}
+      } else {
+        // Still loading metadata — wait for ready
+        log("info", "Waiting for existing torrent metadata", { infoHash: existing.infoHash });
+        try {
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
+            existing.on("ready", () => { clearTimeout(timeout); resolve(); });
+            existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
+          });
+          const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
+          if (result) return res.json(result);
+        } catch {}
+        // If still no good, remove the stuck torrent and try fresh
+        log("info", "Removing stuck torrent, retrying", { infoHash: existing.infoHash });
+        try { existing.destroy({ destroyStore: false }); } catch {}
       }
-      // Still loading metadata — wait for ready
-      log("info", "Waiting for existing torrent metadata", { infoHash: existing.infoHash });
-      try {
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
-          existing.on("ready", () => { clearTimeout(timeout); resolve(); });
-          existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
-        });
-        const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
-        if (result) return res.json(result);
-      } catch {}
-      // If still no good, remove the stuck torrent and try fresh
-      log("info", "Removing stuck torrent, retrying", { infoHash: existing.infoHash });
-      try { existing.destroy({ destroyStore: false }); } catch {}
     }
 
     await new Promise((resolve, reject) => {
@@ -1711,15 +1715,19 @@ app.post("/api/play-torrent", async (req, res) => {
       if (existing.files && existing.files.length > 0) {
         const result = respondWithTorrent(existing, season, episode, tags);
         if (result) return res.json(result);
+        // Torrent is ready but no matching video — don't wait for "ready" (it already fired)
+        log("info", "Existing torrent has no matching video, retrying fresh", { infoHash: existing.infoHash });
+        try { existing.destroy({ destroyStore: false }); } catch {}
+      } else {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
+          existing.on("ready", () => { clearTimeout(timeout); resolve(); });
+          existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
+        });
+        const result = respondWithTorrent(existing, season, episode, tags);
+        if (result) return res.json(result);
+        try { existing.destroy({ destroyStore: false }); } catch {}
       }
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
-        existing.on("ready", () => { clearTimeout(timeout); resolve(); });
-        existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
-      });
-      const result = respondWithTorrent(existing, season, episode, tags);
-      if (result) return res.json(result);
-      try { existing.destroy({ destroyStore: false }); } catch {}
     }
 
     await new Promise((resolve, reject) => {
