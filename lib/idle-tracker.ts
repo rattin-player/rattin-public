@@ -1,4 +1,4 @@
-// lib/idle-tracker.js
+// lib/idle-tracker.ts
 // App-level idle detection: tracks last user activity and triggers
 // escalating cleanup when the app sits unused.
 //
@@ -6,17 +6,20 @@
 //   IDLE_SOFT  (5 min) — purge expired TMDB entries, destroy unstreamed torrents
 //   IDLE_HARD (10 min) — destroy ALL torrents, clear all caches
 
-export const IDLE_SOFT = 5 * 60 * 1000;   // 5 minutes
-export const IDLE_HARD = 10 * 60 * 1000;  // 10 minutes
+import type { Request, Response, NextFunction } from "express";
+import type { IdleTrackerOpts, IdleTracker } from "./types.js";
+
+export const IDLE_SOFT: number = 5 * 60 * 1000;   // 5 minutes
+export const IDLE_HARD: number = 10 * 60 * 1000;  // 10 minutes
 const CHECK_INTERVAL = 60 * 1000;         // check every 1 minute
 
-export function createIdleTracker({ onSoftIdle, onHardIdle, logFn } = {}) {
+export function createIdleTracker({ onSoftIdle, onHardIdle, logFn }: IdleTrackerOpts = {}): IdleTracker {
   let lastActivity = Date.now();
   let softFired = false;
   let hardFired = false;
-  let timer = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
 
-  function touch() {
+  function touch(): void {
     lastActivity = Date.now();
     // Reset idle flags when user returns
     if (softFired || hardFired) {
@@ -26,11 +29,11 @@ export function createIdleTracker({ onSoftIdle, onHardIdle, logFn } = {}) {
     hardFired = false;
   }
 
-  function idleDuration() {
+  function idleDuration(): number {
     return Date.now() - lastActivity;
   }
 
-  function check() {
+  function check(): void {
     const idle = idleDuration();
     if (!hardFired && idle >= IDLE_HARD) {
       hardFired = true;
@@ -44,19 +47,19 @@ export function createIdleTracker({ onSoftIdle, onHardIdle, logFn } = {}) {
     }
   }
 
-  function start() {
+  function start(): void {
     if (timer) return;
     timer = setInterval(check, CHECK_INTERVAL);
     // Don't prevent process exit
     if (timer.unref) timer.unref();
   }
 
-  function stop() {
+  function stop(): void {
     if (timer) { clearInterval(timer); timer = null; }
   }
 
   // Express middleware — call touch() on every API request
-  function middleware(req, res, next) {
+  function middleware(_req: Request, _res: Response, next: NextFunction): void {
     touch();
     next();
   }

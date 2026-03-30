@@ -1,7 +1,18 @@
 import path from "path";
 import { VIDEO_EXTENSIONS } from "./media-utils.js";
+import type { TorrentResult } from "./types.js";
 
-export function scoreTorrent(result, title, year, type) {
+interface FileEntry {
+  name: string;
+  length: number;
+}
+
+interface FileMatch {
+  file: FileEntry;
+  index: number;
+}
+
+export function scoreTorrent(result: TorrentResult, title: string, year: number | undefined, type: string): number {
   let score = 0;
   const name = result.name.toLowerCase();
   const titleLower = title.toLowerCase();
@@ -35,8 +46,8 @@ export function scoreTorrent(result, title, year, type) {
   return score;
 }
 
-export function parseTags(name) {
-  const tags = [];
+export function parseTags(name: string): string[] {
+  const tags: string[] = [];
   const n = name;
   // Resolution
   if (/2160p/i.test(n)) tags.push("4K");
@@ -72,7 +83,7 @@ export function parseTags(name) {
  * Match episode patterns in a filename.
  * Returns true if the filename matches the given season/episode.
  */
-export function matchEpisodePattern(filename, season, episode) {
+export function matchEpisodePattern(filename: string, season: number, episode: number): boolean {
   const s = String(season).padStart(2, "0");
   const e = String(episode).padStart(2, "0");
   const sNum = String(season);
@@ -89,7 +100,7 @@ export function matchEpisodePattern(filename, season, episode) {
     new RegExp(`Ep[._\\s-]?${e}(?!\\d)`, "i"),        // Ep05, Ep.05
   ];
   // Use just the filename, not the full path with folders
-  const name = filename.split("/").pop();
+  const name = filename.split("/").pop() as string;
   return patterns.some((pat) => pat.test(name));
 }
 
@@ -97,9 +108,9 @@ export function matchEpisodePattern(filename, season, episode) {
  * Find the episode file in a list of files (plain objects with .name and .length).
  * Returns { file, index } or null.
  */
-export function findEpisodeFile(files, season, episode) {
+export function findEpisodeFile(files: FileEntry[] | null | undefined, season: number | undefined, episode: number | undefined): FileMatch | null {
   if (!files || !season || !episode) return findLargestVideoFile(files);
-  let best = null;
+  let best: FileMatch | null = null;
   files.forEach((f, i) => {
     const ext = path.extname(f.name).toLowerCase();
     if (!VIDEO_EXTENSIONS.includes(ext)) return;
@@ -114,8 +125,8 @@ export function findEpisodeFile(files, season, episode) {
  * Find the largest video file in a list of files.
  * Returns { file, index } or null.
  */
-export function findLargestVideoFile(files) {
-  let best = null;
+export function findLargestVideoFile(files: FileEntry[] | null | undefined): FileMatch | null {
+  let best: FileMatch | null = null;
   if (!files) return null;
   files.forEach((f, i) => {
     const ext = path.extname(f.name).toLowerCase();

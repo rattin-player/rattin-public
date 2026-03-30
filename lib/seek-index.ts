@@ -1,8 +1,9 @@
 import { spawn } from "child_process";
 import { getFileOffset } from "./torrent-compat.js";
+import type { SeekEntry, Torrent, TorrentFile } from "./types.js";
 
 // ── Seek Index ─────────────────────────────────────────────────────────
-// Builds a keyframe index (time → byte offset) from ffprobe output.
+// Builds a keyframe index (time -> byte offset) from ffprobe output.
 // Used to map seek times to torrent piece ranges for on-demand fetching.
 
 const BUFFER_SIZE = 10 * 1024 * 1024; // 10MB of data beyond seek point
@@ -10,10 +11,8 @@ const BUFFER_SIZE = 10 * 1024 * 1024; // 10MB of data beyond seek point
 /**
  * Build a keyframe index for a media file.
  * Returns [{ time: number, offset: number }, ...] sorted by time.
- * @param {string} filePath - Path to the file on disk
- * @param {number} [timeoutMs=15000] - Max time to wait for ffprobe
  */
-export function buildSeekIndex(filePath, timeoutMs = 15000) {
+export function buildSeekIndex(filePath: string, timeoutMs: number = 15000): Promise<SeekEntry[]> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffprobe", [
       "-v", "quiet",
@@ -25,20 +24,20 @@ export function buildSeekIndex(filePath, timeoutMs = 15000) {
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
-    proc.stdout.on("data", (d) => { out += d.toString(); });
+    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
 
     const timer = setTimeout(() => {
       proc.kill();
       reject(new Error("ffprobe timeout"));
     }, timeoutMs);
 
-    proc.on("close", (code) => {
+    proc.on("close", (code: number | null) => {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(`ffprobe exited with code ${code}`));
       try {
         const data = JSON.parse(out);
-        const packets = data.packets || [];
-        const index = [];
+        const packets: Array<{ pts_time: string; pos: string; flags: string }> = data.packets || [];
+        const index: SeekEntry[] = [];
         for (const pkt of packets) {
           const time = parseFloat(pkt.pts_time);
           const offset = parseInt(pkt.pos, 10);
@@ -50,11 +49,11 @@ export function buildSeekIndex(filePath, timeoutMs = 15000) {
         index.sort((a, b) => a.time - b.time);
         resolve(index);
       } catch (e) {
-        reject(new Error("Failed to parse ffprobe output: " + e.message));
+        reject(new Error("Failed to parse ffprobe output: " + (e as Error).message));
       }
     });
 
-    proc.on("error", (err) => {
+    proc.on("error", (err: Error) => {
       clearTimeout(timer);
       reject(err);
     });
@@ -63,11 +62,8 @@ export function buildSeekIndex(filePath, timeoutMs = 15000) {
 
 /**
  * Binary search the seek index for the keyframe at or before the target time.
- * @param {{ time: number, offset: number }[]} index
- * @param {number} timeSeconds
- * @returns {{ time: number, offset: number } | null}
  */
-export function findSeekOffset(index, timeSeconds) {
+export function findSeekOffset(index: SeekEntry[], timeSeconds: number): SeekEntry | null {
   if (!index || index.length === 0) return null;
 
   let lo = 0, hi = index.length - 1, best = 0;
@@ -89,18 +85,11 @@ export function findSeekOffset(index, timeSeconds) {
  * so the seek range becomes the sole active selection, forcing WebTorrent
  * to download those pieces first. Restores the file selection on completion.
  *
- * NOTE: torrent.critical() does NOT change download order — it only enables
+ * NOTE: torrent.critical() does NOT change download order -- it only enables
  * hotswapping. The only way to prioritize a piece range is to make it the
  * sole active selection via deselect/select.
- *
- * @param {object} torrent - WebTorrent torrent instance
- * @param {object} file - WebTorrent file instance
- * @param {number} byteStart - Start byte offset within the file
- * @param {number} byteEnd - End byte offset within the file
- * @param {number} [timeoutMs=30000] - Max time to wait
- * @returns {Promise<void>} Resolves when all pieces are available
  */
-export function waitForPieces(torrent, file, byteStart, byteEnd, timeoutMs = 30000) {
+export function waitForPieces(torrent: Torrent, file: TorrentFile, byteStart: number, byteEnd: number, timeoutMs: number = 30000): Promise<void> {
   const pieceLength = torrent.pieceLength;
   // Convert file-relative byte offsets to absolute torrent byte offsets
   const fileOffset = getFileOffset(file);
@@ -109,7 +98,7 @@ export function waitForPieces(torrent, file, byteStart, byteEnd, timeoutMs = 300
   const firstPiece = Math.floor(absStart / pieceLength);
   const lastPiece = Math.floor(absEnd / pieceLength);
 
-  function allPresent() {
+  function allPresent(): boolean {
     for (let i = firstPiece; i <= lastPiece; i++) {
       if (!torrent.bitfield.get(i)) return false;
     }
@@ -119,12 +108,12 @@ export function waitForPieces(torrent, file, byteStart, byteEnd, timeoutMs = 300
   if (allPresent()) return Promise.resolve();
 
   // Deselect the whole file so in-flight sequential requests don't compete,
-  // then select ONLY the seek range — this forces WebTorrent to download
+  // then select ONLY the seek range -- this forces WebTorrent to download
   // these pieces first (proven in poc-seek-test.mjs).
   file.deselect();
   torrent.select(firstPiece, lastPiece, 5);
 
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       torrent.removeListener("verified", onVerified);
       // Restore file selection even on timeout
@@ -133,7 +122,7 @@ export function waitForPieces(torrent, file, byteStart, byteEnd, timeoutMs = 300
       reject(new Error("Piece download timeout"));
     }, timeoutMs);
 
-    function onVerified() {
+    function onVerified(): void {
       if (allPresent()) {
         clearTimeout(timer);
         torrent.removeListener("verified", onVerified);
@@ -150,11 +139,8 @@ export function waitForPieces(torrent, file, byteStart, byteEnd, timeoutMs = 300
 
 /**
  * Calculate the byte range needed for a seek operation.
- * @param {{ time: number, offset: number }} seekPoint - From findSeekOffset
- * @param {number} fileLength - Total file length in bytes
- * @returns {{ byteStart: number, byteEnd: number }}
  */
-export function getSeekByteRange(seekPoint, fileLength) {
+export function getSeekByteRange(seekPoint: SeekEntry, fileLength: number): { byteStart: number; byteEnd: number } {
   const byteStart = seekPoint.offset;
   const byteEnd = Math.min(byteStart + BUFFER_SIZE, fileLength - 1);
   return { byteStart, byteEnd };

@@ -1,15 +1,16 @@
 // Audio fingerprint extraction (via fpcalc) and cross-correlation for intro detection.
 import { execFile } from "child_process";
+import type { CrossCorrelationResult, FingerprintResult } from "./types.js";
 
 // Count set bits in a 32-bit integer
-export function popcount32(n) {
+export function popcount32(n: number): number {
   n = n - ((n >> 1) & 0x55555555);
   n = (n & 0x33333333) + ((n >> 2) & 0x33333333);
   return (((n + (n >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
 }
 
 // Similarity score between two fingerprint values (0.0 = no match, 1.0 = identical)
-export function matchScore(a, b) {
+export function matchScore(a: number, b: number): number {
   const diff = popcount32((a ^ b) >>> 0);
   return 1.0 - diff / 32;
 }
@@ -24,15 +25,16 @@ const MIN_SCORE = 0.45;
 
 export { MIN_INTRO_SECS, MAX_INTRO_SECS, MAX_INTRO_START };
 
+interface InternalCorrelationResult extends CrossCorrelationResult {
+  _runLen: number;
+}
+
 /**
  * Find the longest matching audio segment between two fingerprint arrays.
- * @param {number[]} fpA - fingerprint array for episode A
- * @param {number[]} fpB - fingerprint array for episode B
- * @param {number} [rate=1] - fingerprint samples per second (from fpcalc: fp.length / duration)
  * Returns { offsetA, offsetB, duration, score } in SECONDS, or null.
  */
-export function crossCorrelate(fpA, fpB, rate = 1) {
-  let best = null;
+export function crossCorrelate(fpA: number[], fpB: number[], rate: number = 1): CrossCorrelationResult | null {
+  let best: InternalCorrelationResult | null = null;
 
   // Convert second-based thresholds to sample counts
   const minSamples = Math.round(MIN_INTRO_SECS * rate);
@@ -81,7 +83,10 @@ export function crossCorrelate(fpA, fpB, rate = 1) {
     }
   }
 
-  if (best) delete best._runLen;
+  if (best) {
+    const { _runLen, ...result } = best;
+    return result;
+  }
   return best;
 }
 
@@ -91,15 +96,13 @@ const FPCALC_TIMEOUT = 60_000; // 60 seconds
  * Extract audio fingerprint from a media file using fpcalc (chromaprint).
  * Uses ffmpeg to extract only the first N seconds of audio (fpcalc's -length is unreliable).
  * Returns { fingerprint: number[], duration: number } where duration is in seconds.
- * @param {string} filePath - path to media file
- * @param {number} [durationSec=300] - how many seconds to analyze
  */
-export function extractFingerprint(filePath, durationSec = 300) {
+export function extractFingerprint(filePath: string, durationSec: number = 300): Promise<FingerprintResult> {
   return new Promise((resolve, reject) => {
     // Use ffmpeg to extract limited audio, pipe to fpcalc via temp wav
     // fpcalc's -length flag doesn't reliably limit analysis on some formats
     const tmpWav = `/tmp/fp_${Date.now()}_${Math.random().toString(36).slice(2)}.wav`;
-    const ffmpeg = execFile(
+    execFile(
       "ffmpeg",
       ["-i", filePath, "-t", String(durationSec), "-ac", "1", "-ar", "16000", "-f", "wav", tmpWav, "-y", "-loglevel", "error"],
       { timeout: FPCALC_TIMEOUT },
@@ -120,7 +123,7 @@ export function extractFingerprint(filePath, durationSec = 300) {
               }
               resolve({ fingerprint: data.fingerprint, duration: data.duration || durationSec });
             } catch (e) {
-              reject(new Error("Failed to parse fpcalc output: " + e.message));
+              reject(new Error("Failed to parse fpcalc output: " + (e as Error).message));
             }
           }
         );

@@ -2,25 +2,21 @@ import path from "path";
 import fs from "fs";
 import { createReadStream } from "fs";
 import { spawn } from "child_process";
+import type { ChildProcess } from "child_process";
+import type { Readable } from "stream";
+import type { Request, Response } from "express";
+import type { TranscodeArgs, TranscodeJob, ProbeResult, LiveTranscodeOpts, ActiveTranscode, LogFn } from "./types.js";
 
 const WATCHDOG_TIMEOUT = 120000;
 
 /**
  * Build ffmpeg argument array for live transcode.
- * @param {Object} opts
- * @param {string} opts.input - file path or "pipe:0"
- * @param {boolean} opts.useStdin - true when piping from torrent stream
- * @param {number} opts.seekTo - seconds to seek to (0 = no seek)
- * @param {number|null} opts.audioStreamIdx - audio stream index override
- * @param {string} opts.videoCodec - detected video codec from probe cache
- * @param {boolean} opts.needsDownscale - whether to downscale to 1080p
- * @param {boolean} opts.isRetry - if true, always add format=yuv420p filter
  */
-export function buildTranscodeArgs({ input, useStdin, seekTo, audioStreamIdx, videoCodec, needsDownscale, isRetry }) {
+export function buildTranscodeArgs({ input, useStdin, seekTo, audioStreamIdx, videoCodec, needsDownscale, isRetry }: TranscodeArgs): string[] {
   const doSeek = seekTo > 0;
   const browserSafeCodec = !videoCodec || videoCodec === "h264";
 
-  const vFilters = [];
+  const vFilters: string[] = [];
   if (needsDownscale) vFilters.push("scale=-2:1080");
   if (!browserSafeCodec || isRetry) vFilters.push("format=yuv420p");
 
@@ -44,15 +40,11 @@ export function buildTranscodeArgs({ input, useStdin, seekTo, audioStreamIdx, vi
 /**
  * Start a watchdog timer that kills ffmpeg if no activity for WATCHDOG_TIMEOUT ms.
  * Returns a cleanup function that clears the interval.
- * @param {import("child_process").ChildProcess} ffmpeg
- * @param {number} timeoutMs
- * @param {Function} log
- * @param {string} [label] - label for log message
  */
-export function spawnWatchdog(ffmpeg, timeoutMs, log, label = "") {
+export function spawnWatchdog(ffmpeg: ChildProcess, timeoutMs: number, log: LogFn, label: string = ""): () => void {
   let lastActivity = Date.now();
-  ffmpeg.stdout.on("data", () => { lastActivity = Date.now(); });
-  ffmpeg.stderr.on("data", () => { lastActivity = Date.now(); });
+  ffmpeg.stdout!.on("data", () => { lastActivity = Date.now(); });
+  ffmpeg.stderr!.on("data", () => { lastActivity = Date.now(); });
 
   const interval = setInterval(() => {
     if (Date.now() - lastActivity > timeoutMs) {
@@ -67,15 +59,19 @@ export function spawnWatchdog(ffmpeg, timeoutMs, log, label = "") {
   return clear;
 }
 
+interface TranscodeContext {
+  TRANSCODE_PATH: string;
+  transcodeJobs: Map<string, TranscodeJob>;
+  probeCache: Map<string, ProbeResult>;
+  log: LogFn;
+}
+
 /**
  * Verify a file is actually media by probing its content with ffprobe.
  * Returns { valid, format, streams, duration, videoCodec, audioCodec } or { valid: false, reason }.
- * @param {string} filePath
- * @param {Map} probeCache
- * @param {Function} log
  */
-export function probeMedia(filePath, probeCache, log) {
-  if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath));
+export function probeMedia(filePath: string, probeCache: Map<string, ProbeResult>, log: LogFn): Promise<ProbeResult> {
+  if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath)!);
   return new Promise((resolve) => {
     const proc = spawn("ffprobe", [
       "-v", "quiet", "-print_format", "json",
@@ -84,15 +80,15 @@ export function probeMedia(filePath, probeCache, log) {
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
-    proc.stdout.on("data", (d) => { out += d.toString(); });
-    proc.on("close", (code) => {
+    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    proc.on("close", (code: number | null) => {
       if (code !== 0) {
         return resolve({ valid: false, reason: "ffprobe failed — not a valid media file" });
       }
       try {
         const data = JSON.parse(out);
-        const fmt = data.format?.format_name || "";
-        const streams = data.streams || [];
+        const fmt: string = data.format?.format_name || "";
+        const streams: Array<{ codec_type: string; codec_name?: string }> = data.streams || [];
         const hasMedia = streams.some((s) =>
           s.codec_type === "video" || s.codec_type === "audio"
         );
@@ -102,7 +98,7 @@ export function probeMedia(filePath, probeCache, log) {
         const dur = parseFloat(data.format?.duration);
         const videoStream = streams.find((s) => s.codec_type === "video");
         const audioStream = streams.find((s) => s.codec_type === "audio");
-        const result = {
+        const result: ProbeResult = {
           valid: true, format: fmt, streams: streams.length,
           duration: dur && isFinite(dur) ? dur : 0,
           videoCodec: videoStream?.codec_name || "",
@@ -123,18 +119,14 @@ export function probeMedia(filePath, probeCache, log) {
 
 /**
  * Start background transcode to a proper MP4 with faststart (moov at beginning).
- * @param {string} inputPath
- * @param {string} cacheKey
- * @param {Object} ctx - { TRANSCODE_PATH, transcodeJobs, probeCache, log }
- * @param {number|null} audioStreamIdx
  */
-export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) {
+export function startTranscode(inputPath: string, cacheKey: string, ctx: TranscodeContext, audioStreamIdx: number | null = null): TranscodeJob {
   const { TRANSCODE_PATH, transcodeJobs, probeCache, log } = ctx;
   fs.mkdirSync(TRANSCODE_PATH, { recursive: true });
   const outputPath = path.join(TRANSCODE_PATH, cacheKey.replace(/:/g, "_") + ".mp4");
 
   if (transcodeJobs.has(cacheKey)) {
-    const job = transcodeJobs.get(cacheKey);
+    const job = transcodeJobs.get(cacheKey)!;
     if ((job.done && !job.error) || (!job.done && !job.error)) return job;
   }
 
@@ -143,10 +135,10 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
   const canRemux = !cached?.videoCodec || cached.videoCodec === "h264";
 
   log("info", "Starting transcode", { input: path.basename(inputPath), canRemux, vcodec: cached?.videoCodec });
-  const job = { outputPath, done: false, error: null, process: null };
+  const job: TranscodeJob = { outputPath, done: false, error: null, process: null };
   transcodeJobs.set(cacheKey, job);
 
-  function startEncode() {
+  function startEncode(): void {
     const proc2 = spawn("ffmpeg", [
       "-i", inputPath,
       ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
@@ -158,14 +150,14 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
     job.process = proc2;
 
     let encodeStderr = "";
-    proc2.stderr.on("data", (d) => {
+    proc2.stderr!.on("data", (d: Buffer) => {
       const chunk = d.toString();
       encodeStderr = (encodeStderr + chunk).slice(-1024);
       const m = chunk.match(/time=(\S+)/);
       if (m) log("info", "Transcode progress", { time: m[1] });
     });
 
-    proc2.on("close", (code2) => {
+    proc2.on("close", (code2: number | null) => {
       if (code2 === 0) {
         job.done = true;
         log("info", "Transcode complete (re-encode)");
@@ -174,7 +166,7 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
         log("err", "Transcode re-encode failed", { code: code2, stderr: encodeStderr.slice(-300) });
       }
     });
-    proc2.on("error", (err) => {
+    proc2.on("error", (err: Error) => {
       job.error = "ffmpeg error: " + err.message;
     });
   }
@@ -196,9 +188,9 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
   job.process = proc;
 
   let remuxStderr = "";
-  proc.stderr.on("data", (d) => { remuxStderr = (remuxStderr + d.toString()).slice(-1024); });
+  proc.stderr!.on("data", (d: Buffer) => { remuxStderr = (remuxStderr + d.toString()).slice(-1024); });
 
-  proc.on("close", (code) => {
+  proc.on("close", (code: number | null) => {
     if (code === 0) {
       job.done = true;
       log("info", "Transcode complete (remux)", { output: path.basename(outputPath) });
@@ -208,7 +200,7 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
     }
   });
 
-  proc.on("error", (err) => {
+  proc.on("error", (err: Error) => {
     job.error = "ffmpeg error: " + err.message;
     log("err", "ffmpeg spawn error", { error: err.message });
   });
@@ -216,15 +208,17 @@ export function startTranscode(inputPath, cacheKey, ctx, audioStreamIdx = null) 
   return job;
 }
 
+interface TorrentFileForServe {
+  length: number;
+  deselect(): void;
+  select(): void;
+  createReadStream(opts?: { start?: number; end?: number }): Readable;
+}
+
 /**
  * Serve a complete file from disk with proper range support.
- * @param {string} filePath
- * @param {number} fileSize
- * @param {string} contentType
- * @param {import("express").Request} req
- * @param {import("express").Response} res
  */
-export function serveFile(filePath, fileSize, contentType, req, res) {
+export function serveFile(filePath: string, fileSize: number, contentType: string, req: Request, res: Response): void {
   const range = req.headers.range;
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -259,11 +253,8 @@ export function serveFile(filePath, fileSize, contentType, req, res) {
  * Stream from WebTorrent (still downloading, native format).
  * Deselects file before creating the stream so the FileIterator's internal
  * selection (priority 1) becomes the sole active selection.
- * @param {Object} file - WebTorrent file
- * @param {import("express").Request} req
- * @param {import("express").Response} res
  */
-export function serveFromTorrent(file, req, res) {
+export function serveFromTorrent(file: TorrentFileForServe, req: Request, res: Response): void {
   const range = req.headers.range;
   const size = file.length;
   file.deselect();
@@ -297,18 +288,16 @@ export function serveFromTorrent(file, req, res) {
   }
 }
 
+interface LiveTranscodeContext {
+  activeTranscodes: Map<string, ActiveTranscode>;
+  probeCache: Map<string, ProbeResult>;
+  log: LogFn;
+}
+
 /**
  * Unified live transcode through ffmpeg — works for both torrent streams and disk files.
- * @param {Object} opts
- * @param {string} opts.inputPath - file path on disk
- * @param {boolean} opts.useStdin - pipe from torrent stream (incomplete file)
- * @param {Function} [opts.createInputStream] - function that returns a readable stream (for stdin mode)
- * @param {number} opts.seekTo - seconds to seek to
- * @param {number|null} opts.audioStreamIdx - audio stream index override (null for default)
- * @param {string|null} opts.streamKey - "infoHash:fileIndex" for activeTranscodes tracking (null for disk-only)
- * @param {Object} ctx - { activeTranscodes, probeCache, log }
  */
-export function serveLiveTranscode(opts, req, res, ctx) {
+export function serveLiveTranscode(opts: LiveTranscodeOpts, req: Request, res: Response, ctx: LiveTranscodeContext): void {
   const { inputPath, useStdin, createInputStream, seekTo = 0, audioStreamIdx = null, streamKey } = opts;
   const { activeTranscodes, probeCache, log } = ctx;
 
@@ -316,7 +305,7 @@ export function serveLiveTranscode(opts, req, res, ctx) {
 
   const cached = probeCache.get(inputPath);
   const browserSafeCodec = !cached?.videoCodec || cached.videoCodec === "h264";
-  const needsDownscale = !browserSafeCodec && cached?.videoCodec;
+  const needsDownscale = !browserSafeCodec && !!cached?.videoCodec;
 
   const args = buildTranscodeArgs({
     input, useStdin, seekTo, audioStreamIdx,
@@ -329,12 +318,12 @@ export function serveLiveTranscode(opts, req, res, ctx) {
     stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
   });
 
-  let torrentStream = null;
+  let torrentStream: Readable | null = null;
   if (useStdin && createInputStream) {
     torrentStream = createInputStream();
-    torrentStream.on("error", () => { torrentStream.destroy(); ffmpeg.kill(); });
-    torrentStream.pipe(ffmpeg.stdin);
-    ffmpeg.stdin.on("error", () => {});
+    torrentStream.on("error", () => { torrentStream!.destroy(); ffmpeg.kill(); });
+    torrentStream.pipe(ffmpeg.stdin!);
+    ffmpeg.stdin!.on("error", () => {});
   }
 
   // Register this transcode so it can be killed if a new request arrives
@@ -356,9 +345,9 @@ export function serveLiveTranscode(opts, req, res, ctx) {
     "Cache-Control": "no-cache",
   });
 
-  ffmpeg.stdout.pipe(res);
+  ffmpeg.stdout!.pipe(res);
 
-  ffmpeg.on("close", (code) => {
+  ffmpeg.on("close", (code: number | null) => {
     if (code && code !== 0 && code !== 255 && !res.destroyed) {
       log("warn", "First attempt failed, retrying with full re-encode");
       const args2 = buildTranscodeArgs({
@@ -377,11 +366,11 @@ export function serveLiveTranscode(opts, req, res, ctx) {
       if (useStdin && createInputStream) {
         const ts2 = createInputStream();
         ts2.on("error", () => { ts2.destroy(); ff2.kill(); });
-        ts2.pipe(ff2.stdin);
-        ff2.stdin.on("error", () => {});
+        ts2.pipe(ff2.stdin!);
+        ff2.stdin!.on("error", () => {});
         res.on("close", () => { clearWatchdog2(); ts2.destroy(); ff2.kill(); });
       }
-      ff2.stdout.pipe(res, { end: true });
+      ff2.stdout!.pipe(res, { end: true });
       if (!useStdin) res.on("close", () => { clearWatchdog2(); ff2.kill(); });
     }
   });

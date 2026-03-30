@@ -1,39 +1,33 @@
-// lib/torrent-caches.js
+// lib/torrent-caches.ts
 // Central registry for all per-torrent in-memory caches.
 // Every Map/Set keyed by infoHash or "infoHash:fileIndex" MUST be
 // registered here so that cleanupHash() and pruneOrphans() cover it.
 
+import type { CacheKeyStyle, CacheRegistration } from "./types.js";
+
 /**
- * @param {string} infoHash
- * @param {number|string} fileIndex
- * @returns {string} Normalized cache key "infohash:fileindex"
+ * Build a normalized cache key "infohash:fileindex".
  */
-export function jobKey(infoHash, fileIndex) {
+export function jobKey(infoHash: string, fileIndex: number | string): string {
   return `${infoHash.toLowerCase()}:${fileIndex}`;
 }
 
 // ── Registry internals ──
 
-// { name, map, keyStyle } — keyStyle is "hash:index" | "hash" | "path"
-const _registered = [];
+const _registered: CacheRegistration[] = [];
 
 /**
  * Register a Map or Set for automatic cleanup.
- * @param {string} name — human label for logging
- * @param {Map|Set} map
- * @param {"hash:index"|"hash"|"path"} keyStyle — how keys relate to infoHash
  */
-export function registerCache(name, map, keyStyle = "hash:index") {
+export function registerCache(name: string, map: Map<string, unknown> | Set<string>, keyStyle: CacheKeyStyle = "hash:index"): void {
   _registered.push({ name, map, keyStyle });
 }
 
 /**
  * Remove all entries for a given infoHash across every registered cache.
  * For "path"-keyed caches (probeCache), supply file paths to delete.
- * @param {string} infoHash
- * @param {string[]} [filePaths] — required for path-keyed caches
  */
-export function cleanupHash(infoHash, filePaths = []) {
+export function cleanupHash(infoHash: string, filePaths: string[] = []): void {
   const prefix = infoHash.toLowerCase() + ":";
   for (const { map, keyStyle } of _registered) {
     if (keyStyle === "hash") {
@@ -55,14 +49,11 @@ export function cleanupHash(infoHash, filePaths = []) {
 /**
  * Remove cache entries whose infoHash is not in the active set.
  * For path-keyed caches, remove entries whose file no longer exists on disk.
- * @param {Set<string>} activeHashes
- * @param {function} statSync — fs.statSync, passed in to avoid importing fs here
- * @returns {number} count of pruned entries
  */
-export function pruneOrphans(activeHashes, statSync) {
+export function pruneOrphans(activeHashes: Set<string>, statSyncFn: (path: string) => unknown): number {
   let pruned = 0;
   for (const { map, keyStyle } of _registered) {
-    const keys = map instanceof Set ? [...map] : [...map.keys()];
+    const keys: string[] = map instanceof Set ? [...map] : [...map.keys()];
     for (const key of keys) {
       let shouldDelete = false;
       if (keyStyle === "hash:index") {
@@ -70,7 +61,7 @@ export function pruneOrphans(activeHashes, statSync) {
       } else if (keyStyle === "hash") {
         shouldDelete = !activeHashes.has(key);
       } else if (keyStyle === "path") {
-        try { statSync(key); } catch { shouldDelete = true; }
+        try { statSyncFn(key); } catch { shouldDelete = true; }
       }
       if (shouldDelete) {
         map.delete(key);
@@ -83,10 +74,9 @@ export function pruneOrphans(activeHashes, statSync) {
 
 /**
  * Return sizes of all registered caches for logging.
- * @returns {Record<string, number>}
  */
-export function cacheStats() {
-  const stats = {};
+export function cacheStats(): Record<string, number> {
+  const stats: Record<string, number> = {};
   for (const { name, map } of _registered) {
     stats[name] = map.size;
   }
