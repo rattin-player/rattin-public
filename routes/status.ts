@@ -86,7 +86,7 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
           else transcodeStatus = "pending";
         }
         return {
-          index: i, name: f.name, length: f.length,
+          index: i, name: f.name, path: f.path, length: f.length,
           downloaded: f.downloaded,
           progress: f.length > 0 ? f.downloaded / f.length : 0,
           isVideo: VIDEO_EXTENSIONS.includes(ext),

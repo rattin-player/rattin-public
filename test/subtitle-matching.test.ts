@@ -61,4 +61,18 @@ describe("subtitleMatchesVideo", () => {
       "Season 1/Show.S01E05.720p.mkv",
     ));
   });
+
+  it("matches when episode ID is in parent directory, not filename", () => {
+    assert.ok(subtitleMatchesVideo(
+      "Arcane.S01.1080p/Subs/Arcane.S01E03.1080p.WEBRip.x265-RARBG[eztv.re]/3_English.srt",
+      "Arcane.S01.1080p/Arcane.S01E03.1080p.WEBRip.x265-RARBG[eztv.re].mp4",
+    ));
+  });
+
+  it("rejects different episode when ID is in parent directory", () => {
+    assert.ok(!subtitleMatchesVideo(
+      "Arcane.S01.1080p/Subs/Arcane.S01E04.1080p.WEBRip.x265-RARBG[eztv.re]/3_English.srt",
+      "Arcane.S01.1080p/Arcane.S01E03.1080p.WEBRip.x265-RARBG[eztv.re].mp4",
+    ));
+  });
 });
