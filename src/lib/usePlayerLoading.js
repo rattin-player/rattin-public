@@ -23,7 +23,9 @@ const MESSAGES = {
 };
 
 export function usePlayerLoading(videoRef, deps) {
-  const { infoHash, fileIndex, reloadActiveSub } = deps;
+  const { infoHash, fileIndex, reloadActiveSub: reloadActiveSubProp } = deps;
+  const reloadActiveSubRef = useRef(reloadActiveSubProp);
+  useEffect(() => { reloadActiveSubRef.current = reloadActiveSubProp; }, [reloadActiveSubProp]);
 
   const [loading, setLoading] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -55,7 +57,7 @@ export function usePlayerLoading(videoRef, deps) {
       if (pendingSubReload.current !== null) {
         const offset = pendingSubReload.current;
         pendingSubReload.current = null;
-        if (reloadActiveSub) reloadActiveSub(offset);
+        if (reloadActiveSubRef.current) reloadActiveSubRef.current(offset);
       }
     }
     v.addEventListener("canplay", onCanPlay);
@@ -80,6 +82,7 @@ export function usePlayerLoading(videoRef, deps) {
     loadingMsg,
     currentMessage,
     pendingSubReload,
+    reloadActiveSubRef,
     MESSAGES,
   };
 }
