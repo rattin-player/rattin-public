@@ -90,7 +90,7 @@ function trackStreamClose(infoHash) {
   // All streams closed — kill background transcodes and free torrent after 2 min
   entry.idleTimer = setTimeout(() => {
     for (const [key, job] of transcodeJobs) {
-      if (key.startsWith(infoHash + ":")) {
+      if (key.startsWith(infoHash.toLowerCase() + ":")) {
         if (job.process && !job.done) {
           job.process.kill();
           log("info", "Killed idle transcode", { jobKey: key });
@@ -173,12 +173,12 @@ function probeMedia(filePath) {
 // Start background transcode to a proper MP4 with faststart (moov at beginning).
 // This is what makes seeking work - the browser can read the moov atom first
 // and know the full duration + seek table.
-function startTranscode(inputPath, jobKey) {
+function startTranscode(inputPath, cacheKey) {
   fs.mkdirSync(TRANSCODE_PATH, { recursive: true });
-  const outputPath = path.join(TRANSCODE_PATH, jobKey.replace(/:/g, "_") + ".mp4");
+  const outputPath = path.join(TRANSCODE_PATH, cacheKey.replace(/:/g, "_") + ".mp4");
 
-  if (transcodeJobs.has(jobKey)) {
-    const job = transcodeJobs.get(jobKey);
+  if (transcodeJobs.has(cacheKey)) {
+    const job = transcodeJobs.get(cacheKey);
     if ((job.done && !job.error) || (!job.done && !job.error)) return job;
   }
 
@@ -188,7 +188,7 @@ function startTranscode(inputPath, jobKey) {
 
   log("info", "Starting transcode", { input: path.basename(inputPath), canRemux, vcodec: cached?.videoCodec });
   const job = { outputPath, done: false, error: null, process: null };
-  transcodeJobs.set(jobKey, job);
+  transcodeJobs.set(cacheKey, job);
 
   function startEncode() {
     const proc2 = spawn("ffmpeg", [
@@ -465,7 +465,7 @@ app.get("/api/duration/:infoHash/:fileIndex", (req, res) => {
   const file = torrent.files[parseInt(req.params.fileIndex, 10)];
   if (!file) return res.status(404).json({ error: "File not found" });
 
-  const cacheKey = `${torrent.infoHash}:${req.params.fileIndex}`;
+  const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
   if (durationCache.has(cacheKey)) {
     return res.json({ duration: durationCache.get(cacheKey) });
   }
@@ -712,7 +712,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
   // Verify file is real media — only when complete.
   // INVARIANT: probeMedia caches successes permanently. Calling on partial files
   // would either hang ffprobe or return a transient failure that won't be retried.
-  const jobKey = `${torrent.infoHash}:${req.params.fileIndex}`;
+  const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
 
   if (complete) {
     try {
@@ -722,8 +722,8 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
         return res.status(403).json({ error: "File failed media verification: " + probe.reason });
       }
       // Cache duration from probe so it's immediately available
-      if (probe.duration > 0 && !durationCache.has(jobKey)) {
-        durationCache.set(jobKey, probe.duration);
+      if (probe.duration > 0 && !durationCache.has(cacheKey)) {
+        durationCache.set(cacheKey, probe.duration);
       }
     } catch {}
   }
@@ -731,7 +731,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
 
   // 1) Transcoded MP4 ready - serve it (full seeking works)
   if (xcode) {
-    const job = transcodeJobs.get(jobKey);
+    const job = transcodeJobs.get(cacheKey);
     if (job && job.done && !job.error) {
       const stat = statSync(job.outputPath);
       log("info", "Serving transcoded MP4", { file: file.name });
@@ -752,17 +752,17 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
     const seekTo = parseFloat(req.query.t) || 0;
 
     // Build seek index in background (for complete files only — incomplete files have gaps)
-    if (!seekIndexCache.has(jobKey) && !seekIndexPending.has(jobKey) && complete) {
-      seekIndexPending.add(jobKey);
+    if (!seekIndexCache.has(cacheKey) && !seekIndexPending.has(cacheKey) && complete) {
+      seekIndexPending.add(cacheKey);
       buildSeekIndex(diskPath(torrent, file)).then((index) => {
-        seekIndexPending.delete(jobKey);
+        seekIndexPending.delete(cacheKey);
         if (index.length > 0) {
-          seekIndexCache.set(jobKey, index);
-          log("info", "Seek index built", { jobKey, keyframes: index.length });
+          seekIndexCache.set(cacheKey, index);
+          log("info", "Seek index built", { cacheKey, keyframes: index.length });
         }
       }).catch((err) => {
-        seekIndexPending.delete(jobKey);
-        log("warn", "Seek index build failed", { jobKey, error: err.message });
+        seekIndexPending.delete(cacheKey);
+        log("warn", "Seek index build failed", { cacheKey, error: err.message });
       });
     }
 
@@ -772,14 +772,14 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
       let byteStart = null;
 
       // Method 1: precise keyframe index (available for complete files)
-      if (seekIndexCache.has(jobKey)) {
-        const seekPoint = findSeekOffset(seekIndexCache.get(jobKey), seekTo);
+      if (seekIndexCache.has(cacheKey)) {
+        const seekPoint = findSeekOffset(seekIndexCache.get(cacheKey), seekTo);
         if (seekPoint) byteStart = seekPoint.offset;
       }
 
       // Method 2: estimate from duration (works for any file with known duration)
       if (byteStart === null) {
-        const dur = durationCache.get(jobKey);
+        const dur = durationCache.get(cacheKey);
         if (dur && dur > 0) {
           byteStart = Math.floor((seekTo / dur) * file.length);
         }
@@ -800,7 +800,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
 
         if (piecesReady) {
           // Fast path: pieces on disk → input seeking + copy mode (near-instant)
-          log("info", "Smart seek (instant)", { seekTo, byteStart, method: seekIndexCache.has(jobKey) ? "index" : "estimate" });
+          log("info", "Smart seek (instant)", { seekTo, byteStart, method: seekIndexCache.has(cacheKey) ? "index" : "estimate" });
           torrent.select(firstPiece, getFileEndPiece(file), 1);
           return serveLiveTranscode(torrent, file, true, req, res, seekTo);
         }
@@ -1035,8 +1035,8 @@ app.get("/api/status/:infoHash", (req, res) => {
     timeRemaining: torrent.timeRemaining,
     files: torrent.files.map((f, i) => {
       const ext = path.extname(f.name).toLowerCase();
-      const jobKey = `${torrent.infoHash}:${i}`;
-      const job = transcodeJobs.get(jobKey);
+      const key = jobKey(torrent.infoHash, i);
+      const job = transcodeJobs.get(key);
       let transcodeStatus = null;
       if (needsTranscode(ext) && VIDEO_EXTENSIONS.includes(ext)) {
         if (job && job.done && !job.error) transcodeStatus = "ready";
@@ -1053,7 +1053,7 @@ app.get("/api/status/:infoHash", (req, res) => {
         isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
         isAllowed: isAllowedFile(f.name),
         transcodeStatus,
-        duration: durationCache.get(jobKey) || null,
+        duration: durationCache.get(key) || null,
       };
     }),
   });
