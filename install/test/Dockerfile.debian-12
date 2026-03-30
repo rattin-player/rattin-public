@@ -2,7 +2,10 @@ FROM debian:12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY install.sh /tmp/install.sh
+COPY install/install.sh /tmp/install.sh
 RUN chmod +x /tmp/install.sh
 
-CMD ["bash", "/tmp/install.sh", "--non-interactive", "--no-service", "--tmdb-key", "test_dummy_key_12345"]
+COPY . /tmp/build/player-main/
+RUN cd /tmp/build && tar -czf /tmp/app.tar.gz player-main/
+
+CMD ["bash", "-c", "APP_TARBALL=/tmp/app.tar.gz bash /tmp/install.sh --non-interactive --no-service --tmdb-key test_dummy_key_12345"]

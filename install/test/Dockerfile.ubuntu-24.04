@@ -2,12 +2,13 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Start completely clean — no extra packages pre-installed
-# The installer must handle everything
-
-COPY install.sh /tmp/install.sh
+# Copy installer script
+COPY install/install.sh /tmp/install.sh
 RUN chmod +x /tmp/install.sh
 
-# Run installer in non-interactive mode, skip service (no systemd in Docker)
-# Use a dummy TMDB key for testing (validation will warn but continue)
-CMD ["bash", "/tmp/install.sh", "--non-interactive", "--no-service", "--tmdb-key", "test_dummy_key_12345"]
+# Copy app source and create tarball matching GitHub archive format
+# (top-level directory that --strip-components=1 removes)
+COPY . /tmp/build/player-main/
+RUN cd /tmp/build && tar -czf /tmp/app.tar.gz player-main/
+
+CMD ["bash", "-c", "APP_TARBALL=/tmp/app.tar.gz bash /tmp/install.sh --non-interactive --no-service --tmdb-key test_dummy_key_12345"]

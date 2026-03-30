@@ -10,6 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IMAGE_PREFIX="rattin-installer-test"
 
 DISTROS=(
@@ -88,7 +89,7 @@ for distro in "${DISTROS[@]}"; do
     if ! docker build \
         -f "$SCRIPT_DIR/Dockerfile.$distro" \
         -t "$IMAGE" \
-        "$INSTALL_DIR" \
+        "$REPO_ROOT" \
         2>&1 | tail -5; then
         echo -e "${RED}FAIL${NC}: Docker build failed for $distro"
         RESULTS+=("$distro: BUILD FAILED")

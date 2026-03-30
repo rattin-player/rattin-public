@@ -7,7 +7,7 @@ set -euo pipefail
 # ==============================================================================
 
 INSTALLER_VERSION="1.0.0"
-INSTALL_DIR="/opt/rattin"
+INSTALL_DIR="${INSTALL_DIR:-/opt/rattin}"
 
 trap 'rm -rf /tmp/rattin-node-download.tar.xz /tmp/rattin-ffmpeg-download.tar.xz /tmp/rattin-app-download.tar.gz /tmp/rattin-ffmpeg-extract' EXIT
 
@@ -171,7 +171,30 @@ preflight() {
     fi
     log info "Distro: ${DISTRO_ID} (like: ${DISTRO_ID_LIKE:-none}) -> package manager: ${PKG_MANAGER}"
 
-    # 4. Internet check
+    # 4. Ensure basic prerequisites are available (curl/wget, xz for tar.xz)
+    local need_install=false
+    local pkgs_apt="" pkgs_dnf=""
+
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        need_install=true
+        pkgs_apt="curl" pkgs_dnf="curl"
+    fi
+    if ! command -v xz >/dev/null 2>&1; then
+        need_install=true
+        pkgs_apt="$pkgs_apt xz-utils" pkgs_dnf="$pkgs_dnf xz"
+    fi
+
+    if [ "$need_install" = "true" ]; then
+        log info "Installing prerequisites:${pkgs_apt:-$pkgs_dnf}..."
+        case "$PKG_MANAGER" in
+            apt-get) apt-get update -qq && apt-get install -y -qq $pkgs_apt >/dev/null 2>&1 ;;
+            dnf)     dnf install -y -q $pkgs_dnf >/dev/null 2>&1 ;;
+            *)       die "Missing prerequisites and no known package manager to install them." ;;
+        esac
+        log info "Prerequisites installed"
+    fi
+
+    # 5. Internet check
     log info "Checking internet connectivity..."
     local endpoints=("https://nodejs.org" "https://github.com" "https://registry.npmjs.org")
     for endpoint in "${endpoints[@]}"; do
@@ -297,13 +320,11 @@ install_node() {
     version_json="$(download "https://nodejs.org/dist/index.json")"
 
     # Find first v20.x entry where "lts" is not false
+    # Use a temp var to avoid SIGPIPE from head -1 in pipefail mode
+    local filtered
+    filtered="$(echo "$version_json" | tr '{' '\n' | grep '"version":"v20\.' | grep -v '"lts":false' || true)"
     local latest_version
-    latest_version="$(echo "$version_json" \
-        | tr '{' '\n' \
-        | grep '"version":"v20\.' \
-        | grep -v '"lts":false' \
-        | head -1 \
-        | sed 's/.*"version":"\(v20\.[^"]*\)".*/\1/')"
+    latest_version="$(echo "$filtered" | head -1 | sed 's/.*"version":"\(v20\.[^"]*\)".*/\1/')"
 
     if [ -z "$latest_version" ]; then
         die "Could not determine latest Node.js v20 LTS version"
@@ -492,10 +513,15 @@ rollback() {
 install_app() {
     log info "Downloading application..."
 
-    local tarball_url="https://github.com/rattin-player/player/archive/refs/heads/main.tar.gz"
     local tmpfile="/tmp/rattin-app-download.tar.gz"
 
-    download "$tarball_url" > "$tmpfile"
+    if [ -n "${APP_TARBALL:-}" ] && [ -f "$APP_TARBALL" ]; then
+        log info "Using local app tarball: $APP_TARBALL"
+        cp "$APP_TARBALL" "$tmpfile"
+    else
+        local tarball_url="https://github.com/rattin-player/player/archive/refs/heads/main.tar.gz"
+        download "$tarball_url" > "$tmpfile"
+    fi
 
     # Verify file size > 100KB
     local filesize
@@ -669,14 +695,14 @@ setup_service() {
             USE_SERVICE=false
             log info "User declined auto-start — writing manual launcher"
 
-            cat > "$INSTALL_DIR/start.sh" <<'LAUNCHER'
+            cat > "$INSTALL_DIR/start.sh" <<LAUNCHER
 #!/bin/bash
-export PATH="/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:$PATH"
-export DOWNLOAD_PATH="/opt/rattin/data/downloads"
-export TRANSCODE_PATH="/opt/rattin/data/transcoded"
+export PATH="$INSTALL_DIR/runtime/node/bin:$INSTALL_DIR/runtime/bin:\$PATH"
+export DOWNLOAD_PATH="$INSTALL_DIR/data/downloads"
+export TRANSCODE_PATH="$INSTALL_DIR/data/transcoded"
 export HOST="127.0.0.1"
-cd /opt/rattin/app
-exec /opt/rattin/app/node_modules/.bin/tsx --env-file=.env server.ts
+cd $INSTALL_DIR/app
+exec $INSTALL_DIR/app/node_modules/.bin/tsx --env-file=.env server.ts
 LAUNCHER
             chmod +x "$INSTALL_DIR/start.sh"
             log info "Manual launcher written to $INSTALL_DIR/start.sh"
@@ -689,7 +715,7 @@ LAUNCHER
     esac
 
     # Write rattin.service
-    cat > /etc/systemd/system/rattin.service <<'EOF'
+    cat > /etc/systemd/system/rattin.service <<EOF
 [Unit]
 Description=Rattin
 After=network.target
@@ -698,13 +724,13 @@ After=network.target
 Type=simple
 User=rattin
 Group=rattin
-WorkingDirectory=/opt/rattin/app
-Environment=PATH=/opt/rattin/runtime/node/bin:/opt/rattin/runtime/bin:/usr/bin:/bin
+WorkingDirectory=$INSTALL_DIR/app
+Environment=PATH=$INSTALL_DIR/runtime/node/bin:$INSTALL_DIR/runtime/bin:/usr/bin:/bin
 Environment=PORT=3000
 Environment=HOST=127.0.0.1
-Environment=DOWNLOAD_PATH=/opt/rattin/data/downloads
-Environment=TRANSCODE_PATH=/opt/rattin/data/transcoded
-ExecStart=/opt/rattin/app/node_modules/.bin/tsx --env-file=.env server.ts
+Environment=DOWNLOAD_PATH=$INSTALL_DIR/data/downloads
+Environment=TRANSCODE_PATH=$INSTALL_DIR/data/transcoded
+ExecStart=$INSTALL_DIR/app/node_modules/.bin/tsx --env-file=.env server.ts
 Restart=always
 RestartSec=5
 
@@ -726,14 +752,14 @@ WantedBy=timers.target
 EOF
 
     # Write rattin-cleanup.service
-    cat > /etc/systemd/system/rattin-cleanup.service <<'EOF'
+    cat > /etc/systemd/system/rattin-cleanup.service <<EOF
 [Unit]
 Description=Clean old rattin data
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/find /opt/rattin/data -type f -mmin +1440 -delete
-ExecStart=/usr/bin/find /opt/rattin/data -type d -empty -delete
+ExecStart=/usr/bin/find $INSTALL_DIR/data -type f -mmin +1440 -delete
+ExecStart=/usr/bin/find $INSTALL_DIR/data -type d -empty -delete
 EOF
 
     systemctl daemon-reload
