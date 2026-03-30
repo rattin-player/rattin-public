@@ -4,17 +4,38 @@ import { usePlayer } from "../lib/PlayerContext";
 import "./PairRemoteModal.css";
 
 export default function PairRemoteModal({ onClose }) {
-  const { rcSessionId, setRcSessionId, setRcAuthToken } = usePlayer();
+  const { rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken } = usePlayer();
   const [sessionId, setSessionId] = useState(rcSessionId);
-  const [authToken, setAuthToken] = useState(null);
+  const [authToken, setAuthToken] = useState(rcAuthToken);
   const [remoteUrl, setRemoteUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [validating, setValidating] = useState(false);
+
+  // On open, if we have a session, validate it's still alive on the server
+  useEffect(() => {
+    if (!sessionId) return;
+    setValidating(true);
+    fetch(`/api/rc/session/${sessionId}`)
+      .then((res) => {
+        if (!res.ok) {
+          // Session expired on server — clear it
+          setSessionId(null);
+          setAuthToken(null);
+          setRcSessionId(null);
+          setRcAuthToken(null);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setValidating(false));
+  }, []);
 
   useEffect(() => {
     if (sessionId && authToken) {
       const url = `${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`;
       setRemoteUrl(url);
+    } else {
+      setRemoteUrl("");
     }
   }, [sessionId, authToken]);
 
@@ -38,7 +59,9 @@ export default function PairRemoteModal({ onClose }) {
       await fetch(`/api/rc/session/${sessionId}`, { method: "DELETE" }).catch(() => {});
     }
     setSessionId(null);
+    setAuthToken(null);
     setRcSessionId(null);
+    setRcAuthToken(null);
     setRemoteUrl("");
   }
 
@@ -63,6 +86,8 @@ export default function PairRemoteModal({ onClose }) {
     }).catch(() => {});
   }
 
+  const showQr = sessionId && authToken && !validating;
+
   return (
     <div className="pair-overlay" onClick={onClose}>
       <div className="pair-modal" onClick={(e) => e.stopPropagation()}>
@@ -75,7 +100,11 @@ export default function PairRemoteModal({ onClose }) {
           </button>
         </div>
 
-        {!sessionId ? (
+        {validating ? (
+          <div className="pair-body">
+            <p className="pair-desc">Checking session...</p>
+          </div>
+        ) : !showQr ? (
           <div className="pair-body">
             <p className="pair-desc">
               Use your phone as a remote control. Create a session and open the link on your phone.

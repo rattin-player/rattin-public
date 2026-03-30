@@ -15,6 +15,7 @@ export default function RemoteNowPlaying() {
   const [state, setState] = useState(null);
   const esRef = useRef(null);
   const lastGood = useRef({ currentTime: 0, duration: 0 });
+  const failCount = useRef(0);
 
   const isOnRemotePage = location.pathname === "/remote";
 
@@ -30,12 +31,29 @@ export default function RemoteNowPlaying() {
 
     es.addEventListener("state", (e) => {
       const parsed = JSON.parse(e.data);
+      failCount.current = 0;
       if (parsed.duration > 0) lastGood.current.duration = parsed.duration;
       if (parsed.currentTime > 0) lastGood.current.currentTime = parsed.currentTime;
       setState(parsed);
     });
 
-    es.onerror = () => {};
+    es.onerror = () => {
+      failCount.current++;
+      // If too many failures, probe to check if session expired
+      if (failCount.current > 5) {
+        fetch(`/api/rc/session/${sessionId}`)
+          .then((res) => {
+            if (res.status === 404) {
+              // Session expired — clear remote mode
+              localStorage.removeItem("rc-session");
+              localStorage.removeItem("rc-token");
+              es.close();
+              setState(null);
+            }
+          })
+          .catch(() => {});
+      }
+    };
 
     return () => { es.close(); esRef.current = null; };
   }, [isRemote, sessionId, isOnRemotePage]);

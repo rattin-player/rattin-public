@@ -10,6 +10,119 @@
   gap: 16px;
   user-select: none;
   -webkit-user-select: none;
+  position: relative;
+}
+
+.remote-page.remote-dimmed > *:not(.remote-reconnecting-overlay) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Center state screens (NO_SESSION, CONNECTING, EXPIRED, IDLE, OFFLINE, LOST) ── */
+.remote-center-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 0 24px;
+  max-width: 340px;
+}
+
+.remote-center-state h3 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.remote-center-state p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.remote-center-state svg {
+  opacity: 0.7;
+}
+
+.remote-state-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  width: 100%;
+}
+
+/* ── Spinner ── */
+.remote-spinner {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(201, 168, 76, 0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Pulsing icon for PLAYER_OFFLINE ── */
+.remote-pulse-icon {
+  animation: pulse-opacity 2s ease-in-out infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.3; }
+}
+
+/* ── Reconnecting overlay ── */
+.remote-reconnecting-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Action button ── */
+.remote-action-btn {
+  padding: 14px 32px;
+  background: var(--accent);
+  color: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  transition: all var(--transition);
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.25);
+}
+
+.remote-action-btn:active {
+  transform: scale(0.96);
+  background: var(--accent-bright);
+}
+
+/* ── Clear session link ── */
+.remote-clear-link {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  transition: color var(--transition);
+}
+
+.remote-clear-link:active {
+  color: var(--text-secondary);
 }
 
 /* ── Status indicator ── */
@@ -88,7 +201,7 @@
   color: var(--accent-bright);
 }
 
-/* ── Play area (play + skip in a row) ── */
+/* ── Play area ── */
 .remote-play-area {
   flex: 1;
   display: flex;
@@ -109,14 +222,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform var(--transition), background var(--transition), box-shadow var(--transition);
+  transition: transform var(--transition), background var(--transition);
   box-shadow: 0 6px 28px rgba(201, 168, 76, 0.3);
   flex-shrink: 0;
 }
 
-.remote-play-btn:active {
+.remote-play-btn:active:not(:disabled) {
   transform: scale(0.9);
   background: var(--accent-bright);
+}
+
+.remote-play-btn:disabled {
+  opacity: 0.5;
 }
 
 .remote-skip-btn {
@@ -133,8 +250,12 @@
   flex-shrink: 0;
 }
 
-.remote-skip-btn:active {
+.remote-skip-btn:active:not(:disabled) {
   background: var(--bg-hover);
+}
+
+.remote-skip-btn:disabled {
+  opacity: 0.4;
 }
 
 /* ── Seek bar ── */
@@ -302,7 +423,7 @@
   color: var(--text-primary);
 }
 
-.remote-browse-btn:active {
+.remote-browse-btn:active:not(:disabled) {
   background: var(--bg-hover);
 }
 
@@ -312,46 +433,10 @@
   color: var(--red);
 }
 
-.remote-stop-btn:active {
+.remote-stop-btn:active:not(:disabled) {
   background: rgba(251, 113, 133, 0.2);
 }
 
-/* ── Waiting / no-session states ── */
-.remote-waiting,
-.remote-no-session {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.remote-waiting-text {
-  font-size: 13px;
-  max-width: 260px;
-  line-height: 1.5;
-}
-
-.remote-action-btn {
-  padding: 14px 32px;
-  background: var(--accent);
-  color: var(--bg-deep);
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 600;
-  transition: all var(--transition);
-  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.25);
-}
-
-.remote-action-btn:active {
-  transform: scale(0.96);
-  background: var(--accent-bright);
-}
-
-/* ── Fullscreen button ── */
 .remote-fullscreen-btn {
   padding: 14px 16px;
   border-radius: var(--radius-sm);
@@ -364,39 +449,14 @@
   transition: background var(--transition);
 }
 
-.remote-fullscreen-btn:active {
+.remote-fullscreen-btn:active:not(:disabled) {
   background: var(--bg-hover);
 }
 
-/* ── Connection lost state ── */
-.remote-lost {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  text-align: center;
-  padding: 0 24px;
-}
-
-.remote-lost-icon {
-  opacity: 0.6;
-  margin-bottom: 4px;
-}
-
-.remote-lost-title {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.remote-lost-desc {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 300px;
+.remote-browse-btn:disabled,
+.remote-stop-btn:disabled,
+.remote-fullscreen-btn:disabled {
+  opacity: 0.4;
 }
 
 /* ── Now Playing floating bar (used in browse mode) ── */

@@ -327,6 +327,14 @@ app.post("/api/rc/session", (req, res) => {
   res.json({ sessionId, authToken });
 });
 
+// Session status probe (used by phone to detect expired sessions)
+app.get("/api/rc/session/:sessionId", (req, res) => {
+  const s = rcSessions.get(req.params.sessionId);
+  if (!s) return res.status(404).json({ error: "session_expired" });
+  s.lastActivity = Date.now();
+  res.json({ exists: true, playerOnline: !!s.playerClient });
+});
+
 // Phone remote auth — validates token, sets cookie, redirects to /remote
 // This endpoint is exempt from nginx basic auth.
 // The cookie it sets (rc_auth) tells nginx to skip basic auth on all other requests.

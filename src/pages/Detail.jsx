@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, autoPlay, searchStreams, playTorrent, backdrop, poster } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, autoPlay, searchStreams, playTorrent, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import "./Detail.css";
@@ -20,6 +20,7 @@ export default function Detail() {
   const [streams, setStreams] = useState(null);
   const [pickerSeason, setPickerSeason] = useState(null);
   const [pickerEpisode, setPickerEpisode] = useState(null);
+  const [expandedEps, setExpandedEps] = useState(new Set());
 
   useEffect(() => {
     setData(null);
@@ -241,29 +242,45 @@ export default function Detail() {
               ) : (
                 (episodes.episodes || []).map((ep) => (
                   <div key={ep.id} className="episode-card">
-                    <div className="episode-info">
-                      <span className="episode-num">E{ep.episode_number}</span>
-                      <div>
-                        <span className="episode-title">{ep.name}</span>
-                        {ep.runtime && <span className="episode-runtime">{ep.runtime}m</span>}
-                        {ep.overview && <p className="episode-overview">{ep.overview}</p>}
+                    {ep.still_path && (
+                      <img className="episode-thumb" src={still(ep.still_path)} alt="" loading="lazy" />
+                    )}
+                    <div className="episode-body">
+                      <div className="episode-info">
+                        <span className="episode-num">E{ep.episode_number}</span>
+                        <div>
+                          <span className="episode-title">{ep.name}</span>
+                          {ep.runtime && <span className="episode-runtime">{ep.runtime}m</span>}
+                          {ep.overview && (
+                            <p
+                              className={`episode-overview ${expandedEps.has(ep.id) ? "expanded" : ""}`}
+                              onClick={() => setExpandedEps((prev) => {
+                                const next = new Set(prev);
+                                next.has(ep.id) ? next.delete(ep.id) : next.add(ep.id);
+                                return next;
+                              })}
+                            >
+                              {ep.overview}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="episode-actions">
-                      <button
-                        className="episode-pick"
-                        onClick={() => openPicker(selectedSeason, ep.episode_number)}
-                        title="Pick source"
-                      >
-                        ⋯
-                      </button>
-                      <button
-                        className="episode-play"
-                        onClick={() => handlePlay(selectedSeason, ep.episode_number)}
-                        disabled={playState === "loading"}
-                      >
-                        ▶
-                      </button>
+                      <div className="episode-actions">
+                        <button
+                          className="episode-pick"
+                          onClick={() => openPicker(selectedSeason, ep.episode_number)}
+                          title="Pick source"
+                        >
+                          ⋯
+                        </button>
+                        <button
+                          className="episode-play"
+                          onClick={() => handlePlay(selectedSeason, ep.episode_number)}
+                          disabled={playState === "loading"}
+                        >
+                          ▶
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
