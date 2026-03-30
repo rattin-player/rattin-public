@@ -15,10 +15,22 @@
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(8, 8, 12, 0.3) 0%,
-    rgba(8, 8, 12, 0.7) 60%,
+    rgba(5, 5, 7, 0.25) 0%,
+    rgba(5, 5, 7, 0.65) 55%,
     var(--bg-deep) 100%
   );
+}
+
+/* Warm amber wash */
+.detail-backdrop-overlay::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(to top, rgba(201, 168, 76, 0.03), transparent);
+  pointer-events: none;
 }
 
 .detail-content {
@@ -26,19 +38,21 @@
   z-index: 1;
   margin-top: -200px;
   padding: 0 48px 48px;
+  animation: fadeUp 0.6s ease-out both;
 }
 
 .detail-main {
   display: flex;
-  gap: 36px;
-  margin-bottom: 36px;
+  gap: 40px;
+  margin-bottom: 40px;
 }
 
 .detail-poster {
   flex: 0 0 260px;
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(201, 168, 76, 0.08);
+  animation: fadeUp 0.6s ease-out 0.1s both;
 }
 
 .detail-poster img {
@@ -54,13 +68,16 @@
 .detail-info {
   flex: 1;
   padding-top: 20px;
+  animation: fadeUp 0.6s ease-out 0.2s both;
 }
 
 .detail-info h1 {
-  font-size: 2.2rem;
+  font-family: var(--font-display);
+  font-size: 2.4rem;
   font-weight: 700;
-  letter-spacing: -0.5px;
-  margin-bottom: 12px;
+  letter-spacing: -0.3px;
+  margin-bottom: 14px;
+  line-height: 1.15;
 }
 
 .detail-meta {
@@ -68,43 +85,53 @@
   align-items: center;
   gap: 16px;
   color: var(--text-secondary);
-  font-size: 0.95rem;
-  margin-bottom: 12px;
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+  font-weight: 400;
 }
 
 .detail-rating {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-weight: 600;
 }
 
 .detail-votes {
   color: var(--text-muted);
   font-weight: 400;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .detail-genres {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .detail-genre-pill {
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 20px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.detail-genre-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .detail-overview {
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 24px;
+  line-height: 1.7;
+  margin-bottom: 28px;
   max-width: 600px;
+  font-size: 0.92rem;
 }
 
 .detail-actions {
@@ -117,59 +144,69 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 32px;
-  background: var(--green);
+  padding: 14px 34px;
+  background: var(--accent);
   color: var(--bg-deep);
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   border-radius: var(--radius-sm);
   transition: all var(--transition);
+  box-shadow: 0 4px 20px rgba(201, 168, 76, 0.25);
+  letter-spacing: 0.3px;
 }
 
 .detail-play-btn:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: scale(1.02);
+  background: var(--accent-bright);
+  box-shadow: 0 6px 28px rgba(201, 168, 76, 0.35);
+  transform: translateY(-1px);
 }
 
 .detail-play-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: wait;
 }
 
 .detail-source-btn {
-  padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.1);
+  padding: 14px 26px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   font-weight: 500;
-  transition: background var(--transition);
+  font-size: 0.9rem;
+  transition: all var(--transition);
 }
 
 .detail-source-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .detail-trailer-btn {
-  padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.1);
+  padding: 14px 26px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   font-weight: 500;
-  transition: background var(--transition);
+  font-size: 0.9rem;
+  transition: all var(--transition);
 }
 
 .detail-trailer-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Error box */
 .detail-error-box {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin-top: 16px;
-  padding: 14px 18px;
-  background: rgba(248, 113, 113, 0.08);
-  border: 1px solid rgba(248, 113, 113, 0.2);
+  margin-top: 18px;
+  padding: 16px 20px;
+  background: rgba(251, 113, 133, 0.06);
+  border: 1px solid rgba(251, 113, 133, 0.15);
   border-radius: var(--radius-sm);
-  max-width: 500px;
+  max-width: 520px;
 }
 
 .detail-error-box svg {
@@ -179,21 +216,21 @@
 
 .detail-error-title {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   margin-bottom: 4px;
 }
 
 .detail-error-sub {
   color: var(--text-secondary);
-  font-size: 0.85rem;
-  line-height: 1.4;
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .detail-error-retry {
   flex: 0 0 auto;
   margin-left: auto;
-  padding: 6px 14px;
-  font-size: 0.8rem;
+  padding: 7px 16px;
+  font-size: 0.78rem;
   color: var(--text-secondary);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xs);
@@ -206,21 +243,23 @@
   border-color: var(--text-muted);
 }
 
-/* Seasons / Episodes */
+/* ── Seasons / Episodes ── */
 .detail-seasons {
-  margin-top: 36px;
+  margin-top: 40px;
+  animation: fadeUp 0.6s ease-out 0.35s both;
 }
 
 .detail-season-header {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .detail-season-header h3 {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 500;
 }
 
 .detail-season-header select {
@@ -228,9 +267,15 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 0.9rem;
+  padding: 7px 14px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.detail-season-header select:focus {
+  border-color: var(--accent);
 }
 
 .detail-episodes {
@@ -243,42 +288,50 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 16px 20px;
   background: var(--bg-surface);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.episode-card:hover {
+  border-color: var(--border-light);
+  background: var(--bg-elevated);
 }
 
 .episode-info {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 16px;
   flex: 1;
   min-width: 0;
 }
 
 .episode-num {
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 1.1rem;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.95rem;
   flex: 0 0 36px;
+  font-variant-numeric: tabular-nums;
 }
 
 .episode-title {
   font-weight: 500;
+  font-size: 0.92rem;
 }
 
 .episode-runtime {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   margin-left: 8px;
 }
 
 .episode-overview {
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   margin-top: 4px;
-  line-height: 1.4;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -293,10 +346,10 @@
 }
 
 .episode-pick {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -306,27 +359,29 @@
 }
 
 .episode-pick:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
 }
 
 .episode-play {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   background: var(--accent);
-  color: white;
+  color: var(--bg-deep);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   transition: all var(--transition);
+  box-shadow: 0 2px 12px rgba(201, 168, 76, 0.2);
 }
 
 .episode-play:hover:not(:disabled) {
   background: var(--accent-bright);
-  transform: scale(1.1);
+  transform: scale(1.08);
+  box-shadow: 0 4px 18px rgba(201, 168, 76, 0.3);
 }
 
 .episode-play:disabled {
@@ -341,7 +396,7 @@
   .detail-main {
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 24px;
   }
   .detail-poster {
     flex: 0 0 auto;
@@ -352,7 +407,7 @@
     text-align: center;
   }
   .detail-info h1 {
-    font-size: 1.6rem;
+    font-size: 1.7rem;
   }
   .detail-meta {
     justify-content: center;
@@ -362,25 +417,27 @@
   }
   .detail-actions {
     justify-content: center;
+    flex-wrap: wrap;
   }
 }
 
-/* Stream Picker Modal */
+/* ── Stream Picker Modal ── */
 .picker-overlay {
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .picker-modal {
   background: var(--bg-base);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius);
   width: 100%;
   max-width: 720px;
@@ -388,24 +445,27 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  animation: fadeUp 0.3s ease-out;
 }
 
 .picker-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 22px;
+  padding: 20px 24px;
   border-bottom: 1px solid var(--border);
 }
 
 .picker-header h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 500;
 }
 
 .picker-close {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -426,9 +486,10 @@
 
 .picker-loading,
 .picker-empty {
-  padding: 40px 20px;
+  padding: 48px 24px;
   text-align: center;
   color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .picker-item {
@@ -437,14 +498,16 @@
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
   text-align: left;
   transition: background var(--transition);
+  border: 1px solid transparent;
 }
 
 .picker-item:hover {
   background: var(--bg-hover);
+  border-color: var(--border);
 }
 
 .picker-item-main {
@@ -454,7 +517,7 @@
 
 .picker-item-name {
   display: block;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -464,22 +527,23 @@
 
 .picker-item-tags {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .picker-tag {
-  padding: 2px 6px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-muted);
 }
 
 .picker-tag.season-pack {
-  background: rgba(124, 106, 255, 0.15);
+  background: var(--accent-subtle);
   color: var(--accent-bright);
 }
 
@@ -491,11 +555,11 @@
 }
 
 .picker-source {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.5px;
-  padding: 3px 8px;
-  border-radius: 4px;
+  padding: 3px 9px;
+  border-radius: 3px;
   background: var(--accent-subtle);
   color: var(--accent-bright);
 }
@@ -504,7 +568,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--green);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -515,11 +579,13 @@
   height: 6px;
   border-radius: 50%;
   background: var(--green);
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
 }
 
 .picker-size {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
   min-width: 60px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }

@@ -1,12 +1,15 @@
 .content-row {
-  margin-bottom: 36px;
+  margin-bottom: 40px;
 }
 
 .content-row-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 14px;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 500;
+  margin-bottom: 16px;
   padding-left: 48px;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
 }
 
 .content-row-wrapper {
@@ -15,7 +18,7 @@
 
 .content-row-scroll {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
@@ -40,13 +43,13 @@
   position: absolute;
   top: 0;
   bottom: 40px;
-  width: 48px;
+  width: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
-  color: var(--text-primary);
-  background: linear-gradient(to right, rgba(8, 8, 12, 0.8), transparent);
+  font-size: 1.8rem;
+  color: var(--accent-bright);
+  background: linear-gradient(to right, rgba(5, 5, 7, 0.9), transparent);
   opacity: 0;
   transition: opacity var(--transition);
   z-index: 2;
@@ -54,7 +57,7 @@
 
 .content-row-arrow.right {
   right: 0;
-  background: linear-gradient(to left, rgba(8, 8, 12, 0.8), transparent);
+  background: linear-gradient(to left, rgba(5, 5, 7, 0.9), transparent);
 }
 
 .content-row-arrow.left {
@@ -68,9 +71,10 @@
 @media (max-width: 768px) {
   .content-row-title {
     padding-left: 16px;
+    font-size: 1.15rem;
   }
   .content-row-scroll::before,
   .content-row-scroll::after {
-    flex: 0 0 2px;
+    flex: 0 0 4px;
   }
 }

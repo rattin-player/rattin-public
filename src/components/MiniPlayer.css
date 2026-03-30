@@ -4,19 +4,20 @@
   right: 24px;
   z-index: 1000;
   display: flex;
-  background: var(--bg-base);
+  background: rgba(10, 10, 15, 0.95);
   border: 1px solid var(--border-light);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(201, 168, 76, 0.06);
+  backdrop-filter: blur(20px);
   width: 420px;
-  animation: mini-slide-in 0.3s ease-out;
+  animation: mini-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes mini-slide-in {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.95);
+    transform: translateY(16px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -42,7 +43,7 @@
 
 .mini-player-info {
   flex: 1;
-  padding: 10px 12px;
+  padding: 10px 14px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -59,35 +60,36 @@
 }
 
 .mini-player-time {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .mini-player-progress {
-  height: 3px;
+  height: 2px;
   background: var(--bg-hover);
-  border-radius: 2px;
-  margin-top: 2px;
+  border-radius: 1px;
+  margin-top: 3px;
 }
 
 .mini-player-progress-bar {
   height: 100%;
   background: var(--accent);
-  border-radius: 2px;
+  border-radius: 1px;
   transition: width 0.3s;
+  box-shadow: 0 0 6px rgba(201, 168, 76, 0.3);
 }
 
 .mini-player-controls {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 8px;
+  padding: 0 10px;
   gap: 2px;
 }
 
 .mini-player-btn {
-  padding: 4px;
+  padding: 5px;
   border-radius: 50%;
   color: var(--text-secondary);
   transition: all var(--transition);
@@ -97,8 +99,8 @@
 }
 
 .mini-player-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: var(--accent-bright);
+  background: var(--accent-subtle);
 }
 
 @media (max-width: 768px) {
