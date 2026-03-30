@@ -519,7 +519,7 @@ install_app() {
         log info "Using local app tarball: $APP_TARBALL"
         cp "$APP_TARBALL" "$tmpfile"
     else
-        local tarball_url="https://github.com/rattin-player/player/archive/refs/heads/main.tar.gz"
+        local tarball_url="https://github.com/rattin-player/rattin-public/releases/latest/download/app.tar.gz"
         download "$tarball_url" > "$tmpfile"
     fi
 
@@ -834,7 +834,7 @@ print_success() {
         echo "  Logs:       (run start.sh to see output)"
     fi
 
-    echo "  Uninstall:  curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-install/main/install.sh | sudo bash -s -- --uninstall"
+    echo "  Uninstall:  curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.sh | sudo bash -s -- --uninstall"
     echo ""
     echo "============================================"
     echo ""
