@@ -8,6 +8,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
 import { buildSeekIndex, findSeekOffset, waitForPieces } from "./lib/seek-index.js";
+import { jobKey, registerCache, cleanupHash, pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,6 +29,12 @@ const seekIndexCache = new Map(); // "infoHash:fileIndex" -> [{ time, offset }, 
 const seekIndexPending = new Set(); // jobKeys currently being indexed (prevents duplicate attempts)
 const activeFiles = new Map(); // "infoHash" -> Set of fileIndex
 const streamTracker = new Map(); // infoHash -> { count, idleTimer }
+
+registerCache("transcodeJobs", transcodeJobs, "hash:index");
+registerCache("durationCache", durationCache, "hash:index");
+registerCache("seekIndexCache", seekIndexCache, "hash:index");
+registerCache("seekIndexPending", seekIndexPending, "hash:index");
+registerCache("activeFiles", activeFiles, "hash");
 
 function log(level, msg, data) {
   const ts = new Date().toISOString().slice(11, 23);
@@ -59,23 +66,12 @@ function isAllowedFile(name) {
   return ALLOWED_EXTENSIONS.has(ext);
 }
 
-// Clean all caches associated with a torrent (call BEFORE torrent.destroy)
+// Clean all caches for a torrent — delegates to central registry
 function cleanupTorrentCaches(infoHash, torrent) {
-  if (torrent?.files) {
-    for (const f of torrent.files) {
-      probeCache.delete(diskPath(torrent, f));
-    }
-  }
-  for (const key of [...durationCache.keys()]) {
-    if (key.startsWith(infoHash + ":")) durationCache.delete(key);
-  }
-  for (const key of [...seekIndexCache.keys()]) {
-    if (key.startsWith(infoHash + ":")) seekIndexCache.delete(key);
-  }
-  for (const key of [...seekIndexPending]) {
-    if (key.startsWith(infoHash + ":")) seekIndexPending.delete(key);
-  }
-  activeFiles.delete(infoHash);
+  const filePaths = torrent?.files
+    ? torrent.files.map((f) => diskPath(torrent, f))
+    : [];
+  cleanupHash(infoHash, filePaths);
 }
 
 function trackStreamOpen(infoHash) {
@@ -114,6 +110,7 @@ function trackStreamClose(infoHash) {
 // Verify a file is actually media by probing its content with ffprobe.
 // Returns { valid, format, streams } or { valid: false, reason }.
 const probeCache = new Map(); // filePath -> result
+registerCache("probeCache", probeCache, "path");
 function probeMedia(filePath) {
   if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath));
   return new Promise((resolve) => {
@@ -1802,27 +1799,13 @@ function findEpisodeFile(torrent, season, episode) {
 // Cache janitor — every 5 min, prune entries for removed torrents
 setInterval(() => {
   const activeHashes = new Set(client.torrents.map((t) => t.infoHash));
-  let pruned = 0;
-  for (const key of [...durationCache.keys()]) {
-    if (!activeHashes.has(key.split(":")[0])) { durationCache.delete(key); pruned++; }
-  }
-  for (const key of [...seekIndexCache.keys()]) {
-    if (!activeHashes.has(key.split(":")[0])) { seekIndexCache.delete(key); pruned++; }
-  }
-  for (const key of [...seekIndexPending]) {
-    if (!activeHashes.has(key.split(":")[0])) { seekIndexPending.delete(key); pruned++; }
-  }
-  for (const key of [...activeFiles.keys()]) {
-    if (!activeHashes.has(key)) { activeFiles.delete(key); pruned++; }
-  }
-  for (const filePath of [...probeCache.keys()]) {
-    try { statSync(filePath); } catch { probeCache.delete(filePath); pruned++; }
-  }
+  let pruned = pruneOrphans(activeHashes, statSync);
+  // Availability cache has its own TTL — prune separately
   const now = Date.now();
   for (const [key, entry] of availabilityCache) {
     if (now - entry.ts > AVAIL_TTL) { availabilityCache.delete(key); pruned++; }
   }
-  if (pruned > 0) log("info", "Cache janitor", { pruned, probeCache: probeCache.size, seekIndex: seekIndexCache.size, duration: durationCache.size, availability: availabilityCache.size });
+  if (pruned > 0) log("info", "Cache janitor", { pruned, ...cacheStats(), availability: availabilityCache.size });
 }, 5 * 60 * 1000);
 
 app.get("/{*splat}", (req, res) => {
