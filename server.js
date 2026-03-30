@@ -173,7 +173,7 @@ function probeMedia(filePath) {
 // Start background transcode to a proper MP4 with faststart (moov at beginning).
 // This is what makes seeking work - the browser can read the moov atom first
 // and know the full duration + seek table.
-function startTranscode(inputPath, cacheKey) {
+function startTranscode(inputPath, cacheKey, audioStreamIdx = null) {
   fs.mkdirSync(TRANSCODE_PATH, { recursive: true });
   const outputPath = path.join(TRANSCODE_PATH, cacheKey.replace(/:/g, "_") + ".mp4");
 
@@ -193,6 +193,7 @@ function startTranscode(inputPath, cacheKey) {
   function startEncode() {
     const proc2 = spawn("ffmpeg", [
       "-i", inputPath,
+      ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
       "-c:v", "libx264", "-preset", "fast", "-crf", "22",
       "-c:a", "aac",
       "-movflags", "+faststart",
@@ -231,6 +232,7 @@ function startTranscode(inputPath, cacheKey) {
   // Try remux first (fast - just repackage, no re-encoding)
   const proc = spawn("ffmpeg", [
     "-i", inputPath,
+    ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
     "-c:v", "copy", "-c:a", "aac",
     "-movflags", "+faststart",
     "-y", outputPath,
@@ -738,6 +740,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
 
   const ext = path.extname(file.name).toLowerCase();
   const fileIdx = parseInt(req.params.fileIndex, 10);
+  const audioStreamIdx = req.query.audio ? parseInt(req.query.audio, 10) : null;
 
   // Ensure this file is selected and prioritized
   file.select();
@@ -782,11 +785,15 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
     if (job && job.error) return res.status(500).json({ error: "Transcode failed" });
   }
 
-  // 2) Native format, complete on disk
-  if (complete && !xcode) {
+  // 2) Native format, complete on disk — but if non-default audio requested, force transcode
+  if (complete && !xcode && audioStreamIdx === null) {
     log("info", "Serving from disk", { file: file.name });
     return serveFile(diskPath(torrent, file), file.length,
       ext === ".webm" ? "video/webm" : "video/mp4", req, res);
+  }
+  if (complete && !xcode && audioStreamIdx !== null) {
+    log("info", "Serving with audio track override", { file: file.name, audioStreamIdx });
+    return serveLiveTranscode(torrent, file, true, req, res, parseFloat(req.query.t) || 0, audioStreamIdx);
   }
 
   // 3) Needs transcode but not ready yet - live pipe through ffmpeg
@@ -844,7 +851,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
           // Fast path: pieces on disk → input seeking + copy mode (near-instant)
           log("info", "Smart seek (instant)", { seekTo, byteStart, method: seekIndexCache.has(cacheKey) ? "index" : "estimate" });
           torrent.select(firstPiece, getFileEndPiece(file), 1);
-          return serveLiveTranscode(torrent, file, true, req, res, seekTo);
+          return serveLiveTranscode(torrent, file, true, req, res, seekTo, audioStreamIdx);
         }
 
         // Pieces not ready — fetch them, then use fast path
@@ -853,10 +860,10 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
           try {
             await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
             torrent.select(firstPiece, getFileEndPiece(file), 1);
-            return serveLiveTranscode(torrent, file, true, req, res, seekTo);
+            return serveLiveTranscode(torrent, file, true, req, res, seekTo, audioStreamIdx);
           } catch {
             log("warn", "Smart seek timeout, falling back", { seekTo });
-            return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
+            return serveLiveTranscode(torrent, file, complete, req, res, seekTo, audioStreamIdx);
           }
         };
         return doSmartSeek();
@@ -864,7 +871,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
     }
 
     log("info", "Live transcode", { file: file.name, complete, seekTo });
-    return serveLiveTranscode(torrent, file, complete, req, res, seekTo);
+    return serveLiveTranscode(torrent, file, complete, req, res, seekTo, audioStreamIdx);
   }
 
   // 4) Native format, still downloading - WebTorrent stream
@@ -938,7 +945,7 @@ function serveFromTorrent(file, req, res) {
 }
 
 // Live transcode through ffmpeg (for MKV etc, before background transcode is ready)
-function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
+function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0, audioStreamIdx = null) {
   const filePath = diskPath(torrent, file);
   // Only use disk file when download is complete — partial files have gaps that break ffmpeg
   const useStdin = !complete;
@@ -961,7 +968,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
     ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
     "-i", input,
     ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
-    "-map", "0:v:0", "-map", "0:a:0",
+    "-map", "0:v:0", "-map", audioStreamIdx !== null ? `0:${audioStreamIdx}` : "0:a:0",
     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
     ...(vFilters.length > 0 ? ["-vf", vFilters.join(",")] : []),
     "-c:a", "aac", "-ac", "2",
@@ -1020,7 +1027,7 @@ function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0) {
         ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
         "-i", input,
         ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
-        "-map", "0:v:0", "-map", "0:a:0",
+        "-map", "0:v:0", "-map", audioStreamIdx !== null ? `0:${audioStreamIdx}` : "0:a:0",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
         "-vf", retryFilters.join(","),
         "-c:a", "aac", "-ac", "2",
