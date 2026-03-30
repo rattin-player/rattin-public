@@ -20,7 +20,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef, rcSessionId, rcRemoteConnected } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, commandRef, dlProgressRef, rcSessionId, rcAuthToken, rcRemoteConnected } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
   const videoContainerRef = useRef();

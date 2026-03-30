@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { formatTime } from "../lib/utils";
 import QrScanner from "../components/QrScanner";
 import "./Remote.css";
@@ -30,8 +30,10 @@ async function probeSession(sessionId) {
 export default function Remote() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const sessionId = searchParams.get("session") || localStorage.getItem("rc-session");
   const token = searchParams.get("token");
+  const pendingTitle = location.state?.pendingTitle || null;
 
   // Set auth token as cookie so nginx bypasses basic auth for the phone
   useEffect(() => {
@@ -62,6 +64,18 @@ export default function Remote() {
 
   // ── Last known good values ──
   const lastGood = useRef({ currentTime: 0, duration: 0 });
+
+  // ── Pending playback (navigated here after starting a stream) ──
+  const [pending, setPending] = useState(!!pendingTitle);
+  useEffect(() => {
+    if (!pendingTitle) return;
+    // Clear pending after 10s if no playback arrives
+    const t = setTimeout(() => setPending(false), 10000);
+    return () => clearTimeout(t);
+  }, [pendingTitle]);
+
+  // ── Connection flash feedback ──
+  const [showConnectedFlash, setShowConnectedFlash] = useState(false);
 
   // ── QR scanner ──
   const [showScanner, setShowScanner] = useState(false);
@@ -120,11 +134,15 @@ export default function Remote() {
           setOptimisticSeekTime(null);
         }
         setState(parsed);
+        if (parsed.infoHash) setPending(false); // playback arrived, clear pending
         setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
       });
 
       es.addEventListener("connected", () => {
         failCount.current = 0;
+        // Flash "Connected" feedback
+        setShowConnectedFlash(true);
+        setTimeout(() => setShowConnectedFlash(false), 2000);
         // We know player is online, but we wait for state event to determine idle vs playing
         setRemoteState((prev) =>
           prev === S.CONNECTED_PLAYING ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE
@@ -388,12 +406,13 @@ export default function Remote() {
   const isReconnecting = remoteState === S.RECONNECTING;
   const hasPlayback = state?.infoHash;
 
-  // CONNECTED_IDLE (no playback)
-  if (remoteState === S.CONNECTED_IDLE || (!hasPlayback && !isReconnecting)) {
+  // CONNECTED_IDLE (no playback) — or pending playback
+  if ((remoteState === S.CONNECTED_IDLE || (!hasPlayback && !isReconnecting)) && !pending) {
     return (
       <div className="remote-page">
+        {showConnectedFlash && <div className="remote-flash">Connected</div>}
         <div className="remote-center-state">
-          <div className={`remote-status online`}>
+          <div className="remote-status online">
             <span className="remote-status-dot" />
             Connected
           </div>
@@ -401,6 +420,23 @@ export default function Remote() {
           <button className="remote-action-btn" onClick={() => navigate(`/?session=${sessionId}`)}>
             Browse Content
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // PENDING PLAYBACK (just started a stream, waiting for state)
+  if (pending && !hasPlayback) {
+    return (
+      <div className="remote-page">
+        {showConnectedFlash && <div className="remote-flash">Connected</div>}
+        <div className="remote-center-state">
+          <div className="remote-status online">
+            <span className="remote-status-dot" />
+            Connected
+          </div>
+          <div className="remote-spinner" />
+          <p>Starting {pendingTitle || "playback"}...</p>
         </div>
       </div>
     );
@@ -416,6 +452,7 @@ export default function Remote() {
 
   return (
     <div className={`remote-page ${isReconnecting ? "remote-dimmed" : ""}`}>
+      {showConnectedFlash && <div className="remote-flash">Connected</div>}
       {isReconnecting && (
         <div className="remote-reconnecting-overlay">
           <div className="remote-spinner" />

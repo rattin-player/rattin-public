@@ -125,6 +125,31 @@
   color: var(--text-secondary);
 }
 
+/* ── Connection flash ── */
+.remote-flash {
+  position: fixed;
+  top: env(safe-area-inset-top, 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--green);
+  color: var(--bg-deep);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 8px 24px;
+  border-radius: 20px;
+  animation: flashIn 2s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes flashIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ── Status indicator ── */
 .remote-status {
   display: flex;

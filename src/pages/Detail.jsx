@@ -62,7 +62,9 @@ export default function Detail() {
         value: { infoHash: result.infoHash, fileIndex: result.fileIndex, title: data.title || data.name, tags },
       }),
     }).catch(() => {});
-    navigate(`/remote?session=${sessionId}`);
+    navigate(`/remote?session=${sessionId}`, {
+      state: { pendingTitle: data.title || data.name },
+    });
   }
 
   async function handlePickStream(stream) {
