@@ -834,7 +834,7 @@ print_success() {
         echo "  Logs:       (run start.sh to see output)"
     fi
 
-    echo "  Uninstall:  curl -fsSL URL | sudo bash -s -- --uninstall"
+    echo "  Uninstall:  curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-install/main/install.sh | sudo bash -s -- --uninstall"
     echo ""
     echo "============================================"
     echo ""
