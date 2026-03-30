@@ -5,12 +5,13 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node --env-file=.env server.js",
+    "start": "tsx --env-file=.env server.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "build:exe": "pkg . --targets node20-win-x64 --output dist/rattin.exe --options max-old-space-size=4096",
-    "test": "node --test test/*.test.js test/lib/*.test.js test/routes/*.test.js"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.js test/lib/*.test.js test/routes/*.test.js"
   },
   "pkg": {
     "assets": [
@@ -31,7 +32,11 @@
     "webtorrent": "^2.8.5"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
     "@vitejs/plugin-react": "^4.5.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
     "vite": "^6.3.5"
   }
 }
