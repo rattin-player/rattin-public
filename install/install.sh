@@ -108,12 +108,7 @@ acquire_lock() {
 preflight() {
     log info "Running preflight checks (installer v${INSTALLER_VERSION})..."
 
-    # 1. Root check
-    if [ "$(id -u)" -ne 0 ]; then
-        die "This installer must be run as root. Re-run with: sudo $0"
-    fi
-
-    # 2. Architecture detection
+    # 1. Architecture detection
     local raw_arch
     raw_arch="$(uname -m)"
     case "$raw_arch" in
@@ -124,12 +119,12 @@ preflight() {
     esac
     log info "Architecture: $raw_arch -> $ARCH"
 
-    # 3. Musl detection
+    # 2. Musl detection
     if ldd --version 2>&1 | grep -qi musl; then
         die "Alpine/musl-based distros are not supported"
     fi
 
-    # 4. Distro / package-manager detection
+    # 3. Distro / package-manager detection
     DISTRO_ID="unknown"
     DISTRO_ID_LIKE=""
     PKG_MANAGER="unknown"
@@ -152,7 +147,7 @@ preflight() {
     fi
     log info "Distro: ${DISTRO_ID} (like: ${DISTRO_ID_LIKE:-none}) -> package manager: ${PKG_MANAGER}"
 
-    # 5. Internet check
+    # 4. Internet check
     log info "Checking internet connectivity..."
     local endpoints=("https://nodejs.org" "https://github.com" "https://registry.npmjs.org")
     for endpoint in "${endpoints[@]}"; do
@@ -170,7 +165,7 @@ preflight() {
     done
     log info "Internet connectivity OK"
 
-    # 6. Disk space check (>= 1 GB free on /opt or /)
+    # 5. Disk space check (>= 1 GB free on /opt or /)
     local check_mount="/"
     if df /opt >/dev/null 2>&1; then
         check_mount="/opt"
@@ -182,7 +177,7 @@ preflight() {
     fi
     log info "Disk space on $check_mount: ${avail_gb}GB available"
 
-    # 7. SELinux detection
+    # 6. SELinux detection
     SELINUX_ENFORCING=false
     if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = "Enforcing" ]; then
         SELINUX_ENFORCING=true
@@ -222,20 +217,51 @@ detect_mode() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# uninstall() — remove all rattin components
+# ---------------------------------------------------------------------------
+uninstall() {
+    log info "Uninstalling rattin..."
+
+    systemctl stop rattin 2>/dev/null || true
+    systemctl disable rattin 2>/dev/null || true
+    rm -f /etc/systemd/system/rattin.service
+    rm -f /etc/systemd/system/rattin-cleanup.service
+    rm -f /etc/systemd/system/rattin-cleanup.timer
+    systemctl daemon-reload 2>/dev/null || true
+    userdel rattin 2>/dev/null || true
+    rm -rf "$INSTALL_DIR"
+
+    log info "Rattin uninstalled successfully."
+}
+
 # ==============================================================================
 # Main
 # ==============================================================================
 main() {
+    # Root check (needed for both install and uninstall)
+    if [ "$(id -u)" -ne 0 ]; then
+        die "This installer must be run as root. Re-run with: sudo $0"
+    fi
+
     acquire_lock
+
+    # Handle --uninstall before preflight (no need for internet/disk checks)
+    if [ "$UNINSTALL" = true ]; then
+        uninstall
+        exit 0
+    fi
+
     preflight
     detect_mode
 
     log info "Install mode: $MODE"
 
-    if [ "$UNINSTALL" = true ]; then
-        log info "Uninstall requested"
-        # Uninstall logic will be added in a future task
-        exit 0
+    # Wipe mode: uninstall first, then continue as fresh install
+    if [ "$MODE" = "wipe" ]; then
+        uninstall
+        MODE="fresh"
+        log info "Wipe complete — continuing as fresh install"
     fi
 
     # Future tasks will add:
