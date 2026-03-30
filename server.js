@@ -1087,9 +1087,15 @@ function serveFile(filePath, fileSize, contentType, req, res) {
 }
 
 // Stream from WebTorrent (still downloading, native format)
+// Deselects file before creating the stream so the FileIterator's internal
+// selection (priority 1) becomes the sole active selection — this ensures
+// WebTorrent downloads pieces at the requested byte range, not sequentially.
+// File selection is restored when the response closes.
 function serveFromTorrent(file, req, res) {
   const range = req.headers.range;
   const size = file.length;
+  file.deselect();
+  res.on("close", () => file.select());
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);

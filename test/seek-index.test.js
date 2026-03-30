@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { findSeekOffset, getSeekByteRange } from "../lib/seek-index.js";
+import EventEmitter from "node:events";
+import { findSeekOffset, getSeekByteRange, waitForPieces } from "../lib/seek-index.js";
 
 describe("findSeekOffset", () => {
   const index = [
@@ -78,5 +79,105 @@ describe("getSeekByteRange", () => {
     const result = getSeekByteRange(seekPoint, 50000000);
     assert.equal(result.byteStart, 0);
     assert.equal(result.byteEnd, 10 * 1024 * 1024);
+  });
+});
+
+// ── waitForPieces tests ──────────────────────────────────────────────
+
+function mockTorrent(opts = {}) {
+  const pieceLength = opts.pieceLength || 256 * 1024;
+  const downloaded = new Set(opts.downloaded || []);
+  const selections = [];
+  const deselections = [];
+  const emitter = new EventEmitter();
+
+  return Object.assign(emitter, {
+    pieceLength,
+    bitfield: { get: (i) => downloaded.has(i) },
+    select: (from, to, priority) => selections.push({ from, to, priority }),
+    deselect: (from, to) => deselections.push({ from, to }),
+    critical: () => {},
+    // Test helpers
+    _downloaded: downloaded,
+    _selections: selections,
+    _deselections: deselections,
+    markDownloaded(piece) {
+      downloaded.add(piece);
+      emitter.emit("verified", piece);
+    },
+  });
+}
+
+function mockFile(opts = {}) {
+  const calls = { selectCount: 0, deselectCount: 0 };
+  return {
+    offset: opts.offset || 0,
+    length: opts.length || 50 * 1024 * 1024,
+    select: () => { calls.selectCount++; },
+    deselect: () => { calls.deselectCount++; },
+    _calls: calls,
+  };
+}
+
+describe("waitForPieces", () => {
+  it("resolves immediately if all pieces are present", async () => {
+    const torrent = mockTorrent({ downloaded: [0, 1, 2] });
+    const file = mockFile();
+    await waitForPieces(torrent, file, 0, 256 * 1024 * 3 - 1);
+    // Should not have deselected/selected since pieces were already present
+    assert.equal(file._calls.deselectCount, 0);
+  });
+
+  it("deselects file and selects seek range when pieces missing", async () => {
+    const torrent = mockTorrent();
+    const file = mockFile();
+
+    // byteStart=0, byteEnd=262143 → piece 0 only (one piece, 256KB)
+    const promise = waitForPieces(torrent, file, 0, 262143, 5000);
+
+    // Should have deselected file and selected the seek range
+    assert.equal(file._calls.deselectCount, 1, "file.deselect() should be called");
+    assert.equal(torrent._selections.length, 1, "torrent.select() should be called for seek range");
+    assert.equal(torrent._selections[0].from, 0);
+    assert.equal(torrent._selections[0].to, 0);
+    assert.equal(torrent._selections[0].priority, 5);
+
+    // Simulate piece arriving
+    torrent.markDownloaded(0);
+
+    await promise;
+
+    // After resolve: should restore file selection and deselect seek range
+    assert.equal(file._calls.selectCount, 1, "file.select() should restore after resolve");
+    assert.equal(torrent._deselections.length, 1, "seek range should be deselected after resolve");
+  });
+
+  it("restores file selection on timeout", async () => {
+    const torrent = mockTorrent();
+    const file = mockFile();
+
+    await assert.rejects(
+      () => waitForPieces(torrent, file, 0, 256 * 1024, 100),
+      { message: "Piece download timeout" },
+    );
+
+    // Should restore file selection even on timeout
+    assert.equal(file._calls.selectCount, 1, "file.select() should restore after timeout");
+    assert.equal(torrent._deselections.length, 1, "seek range should be deselected after timeout");
+  });
+
+  it("calculates correct piece range from byte offsets", async () => {
+    const torrent = mockTorrent({ pieceLength: 1024 });
+    const file = mockFile({ offset: 2048, length: 10240 });
+
+    // byteStart=1024, byteEnd=3071 → absolute 3072-5119 → pieces 3,4
+    const promise = waitForPieces(torrent, file, 1024, 3071, 5000);
+
+    assert.equal(torrent._selections[0].from, 3);
+    assert.equal(torrent._selections[0].to, 4);
+
+    torrent.markDownloaded(3);
+    torrent.markDownloaded(4);
+    await promise;
   });
 });

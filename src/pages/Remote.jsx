@@ -273,12 +273,11 @@ export default function Remote() {
       if (!dragRef.current.dragging) return;
       dragRef.current.dragging = false;
       setSeekDragging(false);
-      const maxSeekable = dragRef.current.duration * (state?.dlProgress ?? 1);
-      const clamped = Math.min(dragRef.current.value, maxSeekable);
-      setOptimisticSeekTime(clamped);
+      const seekTime = dragRef.current.value;
+      setOptimisticSeekTime(seekTime);
       clearTimeout(optimisticSeekTimeout.current);
       optimisticSeekTimeout.current = setTimeout(() => setOptimisticSeekTime(null), 5000);
-      sendCommand("seek", clamped);
+      sendCommand("seek", seekTime);
     }
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", end);
