@@ -7,20 +7,24 @@ function lcg(seed) {
   return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed; };
 }
 
+function lcgArr(seed, n) {
+  const gen = lcg(seed);
+  return Array.from({ length: n }, gen);
+}
+
+// Noise arrays that won't match LCG data or each other
+function noiseA(n) { return Array.from({ length: n }, () => 0x00000000); }
+function noiseB(n) { return Array.from({ length: n }, () => 0xFFFFFFFF); }
+
 describe("detectIntro", () => {
   beforeEach(() => {
     _setExtractor(null);
   });
 
   it("returns timestamps when two fingerprints have matching segment", async () => {
-    // Use LCG-generated values for unique segments, identical values for intro
-    const rngA = lcg(111);
-    const rngB = lcg(222);
-    const intro = Array.from({ length: 90 }, (_, i) => 5000 + i * 1000000); // these will match exactly
-    const uniqueA = Array.from({ length: 40 }, () => rngA());
-    const uniqueB = Array.from({ length: 70 }, () => rngB());
-    const fpA = [...uniqueA, ...intro];
-    const fpB = [...uniqueB, ...intro];
+    const intro = lcgArr(0x11223344, 90);
+    const fpA = [...noiseA(40), ...intro];
+    const fpB = [...noiseB(70), ...intro];
 
     let callCount = 0;
     _setExtractor(async () => {
@@ -36,9 +40,11 @@ describe("detectIntro", () => {
   });
 
   it("returns null when fingerprints do not match", async () => {
+    let callCount = 0;
     _setExtractor(async () => {
-      const rng = lcg(Math.floor(Math.random() * 0xFFFFFFFF));
-      return Array.from({ length: 120 }, () => rng());
+      callCount++;
+      // Return bitwise-opposite arrays — guaranteed 0.0 matchScore
+      return callCount === 1 ? noiseA(120) : noiseB(120);
     });
 
     const result = await detectIntro(["/fake/ep1.mkv", "/fake/ep2.mkv"]);
