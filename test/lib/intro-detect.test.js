@@ -1,0 +1,122 @@
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import { detectIntro, lookupExternal, _setExtractor, _setFetcher } from "../../lib/intro-detect.js";
+
+// LCG for deterministic pseudo-random 32-bit values
+function lcg(seed) {
+  return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed; };
+}
+
+describe("detectIntro", () => {
+  beforeEach(() => {
+    _setExtractor(null);
+  });
+
+  it("returns timestamps when two fingerprints have matching segment", async () => {
+    // Use LCG-generated values for unique segments, identical values for intro
+    const rngA = lcg(111);
+    const rngB = lcg(222);
+    const intro = Array.from({ length: 90 }, (_, i) => 5000 + i * 1000000); // these will match exactly
+    const uniqueA = Array.from({ length: 40 }, () => rngA());
+    const uniqueB = Array.from({ length: 70 }, () => rngB());
+    const fpA = [...uniqueA, ...intro];
+    const fpB = [...uniqueB, ...intro];
+
+    let callCount = 0;
+    _setExtractor(async () => {
+      callCount++;
+      return callCount === 1 ? fpA : fpB;
+    });
+
+    const result = await detectIntro(["/fake/ep1.mkv", "/fake/ep2.mkv"]);
+    assert.ok(result);
+    assert.equal(result.intro_start, 40);
+    assert.equal(result.intro_end, 130);
+    assert.ok(result.score > 0.9);
+  });
+
+  it("returns null when fingerprints do not match", async () => {
+    _setExtractor(async () => {
+      const rng = lcg(Math.floor(Math.random() * 0xFFFFFFFF));
+      return Array.from({ length: 120 }, () => rng());
+    });
+
+    const result = await detectIntro(["/fake/ep1.mkv", "/fake/ep2.mkv"]);
+    assert.equal(result, null);
+  });
+
+  it("returns null when fewer than 2 file paths provided", async () => {
+    const result = await detectIntro(["/fake/ep1.mkv"]);
+    assert.equal(result, null);
+  });
+
+  it("returns null when extractor throws", async () => {
+    _setExtractor(async () => { throw new Error("fpcalc not found"); });
+    const result = await detectIntro(["/fake/ep1.mkv", "/fake/ep2.mkv"]);
+    assert.equal(result, null);
+  });
+});
+
+describe("lookupExternal", () => {
+  beforeEach(() => {
+    _setFetcher(null);
+  });
+
+  it("returns timestamps from AniSkip when Jikan resolves title", async () => {
+    _setFetcher(async (url) => {
+      if (url.includes("jikan.moe")) {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ mal_id: 21 }] }),
+        };
+      }
+      if (url.includes("aniskip.com")) {
+        return {
+          ok: true,
+          json: async () => ({
+            found: true,
+            results: [{
+              interval: { startTime: 42.5, endTime: 132.0 },
+              skipType: "op",
+              episodeLength: 1420,
+            }],
+          }),
+        };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
+
+    const result = await lookupExternal("One Punch Man", 1, 1, 1420);
+    assert.ok(result);
+    assert.equal(result.intro_start, 42.5);
+    assert.equal(result.intro_end, 132.0);
+  });
+
+  it("returns null when Jikan finds no results", async () => {
+    _setFetcher(async () => ({
+      ok: true,
+      json: async () => ({ data: [] }),
+    }));
+
+    const result = await lookupExternal("Nonexistent Show XYZ", 1, 1, 1400);
+    assert.equal(result, null);
+  });
+
+  it("returns null when AniSkip has no data", async () => {
+    _setFetcher(async (url) => {
+      if (url.includes("jikan.moe")) {
+        return { ok: true, json: async () => ({ data: [{ mal_id: 999 }] }) };
+      }
+      return { ok: true, json: async () => ({ found: false, results: [] }) };
+    });
+
+    const result = await lookupExternal("Some Show", 1, 1, 1400);
+    assert.equal(result, null);
+  });
+
+  it("returns null when fetch throws", async () => {
+    _setFetcher(async () => { throw new Error("network error"); });
+    const result = await lookupExternal("Whatever", 1, 1, 1400);
+    assert.equal(result, null);
+  });
+});
