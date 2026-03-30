@@ -1,18 +1,32 @@
+import type { Express, Request, Response } from "express";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "../lib/cache.js";
+import type { ServerContext } from "../lib/types.js";
 
-export default function tmdbRoutes(app, ctx) {
+interface RedditThread {
+  id: string;
+  title: string;
+  subreddit: string;
+  url: string;
+  score: number;
+  comments: number;
+  created: number;
+  isSelfPost: boolean;
+  flair: string | null;
+}
+
+export default function tmdbRoutes(app: Express, ctx: ServerContext): void {
   const { log } = ctx;
 
   const _cacheJanitorTmdb = startCacheJanitor(log);
   if (_cacheJanitorTmdb?.unref) _cacheJanitorTmdb.unref();
 
-  function tmdbErrorStatus(e) {
+  function tmdbErrorStatus(e: Error): number {
     return e.message === "TMDB_API_KEY not set" ? 503 : 502;
   }
 
 // Stale-while-revalidate: trending
-app.get("/api/tmdb/trending", async (req, res) => {
-  const page = req.query.page || 1;
+app.get("/api/tmdb/trending", async (req: Request, res: Response) => {
+  const page = (req.query.page as string) || "1";
   const key = `trending:${page}`;
   const { value: cached, stale } = tmdbCache.getStale(key);
   if (cached && !stale) return res.json(cached);
@@ -28,20 +42,21 @@ app.get("/api/tmdb/trending", async (req, res) => {
     tmdbCache.set(key, data, CACHE_TTL.TRENDING);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // Stale-while-revalidate: discover
-app.get("/api/tmdb/discover", async (req, res) => {
-  const { type = "movie", genre = "", page = 1, sort = "popularity.desc" } = req.query;
+app.get("/api/tmdb/discover", async (req: Request, res: Response) => {
+  const query = req.query as Record<string, string>;
+  const { type = "movie", genre = "", page = "1", sort = "popularity.desc" } = query;
   // Cache key must incorporate ALL query params that affect TMDB's response.
   // Using sorted URLSearchParams ensures key stability regardless of param order.
-  const sortedParams = new URLSearchParams(Object.entries(req.query).sort());
+  const sortedParams = new URLSearchParams(Object.entries(query).sort());
   const key = `discover:${sortedParams.toString()}`;
   let endpoint = `/discover/${type}?sort_by=${sort}&page=${page}`;
   if (genre) endpoint += `&with_genres=${genre}`;
-  for (const [k, v] of Object.entries(req.query)) {
+  for (const [k, v] of Object.entries(query)) {
     if (!["type", "genre", "page", "sort"].includes(k)) endpoint += `&${k}=${v}`;
   }
 
@@ -59,14 +74,14 @@ app.get("/api/tmdb/discover", async (req, res) => {
     tmdbCache.set(key, data, CACHE_TTL.DISCOVER);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // Stale-while-revalidate: search
-app.get("/api/tmdb/search", async (req, res) => {
-  const q = req.query.q || "";
-  const page = req.query.page || 1;
+app.get("/api/tmdb/search", async (req: Request, res: Response) => {
+  const q = (req.query.q as string) || "";
+  const page = (req.query.page as string) || "1";
   const key = `search:${q.toLowerCase()}:${page}`;
   const endpoint = `/search/multi?query=${encodeURIComponent(q)}&page=${page}`;
 
@@ -84,62 +99,65 @@ app.get("/api/tmdb/search", async (req, res) => {
     tmdbCache.set(key, data, CACHE_TTL.SEARCH);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // Simple cache: movie details
-app.get("/api/tmdb/movie/:id", async (req, res) => {
-  const key = `movie:${req.params.id}`;
+app.get("/api/tmdb/movie/:id", async (req: Request, res: Response) => {
+  const { id } = req.params as Record<string, string>;
+  const key = `movie:${id}`;
   const cached = tmdbCache.get(key);
   if (cached) return res.json(cached);
   try {
-    const data = await fetchTMDB(`/movie/${req.params.id}?append_to_response=credits,similar,videos`);
+    const data = await fetchTMDB(`/movie/${id}?append_to_response=credits,similar,videos`);
     tmdbCache.set(key, data, CACHE_TTL.MOVIE);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // Simple cache: TV season (must be before /api/tmdb/tv/:id)
-app.get("/api/tmdb/tv/:id/season/:num", async (req, res) => {
-  const key = `tv:${req.params.id}:season:${req.params.num}`;
+app.get("/api/tmdb/tv/:id/season/:num", async (req: Request, res: Response) => {
+  const { id, num } = req.params as Record<string, string>;
+  const key = `tv:${id}:season:${num}`;
   const cached = tmdbCache.get(key);
   if (cached) return res.json(cached);
   try {
-    const data = await fetchTMDB(`/tv/${req.params.id}/season/${req.params.num}`);
+    const data = await fetchTMDB(`/tv/${id}/season/${num}`);
     tmdbCache.set(key, data, CACHE_TTL.SEASON);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // Simple cache: TV show details
-app.get("/api/tmdb/tv/:id", async (req, res) => {
-  const key = `tv:${req.params.id}`;
+app.get("/api/tmdb/tv/:id", async (req: Request, res: Response) => {
+  const { id } = req.params as Record<string, string>;
+  const key = `tv:${id}`;
   const cached = tmdbCache.get(key);
   if (cached) return res.json(cached);
   try {
-    const data = await fetchTMDB(`/tv/${req.params.id}?append_to_response=credits,similar,videos,external_ids`);
+    const data = await fetchTMDB(`/tv/${id}?append_to_response=credits,similar,videos,external_ids`);
     tmdbCache.set(key, data, CACHE_TTL.TV);
     res.json(data);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 
 // ---- Reviews & Discussions ----
 
-async function fetchRedditThreads(title, type) {
+async function fetchRedditThreads(title: string, type: string): Promise<RedditThread[]> {
   const subreddit = type === "tv" ? "television" : "movies";
   const queries = [
     `"${title}" discussion`,
     `"${title}" official discussion`,
   ];
-  const seen = new Set();
-  const threads = [];
+  const seen = new Set<string>();
+  const threads: RedditThread[] = [];
 
   const titleLower = title.toLowerCase();
 
@@ -151,7 +169,8 @@ async function fetchRedditThreads(title, type) {
         signal: AbortSignal.timeout(8000),
       });
       if (!resp.ok) continue;
-      const data = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await resp.json();
       for (const child of (data?.data?.children || [])) {
         const post = child.data;
         if (seen.has(post.id)) continue;
@@ -178,8 +197,8 @@ async function fetchRedditThreads(title, type) {
   return threads.slice(0, 10);
 }
 
-app.get("/api/reviews/:type/:id", async (req, res) => {
-  const { type, id } = req.params;
+app.get("/api/reviews/:type/:id", async (req: Request, res: Response) => {
+  const { type, id } = req.params as Record<string, string>;
   if (!["movie", "tv"].includes(type)) return res.status(400).json({ error: "Invalid type" });
 
   const key = `reviews:${type}:${id}`;
@@ -189,22 +208,25 @@ app.get("/api/reviews/:type/:id", async (req, res) => {
   try {
     // Get TMDB details (from cache if available) to extract title and IMDb ID
     const detailKey = type === "tv" ? `tv:${id}` : `movie:${id}`;
-    let detail = tmdbCache.get(detailKey);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let detail: any = tmdbCache.get(detailKey);
     if (!detail) {
       const append = type === "tv" ? "external_ids" : "";
       detail = await fetchTMDB(`/${type}/${id}${append ? `?append_to_response=${append}` : ""}`);
     }
 
-    const title = detail.title || detail.name || "";
-    const imdbId = detail.imdb_id || detail.external_ids?.imdb_id || null;
+    const title: string = detail.title || detail.name || "";
+    const imdbId: string | null = detail.imdb_id || detail.external_ids?.imdb_id || null;
 
     // Fetch TMDB reviews and Reddit threads in parallel
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [tmdbReviews, reddit] = await Promise.all([
-      fetchTMDB(`/${type}/${id}/reviews?language=en-US&page=1`).catch(() => ({ results: [] })),
+      fetchTMDB(`/${type}/${id}/reviews?language=en-US&page=1`).catch(() => ({ results: [] })) as Promise<any>,
       fetchRedditThreads(title, type).catch(() => []),
     ]);
 
-    const reviews = (tmdbReviews.results || []).slice(0, 10).map((r) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reviews = (tmdbReviews.results || []).slice(0, 10).map((r: any) => ({
       id: r.id,
       author: r.author,
       avatar: r.author_details?.avatar_path
@@ -222,7 +244,7 @@ app.get("/api/reviews/:type/:id", async (req, res) => {
     tmdbCache.set(key, result, CACHE_TTL.REVIEWS);
     res.json(result);
   } catch (e) {
-    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
   }
 });
 

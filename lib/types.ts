@@ -165,8 +165,9 @@ export interface RCClient {
 export interface RCSession {
   playerClient: RCClient | null;
   remoteClients: RCClient[];
-  playbackState: PlaybackState;
+  playbackState: PlaybackState | null;
   lastActivity: number;
+  authToken?: string;
 }
 
 // ── Playback State (shared between frontend and backend RC) ──────────

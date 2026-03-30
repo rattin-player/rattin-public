@@ -1,7 +1,19 @@
+import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile } from "../lib/torrent-scoring.js";
 import { fmtBytes, throttle } from "../lib/media-utils.js";
+import type { ServerContext, Torrent } from "../lib/types.js";
 
-export default function searchRoutes(app, ctx) {
+interface SearchResult {
+  name: string;
+  infoHash: string;
+  size: number;
+  seeders: number;
+  leechers: number;
+  source: string;
+  seasonPack?: boolean;
+}
+
+export default function searchRoutes(app: Express, ctx: ServerContext): void {
   const { client, log, DOWNLOAD_PATH, availabilityCache, AVAIL_TTL } = ctx;
 
 const TRACKERS = [
@@ -15,17 +27,19 @@ const TRACKERS = [
   "udp://open.demonii.com:1337/announce",
 ];
 
-async function searchTPB(query) {
+async function searchTPB(query: string): Promise<SearchResult[]> {
   const url = `https://search-provider-1.example/q.php?q=${encodeURIComponent(query)}`;
   const resp = await fetch(url, {
     headers: { "User-Agent": "MagnetPlayer/2.0" },
     signal: AbortSignal.timeout(10000),
   });
   if (!resp.ok) return [];
-  const data = await resp.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await resp.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (Array.isArray(data) ? data : [])
-    .filter((r) => r.id !== "0" && r.name !== "No results returned")
-    .map((r) => ({
+    .filter((r: any) => r.id !== "0" && r.name !== "No results returned")
+    .map((r: any) => ({
       name: r.name,
       infoHash: (r.info_hash || "").toLowerCase(),
       size: parseInt(r.size, 10) || 0,
@@ -35,13 +49,13 @@ async function searchTPB(query) {
     }));
 }
 
-async function searchEZTV(query, imdbId) {
+async function searchEZTV(query: string, imdbId: string | undefined): Promise<SearchResult[]> {
   if (!imdbId) return [];
   // EZTV API requires IMDB ID (numeric part only)
   const numericId = imdbId.replace(/\D/g, "");
   if (!numericId) return [];
   try {
-    const results = [];
+    const results: SearchResult[] = [];
     // Fetch up to 3 pages to get good coverage
     for (let page = 1; page <= 3; page++) {
       const url = `https://search-provider-2.example/api/get-torrents?imdb_id=${numericId}&limit=100&page=${page}`;
@@ -50,9 +64,11 @@ async function searchEZTV(query, imdbId) {
         signal: AbortSignal.timeout(10000),
       });
       if (!resp.ok) break;
-      const data = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await resp.json();
       if (!data.torrents || data.torrents.length === 0) break;
-      for (const t of data.torrents) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const t of data.torrents as any[]) {
         results.push({
           name: t.title || t.filename,
           infoHash: (t.hash || "").toLowerCase(),
@@ -75,7 +91,7 @@ async function searchEZTV(query, imdbId) {
   }
 }
 
-async function searchYTS(query) {
+async function searchYTS(query: string): Promise<SearchResult[]> {
   try {
     const url = `https://search-provider-3.example/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=20&sort_by=seeds`;
     const resp = await fetch(url, {
@@ -83,11 +99,14 @@ async function searchYTS(query) {
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return [];
-    const data = await resp.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await resp.json();
     if (!data.data?.movies) return [];
-    const results = [];
-    for (const movie of data.data.movies) {
-      for (const torrent of (movie.torrents || [])) {
+    const results: SearchResult[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const movie of data.data.movies as any[]) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const torrent of (movie.torrents || []) as any[]) {
         results.push({
           name: `${movie.title_long} ${torrent.quality} ${torrent.type}`.trim(),
           infoHash: (torrent.hash || "").toLowerCase(),
@@ -104,21 +123,21 @@ async function searchYTS(query) {
   }
 }
 
-async function searchTorrents(query, imdbId) {
+async function searchTorrents(query: string, imdbId?: string): Promise<SearchResult[]> {
   const [tpb, eztv, yts] = await Promise.allSettled([
     searchTPB(query),
     searchEZTV(query, imdbId),
     searchYTS(query),
   ]);
 
-  const all = [
+  const all: SearchResult[] = [
     ...(tpb.status === "fulfilled" ? tpb.value : []),
     ...(eztv.status === "fulfilled" ? eztv.value : []),
     ...(yts.status === "fulfilled" ? yts.value : []),
   ];
 
   // Dedupe by infoHash, keep the one with more seeders
-  const seen = new Map();
+  const seen = new Map<string, SearchResult>();
   for (const r of all) {
     if (!r.infoHash) continue;
     const existing = seen.get(r.infoHash);
@@ -142,7 +161,7 @@ async function searchTorrents(query, imdbId) {
 
 // ---- Availability Check ----
 
-async function checkOneAvailability(title, year, type) {
+async function checkOneAvailability(title: string, year: string | number | undefined, type: string): Promise<boolean> {
   const cacheKey = `${title.toLowerCase()}:${year || ""}`;
   const cached = availabilityCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < AVAIL_TTL) return cached.available;
@@ -150,7 +169,7 @@ async function checkOneAvailability(title, year, type) {
   const query = year ? `${title} ${year}` : title;
   try {
     const results = await searchTorrents(query);
-    const hasMatch = results.some((r) => scoreTorrent(r, title, year, type) > 0);
+    const hasMatch = results.some((r) => scoreTorrent(r, title, year as number | undefined, type) > 0);
     availabilityCache.set(cacheKey, { available: hasMatch, ts: Date.now() });
     return hasMatch;
   } catch {
@@ -158,8 +177,8 @@ async function checkOneAvailability(title, year, type) {
   }
 }
 
-async function runPool(tasks, concurrency) {
-  const results = [];
+async function runPool<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
+  const results: T[] = [];
   let i = 0;
   async function worker() {
     while (i < tasks.length) {
@@ -171,13 +190,13 @@ async function runPool(tasks, concurrency) {
   return results;
 }
 
-app.post("/api/check-availability", async (req, res) => {
-  const { items } = req.body;
+app.post("/api/check-availability", async (req: Request, res: Response) => {
+  const { items } = req.body as { items?: Array<{ id: number; title: string; year?: string; type?: string }> };
   if (!Array.isArray(items) || items.length === 0) return res.json({ available: [] });
 
   const capped = items.slice(0, 40);
   const tasks = capped.map((item) => () =>
-    checkOneAvailability(item.title, item.year, item.type).then((ok) => ok ? item.id : null)
+    checkOneAvailability(item.title, item.year, item.type || "movie").then((ok) => ok ? item.id : null)
   );
 
   try {
@@ -186,13 +205,13 @@ app.post("/api/check-availability", async (req, res) => {
     log("info", "Availability check", { requested: capped.length, available: available.length });
     res.json({ available });
   } catch (err) {
-    log("err", "Availability check failed", { error: err.message });
+    log("err", "Availability check failed", { error: (err as Error).message });
     res.json({ available: capped.map((i) => i.id) }); // fail open — show everything
   }
 });
 
 
-async function searchTV(title, season, episode, imdbId) {
+async function searchTV(title: string, season: number, episode: number, imdbId?: string): Promise<SearchResult[]> {
   const s = String(season).padStart(2, "0");
   const e = String(episode).padStart(2, "0");
   const episodeQuery = `${title} S${s}E${e}`;
@@ -204,7 +223,7 @@ async function searchTV(title, season, episode, imdbId) {
   ]);
 
   // Dedupe
-  const seen = new Map();
+  const seen = new Map<string, SearchResult>();
   for (const r of [...episodeResults, ...seasonResults]) {
     if (!r.infoHash) continue;
     const existing = seen.get(r.infoHash);
@@ -222,11 +241,13 @@ async function searchTV(title, season, episode, imdbId) {
 }
 
 // Return scored torrent options for user selection
-app.post("/api/search-streams", async (req, res) => {
-  const { title, year, type, season, episode, imdbId } = req.body;
+app.post("/api/search-streams", async (req: Request, res: Response) => {
+  const { title, year, type, season, episode, imdbId } = req.body as {
+    title: string; year?: number; type?: string; season?: number; episode?: number; imdbId?: string;
+  };
   if (!title) return res.status(400).json({ error: "Title is required" });
 
-  let results;
+  let results: SearchResult[];
   if (type === "tv" && season && episode) {
     results = await searchTV(title, season, episode, imdbId);
   } else {
@@ -243,7 +264,7 @@ app.post("/api/search-streams", async (req, res) => {
         leechers: r.leechers,
         size: r.size,
         source: r.source,
-        score: scoreTorrent(r, title, year, type),
+        score: scoreTorrent(r, title, year, type || "movie"),
         tags: parseTags(r.name),
         seasonPack: r.seasonPack || false,
       }))
@@ -253,17 +274,27 @@ app.post("/api/search-streams", async (req, res) => {
 
     res.json({ results: scored });
   } catch (err) {
-    log("err", "Search streams failed", { error: err.message });
+    log("err", "Search streams failed", { error: (err as Error).message });
     res.json({ results: [] });
   }
 });
 
-function respondWithTorrent(torrent, season, episode, tags) {
+interface TorrentPlayResult {
+  infoHash: string;
+  fileIndex: number;
+  fileName: string;
+  torrentName: string;
+  totalSize: number;
+  tags: string[];
+}
+
+function respondWithTorrent(torrent: Torrent, season: number | undefined, episode: number | undefined, tags: string[]): TorrentPlayResult | null {
   const videoFile = (season && episode)
     ? findEpisodeFile(torrent, season, episode)
     : findLargestVideo(torrent);
   if (!videoFile) return null;
-  videoFile.file.select();
+  // The underlying file is a TorrentFile with select(), but torrent-scoring returns FileEntry
+  (torrent.files[videoFile.index] as { select(): void }).select();
   return {
     infoHash: torrent.infoHash,
     fileIndex: videoFile.index,
@@ -274,11 +305,13 @@ function respondWithTorrent(torrent, season, episode, tags) {
   };
 }
 
-app.post("/api/auto-play", async (req, res) => {
-  const { title, year, type, season, episode, imdbId } = req.body;
+app.post("/api/auto-play", async (req: Request, res: Response) => {
+  const { title, year, type, season, episode, imdbId } = req.body as {
+    title: string; year?: number; type?: string; season?: number; episode?: number; imdbId?: string;
+  };
   if (!title) return res.status(400).json({ error: "Title is required" });
 
-  let results;
+  let results: SearchResult[];
   if (type === "tv" && season && episode) {
     log("info", "Auto-play search (TV)", { title, season, episode });
     results = await searchTV(title, season, episode, imdbId);
@@ -295,12 +328,12 @@ app.post("/api/auto-play", async (req, res) => {
     }
 
     const scored = results
-      .map((r) => ({ ...r, score: scoreTorrent(r, title, year, type) }))
+      .map((r) => ({ ...r, score: scoreTorrent(r, title, year, type || "movie") }))
       .filter((r) => r.score > 0)
       .sort((a, b) => b.score - a.score || b.seeders - a.seeders);
 
     if (scored.length === 0) {
-      log("info", "Auto-play: no quality matches", { query, total: results.length });
+      log("info", "Auto-play: no quality matches", { total: results.length });
       return res.status(404).json({ error: "not_found" });
     }
 
@@ -331,7 +364,7 @@ app.post("/api/auto-play", async (req, res) => {
         // Still loading metadata — wait for ready
         log("info", "Waiting for existing torrent metadata", { infoHash: existing.infoHash });
         try {
-          await new Promise((resolve, reject) => {
+          await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
             existing.on("ready", () => { clearTimeout(timeout); resolve(); });
             existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
@@ -345,9 +378,9 @@ app.post("/api/auto-play", async (req, res) => {
       }
     }
 
-    await new Promise((resolve, reject) => {
+    await new Promise<TorrentPlayResult>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timed out waiting for metadata")), 30000);
-      let torrent;
+      let torrent: Torrent;
       try {
         torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
       } catch (err) {
@@ -376,7 +409,7 @@ app.post("/api/auto-play", async (req, res) => {
           torrent.pause();
         });
 
-        torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
+        torrent.on("error", (err) => log("err", "Torrent error", { error: (err as Error).message }));
 
         const result = respondWithTorrent(torrent, autoSeason, autoEpisode, tags);
         if (!result) {
@@ -389,18 +422,20 @@ app.post("/api/auto-play", async (req, res) => {
     }).then((data) => {
       if (!res.headersSent) res.json(data);
     }).catch((err) => {
-      log("err", "Auto-play torrent failed", { error: err.message });
+      log("err", "Auto-play torrent failed", { error: (err as Error).message });
       if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
     });
   } catch (err) {
-    log("err", "Auto-play failed", { error: err.message });
+    log("err", "Auto-play failed", { error: (err as Error).message });
     if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
   }
 });
 
 // Play a specific torrent by infoHash (user-selected from search-streams)
-app.post("/api/play-torrent", async (req, res) => {
-  const { infoHash, name, season, episode } = req.body;
+app.post("/api/play-torrent", async (req: Request, res: Response) => {
+  const { infoHash, name, season, episode } = req.body as {
+    infoHash: string; name?: string; season?: number; episode?: number;
+  };
   if (!infoHash) return res.status(400).json({ error: "infoHash is required" });
 
   const tags = parseTags(name || "");
@@ -420,7 +455,7 @@ app.post("/api/play-torrent", async (req, res) => {
         log("info", "Existing torrent has no matching video, retrying fresh", { infoHash: existing.infoHash });
         try { existing.destroy({ destroyStore: false }); } catch {}
       } else {
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
           existing.on("ready", () => { clearTimeout(timeout); resolve(); });
           existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
@@ -431,9 +466,9 @@ app.post("/api/play-torrent", async (req, res) => {
       }
     }
 
-    await new Promise((resolve, reject) => {
+    await new Promise<TorrentPlayResult>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
-      let torrent;
+      let torrent: Torrent;
       try {
         torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
       } catch (err) {
@@ -447,7 +482,7 @@ app.post("/api/play-torrent", async (req, res) => {
         torrent.on("done", () => {
           torrent.pause();
         });
-        torrent.on("error", (err) => log("err", "Torrent error", { error: err.message }));
+        torrent.on("error", (err) => log("err", "Torrent error", { error: (err as Error).message }));
         const result = respondWithTorrent(torrent, season, episode, tags);
         if (!result) { reject(new Error("No video files")); return; }
         resolve(result);
@@ -455,20 +490,20 @@ app.post("/api/play-torrent", async (req, res) => {
     }).then((data) => {
       if (!res.headersSent) res.json(data);
     }).catch((err) => {
-      log("err", "Play-torrent failed", { error: err.message });
+      log("err", "Play-torrent failed", { error: (err as Error).message });
       if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
     });
   } catch (err) {
-    log("err", "Play-torrent failed", { error: err.message });
+    log("err", "Play-torrent failed", { error: (err as Error).message });
     if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
   }
 });
 
-function findLargestVideo(torrent) {
+function findLargestVideo(torrent: Torrent) {
   return findLargestVideoFile(torrent.files);
 }
 
-function findEpisodeFile(torrent, season, episode) {
+function findEpisodeFile(torrent: Torrent, season: number, episode: number) {
   return findEpisodeFileFromList(torrent.files, season, episode);
 }
 

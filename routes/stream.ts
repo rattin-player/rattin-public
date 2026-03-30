@@ -1,5 +1,6 @@
 import path from "path";
 import { statSync } from "fs";
+import type { Express, Request, Response, NextFunction } from "express";
 import { jobKey } from "../lib/torrent-caches.js";
 import { buildSeekIndex, findSeekOffset, waitForPieces } from "../lib/seek-index.js";
 import { getFileOffset, getFileEndPiece, hasPiece } from "../lib/torrent-compat.js";
@@ -8,22 +9,24 @@ import {
   probeMedia as _probeMedia, serveFile, serveFromTorrent,
   serveLiveTranscode as _serveLiveTranscode,
 } from "../lib/transcode.js";
+import type { ServerContext, ProbeResult } from "../lib/types.js";
 
-export default function streamRoutes(app, ctx) {
+export default function streamRoutes(app: Express, ctx: ServerContext): void {
   const {
     client, log, diskPath, isFileComplete, streamTracking,
     transcodeJobs, durationCache, seekIndexCache, seekIndexPending,
     completedFiles, activeTranscodes, probeCache,
   } = ctx;
 
-  const probeMedia = (filePath) => _probeMedia(filePath, probeCache, log);
+  const probeMedia = (filePath: string): Promise<ProbeResult> => _probeMedia(filePath, probeCache, log);
 
-  app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
 
     // Torrent removed but file still on disk — serve directly
     if (!torrent) {
-      const fileKey = `${req.params.infoHash}:${req.params.fileIndex}`;
+      const fileKey = `${infoHash}:${fileIndex}`;
       const cached = completedFiles.get(fileKey);
       if (cached) {
         try {
@@ -35,8 +38,8 @@ export default function streamRoutes(app, ctx) {
               return _serveLiveTranscode({
                 inputPath: cached.path,
                 useStdin: false,
-                seekTo: parseFloat(req.query.t) || 0,
-                audioStreamIdx: req.query.audio ? parseInt(req.query.audio, 10) : null,
+                seekTo: parseFloat(req.query.t as string) || 0,
+                audioStreamIdx: req.query.audio ? parseInt(req.query.audio as string, 10) : null,
                 streamKey: null,
               }, req, res, ctx);
             }
@@ -49,7 +52,7 @@ export default function streamRoutes(app, ctx) {
       return res.status(404).json({ error: "Torrent not found" });
     }
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
     if (!isAllowedFile(file.name)) {
@@ -57,11 +60,11 @@ export default function streamRoutes(app, ctx) {
     }
 
     const ext = path.extname(file.name).toLowerCase();
-    const fileIdx = parseInt(req.params.fileIndex, 10);
-    const audioStreamIdx = req.query.audio ? parseInt(req.query.audio, 10) : null;
+    const fileIdx = parseInt(fileIndex, 10);
+    const audioStreamIdx = req.query.audio ? parseInt(req.query.audio as string, 10) : null;
 
     // Helper: call unified serveLiveTranscode with torrent context
-    const liveTranscode = (isComplete, seek) => _serveLiveTranscode({
+    const liveTranscode = (isComplete: boolean, seek: number) => _serveLiveTranscode({
       inputPath: diskPath(torrent, file),
       useStdin: !isComplete,
       createInputStream: !isComplete ? () => file.createReadStream() : undefined,
@@ -92,7 +95,7 @@ export default function streamRoutes(app, ctx) {
     const filePath = diskPath(torrent, file);
 
     // Verify file is real media — only when complete.
-    const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
+    const cacheKey = jobKey(torrent.infoHash, fileIndex);
 
     if (complete) {
       try {
@@ -102,7 +105,7 @@ export default function streamRoutes(app, ctx) {
           return res.status(403).json({ error: "File failed media verification: " + probe.reason });
         }
         // Cache duration from probe so it's immediately available
-        if (probe.duration > 0 && !durationCache.has(cacheKey)) {
+        if (probe.duration && probe.duration > 0 && !durationCache.has(cacheKey)) {
           durationCache.set(cacheKey, probe.duration);
         }
       } catch {}
@@ -131,7 +134,7 @@ export default function streamRoutes(app, ctx) {
       return _serveLiveTranscode({
         inputPath: diskPath(torrent, file),
         useStdin: false,
-        seekTo: parseFloat(req.query.t) || 0,
+        seekTo: parseFloat(req.query.t as string) || 0,
         audioStreamIdx,
         streamKey: `${torrent.infoHash}:${fileIdx}`,
       }, req, res, ctx);
@@ -139,7 +142,7 @@ export default function streamRoutes(app, ctx) {
 
     // 3) Needs transcode but not ready yet - live pipe through ffmpeg
     if (xcode) {
-      const seekTo = parseFloat(req.query.t) || 0;
+      const seekTo = parseFloat(req.query.t as string) || 0;
 
       // Build seek index in background (for complete files only)
       if (!seekIndexCache.has(cacheKey) && !seekIndexPending.has(cacheKey) && complete) {
@@ -150,7 +153,7 @@ export default function streamRoutes(app, ctx) {
             seekIndexCache.set(cacheKey, index);
             log("info", "Seek index built", { cacheKey, keyframes: index.length });
           }
-        }).catch((err) => {
+        }).catch((err: Error) => {
           seekIndexPending.delete(cacheKey);
           log("warn", "Seek index build failed", { cacheKey, error: err.message });
         });
@@ -158,11 +161,11 @@ export default function streamRoutes(app, ctx) {
 
       // Smart seek: check if pieces at seek target are on disk → use fast disk read
       if (seekTo > 0) {
-        let byteStart = null;
+        let byteStart: number | null = null;
 
         // Method 1: precise keyframe index
         if (seekIndexCache.has(cacheKey)) {
-          const seekPoint = findSeekOffset(seekIndexCache.get(cacheKey), seekTo);
+          const seekPoint = findSeekOffset(seekIndexCache.get(cacheKey)!, seekTo);
           if (seekPoint) byteStart = seekPoint.offset;
         }
 
@@ -197,7 +200,7 @@ export default function streamRoutes(app, ctx) {
           log("info", "Smart seek (fetching)", { seekTo, byteStart });
           const doSmartSeek = async () => {
             try {
-              await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
+              await waitForPieces(torrent, file, byteStart!, byteEnd, 30000);
               torrent.select(firstPiece, getFileEndPiece(file), 1);
               return liveTranscode(true, seekTo);
             } catch {

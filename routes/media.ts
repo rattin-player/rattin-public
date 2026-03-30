@@ -2,27 +2,30 @@ import path from "path";
 import fs from "fs";
 import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
+import type { Express, Request, Response } from "express";
 import { jobKey } from "../lib/torrent-caches.js";
 import { getFileOffset } from "../lib/torrent-compat.js";
 import { hasPiece } from "../lib/torrent-compat.js";
 import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media-utils.js";
 import { detectIntro, lookupExternal } from "../lib/intro-detect.js";
+import type { ServerContext, Torrent } from "../lib/types.js";
 
-export default function mediaRoutes(app, ctx) {
+export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   const {
     client, log, diskPath, isFileComplete, DOWNLOAD_PATH,
     durationCache, introCache,
   } = ctx;
 
   // Duration endpoint - ffprobe the video to get total duration
-  app.get("/api/duration/:infoHash/:fileIndex", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/duration/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
-    const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
+    const cacheKey = jobKey(torrent.infoHash, fileIndex);
     if (durationCache.has(cacheKey)) {
       return res.json({ duration: durationCache.get(cacheKey) });
     }
@@ -39,8 +42,8 @@ export default function mediaRoutes(app, ctx) {
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
-    probe.stdout.on("data", (d) => { out += d.toString(); });
-    probe.on("close", (code) => {
+    probe.stdout!.on("data", (d: Buffer) => { out += d.toString(); });
+    probe.on("close", (code: number | null) => {
       if (code !== 0) return res.json({ duration: null });
       try {
         const data = JSON.parse(out);
@@ -55,11 +58,12 @@ export default function mediaRoutes(app, ctx) {
   });
 
   // Subtitle endpoint - converts any subtitle format to WebVTT
-  app.get("/api/subtitle/:infoHash/:fileIndex", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/subtitle/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
     const ext = path.extname(file.name).toLowerCase();
@@ -73,7 +77,7 @@ export default function mediaRoutes(app, ctx) {
     }
 
     const filePath = diskPath(torrent, file);
-    const offset = parseFloat(req.query.offset) || 0;
+    const offset = parseFloat(req.query.offset as string) || 0;
 
     // For any offset or non-SRT format, use ffmpeg (handles offset via -ss)
     if (offset > 0 || (ext !== ".srt" && ext !== ".vtt")) {
@@ -88,9 +92,9 @@ export default function mediaRoutes(app, ctx) {
       const ffmpeg = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
       res.setHeader("Content-Type", "text/vtt; charset=utf-8");
       res.setHeader("Access-Control-Allow-Origin", "*");
-      ffmpeg.stdout.pipe(res);
-      ffmpeg.stderr.on("data", (d) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
-      ffmpeg.on("close", (code) => {
+      ffmpeg.stdout!.pipe(res);
+      ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
+      ffmpeg.on("close", (code: number | null) => {
         if (code !== 0) log("err", "Subtitle conversion failed", { file: file.name, code });
       });
       res.on("close", () => ffmpeg.kill());
@@ -113,7 +117,7 @@ export default function mediaRoutes(app, ctx) {
         const vtt = srtToVtt(srtContent);
         return res.send(vtt);
       } catch (err) {
-        log("err", "SRT conversion failed, falling back to ffmpeg", { error: err.message });
+        log("err", "SRT conversion failed, falling back to ffmpeg", { error: (err as Error).message });
       }
     }
 
@@ -127,10 +131,10 @@ export default function mediaRoutes(app, ctx) {
 
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    ffmpeg.stdout.pipe(res);
+    ffmpeg.stdout!.pipe(res);
 
-    ffmpeg.stderr.on("data", (d) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
-    ffmpeg.on("close", (code) => {
+    ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
+    ffmpeg.on("close", (code: number | null) => {
       if (code !== 0) log("err", "Subtitle conversion failed", { file: file.name, code });
     });
     res.on("close", () => ffmpeg.kill());
@@ -138,11 +142,12 @@ export default function mediaRoutes(app, ctx) {
 
 
   // Probe embedded subtitle streams in a video file
-  app.get("/api/subtitles/:infoHash/:fileIndex", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/subtitles/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
     // Try to probe even if not complete - ffprobe can read partial files
@@ -162,12 +167,13 @@ export default function mediaRoutes(app, ctx) {
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
-    probe.stdout.on("data", (d) => { out += d.toString(); });
-    probe.on("close", (code) => {
+    probe.stdout!.on("data", (d: Buffer) => { out += d.toString(); });
+    probe.on("close", (code: number | null) => {
       if (code !== 0) return res.json({ tracks: [], complete });
       try {
         const data = JSON.parse(out);
-        const tracks = (data.streams || []).map((s, idx) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tracks = (data.streams || []).map((s: any) => ({
           streamIndex: s.index,
           lang: s.tags?.language || null,
           title: s.tags?.title || null,
@@ -182,11 +188,12 @@ export default function mediaRoutes(app, ctx) {
   });
 
   // List embedded audio streams
-  app.get("/api/audio-tracks/:infoHash/:fileIndex", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/audio-tracks/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
     const complete = isFileComplete(torrent, file);
@@ -203,12 +210,13 @@ export default function mediaRoutes(app, ctx) {
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
-    probe.stdout.on("data", (d) => { out += d.toString(); });
-    probe.on("close", (code) => {
+    probe.stdout!.on("data", (d: Buffer) => { out += d.toString(); });
+    probe.on("close", (code: number | null) => {
       if (code !== 0) return res.json({ tracks: [], complete });
       try {
         const data = JSON.parse(out);
-        const tracks = (data.streams || []).map((s) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tracks = (data.streams || []).map((s: any) => ({
           streamIndex: s.index,
           lang: s.tags?.language || null,
           title: s.tags?.title || null,
@@ -224,12 +232,13 @@ export default function mediaRoutes(app, ctx) {
   });
 
   // Intro detection — returns skip timestamps for TV episode intros
-  app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
+  app.get("/api/intro/:infoHash/:fileIndex", async (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.params as Record<string, string>;
     res.set("Cache-Control", "no-store");
-    const tmdbId = req.query.tmdbId;
-    const season = parseInt(req.query.season, 10);
-    const episode = parseInt(req.query.episode, 10);
-    const title = req.query.title || "";
+    const tmdbId = req.query.tmdbId as string | undefined;
+    const season = parseInt(req.query.season as string, 10);
+    const episode = parseInt(req.query.episode as string, 10);
+    const title = (req.query.title as string) || "";
 
     // Check cache first (works even if torrent is gone)
     if (tmdbId && season) {
@@ -241,15 +250,15 @@ export default function mediaRoutes(app, ctx) {
     }
 
     // Collect sibling video files for fingerprinting
-    const siblingPaths = [];
-    let currentPath = null;
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+    const siblingPaths: string[] = [];
+    let currentPath: string | null = null;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
 
     if (torrent) {
       // Torrent is active — scan its file list
       // Only include files where the first ~5 min of data is actually downloaded
       // (WebTorrent pre-allocates full file size, so stat check is unreliable)
-      const fileIdx = parseInt(req.params.fileIndex, 10);
+      const fileIdx = parseInt(fileIndex, 10);
       const file = torrent.files[fileIdx];
       if (file) currentPath = diskPath(torrent, file);
       const pieceLength = torrent.pieceLength || 262144;
@@ -310,28 +319,28 @@ export default function mediaRoutes(app, ctx) {
       try {
         const result = await detectIntro(ordered);
         if (result) {
-          const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "fingerprint" };
+          const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "fingerprint" as const };
           if (tmdbId && season) introCache.set(`${tmdbId}:${season}`, entry);
           return res.json({ detected: true, ...entry });
         }
       } catch (err) {
-        log("warn", "Intro fingerprint detection failed", { error: err.message });
+        log("warn", "Intro fingerprint detection failed", { error: (err as Error).message });
       }
     }
 
     // Fallback: AniSkip external lookup
     if (title && episode) {
-      const cacheKey = torrent ? jobKey(torrent.infoHash, req.params.fileIndex) : null;
+      const cacheKey = torrent ? jobKey(torrent.infoHash, fileIndex) : null;
       const dur = cacheKey ? (durationCache.get(cacheKey) || 0) : 0;
       try {
         const result = await lookupExternal(title, season || 1, episode, dur);
         if (result) {
-          const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "external" };
+          const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "external" as const };
           if (tmdbId && season) introCache.set(`${tmdbId}:${season}`, entry);
           return res.json({ detected: true, ...entry });
         }
       } catch (err) {
-        log("warn", "AniSkip lookup failed", { error: err.message });
+        log("warn", "AniSkip lookup failed", { error: (err as Error).message });
       }
     }
 
@@ -339,22 +348,23 @@ export default function mediaRoutes(app, ctx) {
   });
 
   // Extract an embedded subtitle stream as WebVTT
-  app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req: Request, res: Response) => {
+    const params = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === params.infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+    const file = torrent.files[parseInt(params.fileIndex, 10)];
     if (!file) return res.status(404).json({ error: "File not found" });
 
     const filePath = diskPath(torrent, file);
-    const streamIdx = parseInt(req.params.streamIndex, 10);
+    const streamIdx = parseInt(params.streamIndex, 10);
 
     // Check file exists on disk
     try { statSync(filePath); } catch {
       return res.status(202).json({ error: "File not on disk yet" });
     }
 
-    const offset = parseFloat(req.query.offset) || 0;
+    const offset = parseFloat(req.query.offset as string) || 0;
     log("info", "Extracting embedded subtitle", { file: file.name, stream: streamIdx, offset });
 
     const args = [
@@ -369,9 +379,9 @@ export default function mediaRoutes(app, ctx) {
 
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    ffmpeg.stdout.pipe(res);
-    ffmpeg.stderr.on("data", (d) => log("warn", "Sub extract: " + d.toString().trim()));
-    ffmpeg.on("close", (code) => {
+    ffmpeg.stdout!.pipe(res);
+    ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Sub extract: " + d.toString().trim()));
+    ffmpeg.on("close", (code: number | null) => {
       if (code !== 0) log("err", "Sub extract failed", { stream: streamIdx, code });
     });
     res.on("close", () => ffmpeg.kill());

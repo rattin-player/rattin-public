@@ -1,18 +1,20 @@
 import path from "path";
+import type { Express, Request, Response } from "express";
 import { jobKey } from "../lib/torrent-caches.js";
 import {
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
   needsTranscode, isAllowedFile,
 } from "../lib/media-utils.js";
+import type { ServerContext, Torrent } from "../lib/types.js";
 
-export default function statusRoutes(app, ctx) {
+export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {
     client, log, diskPath,
     transcodeJobs, durationCache, completedFiles,
   } = ctx;
 
-  function torrentInfo(torrent) {
-    const blocked = [];
+  function torrentInfo(torrent: Torrent) {
+    const blocked: string[] = [];
     const files = torrent.files.map((f, i) => {
       const ext = path.extname(f.name).toLowerCase();
       const allowed = isAllowedFile(f.name);
@@ -31,12 +33,13 @@ export default function statusRoutes(app, ctx) {
     return { infoHash: torrent.infoHash, name: torrent.name, files };
   }
 
-  app.get("/api/status/:infoHash", (req, res) => {
-    const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  app.get("/api/status/:infoHash", (req: Request, res: Response) => {
+    const { infoHash } = req.params as Record<string, string>;
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) {
-      const diskFiles = [];
+      const diskFiles: Array<Record<string, unknown>> = [];
       for (const [key, info] of completedFiles) {
-        if (key.startsWith(req.params.infoHash + ":")) {
+        if (key.startsWith(infoHash + ":")) {
           const idx = parseInt(key.split(":")[1], 10);
           const ext = path.extname(info.name).toLowerCase();
           diskFiles.push({
@@ -52,7 +55,7 @@ export default function statusRoutes(app, ctx) {
       }
       if (diskFiles.length > 0) {
         return res.json({
-          infoHash: req.params.infoHash, name: "(cached on disk)",
+          infoHash, name: "(cached on disk)",
           downloadSpeed: 0, uploadSpeed: 0, progress: 1,
           downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
           files: diskFiles,
@@ -70,12 +73,12 @@ export default function statusRoutes(app, ctx) {
       downloaded: torrent.downloaded,
       totalSize: torrent.length,
       numPeers: torrent.numPeers,
-      timeRemaining: torrent.timeRemaining,
+      timeRemaining: (torrent as unknown as { timeRemaining: number }).timeRemaining,
       files: torrent.files.map((f, i) => {
         const ext = path.extname(f.name).toLowerCase();
         const key = jobKey(torrent.infoHash, i);
         const job = transcodeJobs.get(key);
-        let transcodeStatus = null;
+        let transcodeStatus: string | null = null;
         if (needsTranscode(ext) && VIDEO_EXTENSIONS.includes(ext)) {
           if (job && job.done && !job.error) transcodeStatus = "ready";
           else if (job && job.error) transcodeStatus = "error";
@@ -98,8 +101,8 @@ export default function statusRoutes(app, ctx) {
   });
 
   // Pause all other torrents, resume this one
-  app.post("/api/set-active/:infoHash", (req, res) => {
-    const activeHash = req.params.infoHash;
+  app.post("/api/set-active/:infoHash", (req: Request, res: Response) => {
+    const { infoHash: activeHash } = req.params as Record<string, string>;
     for (const t of client.torrents) {
       if (t.infoHash === activeHash) {
         if (t.paused) t.resume();
