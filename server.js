@@ -12,6 +12,7 @@ import { jobKey, registerCache, cleanupHash, pruneOrphans, cacheStats } from "./
 import { getFileOffset, getFileEndPiece, hasPiece } from "./lib/torrent-compat.js";
 import { BoundedMap } from "./lib/bounded-map.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
+import { detectIntro, lookupExternal } from "./lib/intro-detect.js";
 import {
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
   ALLOWED_EXTENSIONS, BROWSER_NATIVE,
@@ -45,6 +46,9 @@ registerCache("durationCache", durationCache, "hash:index");
 registerCache("seekIndexCache", seekIndexCache, "hash:index");
 registerCache("seekIndexPending", seekIndexPending, "hash:index");
 registerCache("activeFiles", activeFiles, "hash");
+
+const introCache = new BoundedMap(100); // "tmdbId:season" -> { intro_start, intro_end, source }
+registerCache("introCache", introCache, "hash:index");
 
 function log(level, msg, data) {
   const ts = new Date().toISOString().slice(11, 23);
@@ -721,6 +725,91 @@ app.get("/api/audio-tracks/:infoHash/:fileIndex", (req, res) => {
       res.json({ tracks: [], complete });
     }
   });
+});
+
+// Intro detection — returns skip timestamps for TV episode intros
+app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
+  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  if (!torrent) return res.json({ detected: false });
+
+  const fileIdx = parseInt(req.params.fileIndex, 10);
+  const file = torrent.files[fileIdx];
+  if (!file) return res.json({ detected: false });
+
+  // Need TMDB context from query params for cache key and external lookup
+  const tmdbId = req.query.tmdbId;
+  const season = parseInt(req.query.season, 10);
+  const episode = parseInt(req.query.episode, 10);
+  const title = req.query.title || "";
+
+  // Check cache
+  if (tmdbId && season) {
+    const cacheKey = `${tmdbId}:${season}`;
+    const cached = introCache.get(cacheKey);
+    if (cached && cached.source === "fingerprint") {
+      return res.json({ detected: true, ...cached });
+    }
+    // If cached from external, still try fingerprint if we now have 2+ episodes
+  }
+
+  // Find sibling episode files from same torrent (season pack)
+  const siblingPaths = [];
+  const currentPath = diskPath(torrent, file);
+  for (const f of torrent.files) {
+    const ext = path.extname(f.name).toLowerCase();
+    if (![".mp4", ".m4v", ".mkv", ".avi", ".webm", ".mov", ".ts", ".flv", ".wmv"].includes(ext)) continue;
+    const fp = diskPath(torrent, f);
+    try {
+      const stat = statSync(fp);
+      // Need at least ~50MB to have 5 minutes of audio (conservative estimate)
+      if (stat.size > 50_000_000) siblingPaths.push(fp);
+    } catch {
+      // File not on disk yet
+    }
+  }
+
+  // If current file isn't in siblings (e.g. too small), add it if it exists
+  if (!siblingPaths.includes(currentPath)) {
+    try {
+      statSync(currentPath);
+      siblingPaths.push(currentPath);
+    } catch {}
+  }
+
+  // Try fingerprint detection if we have 2+ files
+  if (siblingPaths.length >= 2) {
+    // Put current file first so offsetA corresponds to the current episode
+    const ordered = [currentPath, ...siblingPaths.filter((p) => p !== currentPath)].slice(0, 2);
+    try {
+      const result = await detectIntro(ordered);
+      if (result) {
+        const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "fingerprint" };
+        if (tmdbId && season) introCache.set(`${tmdbId}:${season}`, entry);
+        return res.json({ detected: true, ...entry });
+      }
+    } catch (err) {
+      log("warn", "Intro fingerprint detection failed", { error: err.message });
+    }
+  }
+
+  // Fallback: AniSkip external lookup
+  if (title && episode) {
+    // Get duration for AniSkip
+    const cacheKey = jobKey(torrent.infoHash, req.params.fileIndex);
+    const dur = durationCache.get(cacheKey) || 0;
+    try {
+      const result = await lookupExternal(title, season || 1, episode, dur);
+      if (result) {
+        const entry = { intro_start: result.intro_start, intro_end: result.intro_end, source: "external" };
+        if (tmdbId && season) introCache.set(`${tmdbId}:${season}`, entry);
+        return res.json({ detected: true, ...entry });
+      }
+    } catch (err) {
+      log("warn", "AniSkip lookup failed", { error: err.message });
+    }
+  }
+
+  res.json({ detected: false });
 });
 
 // Extract an embedded subtitle stream as WebVTT
