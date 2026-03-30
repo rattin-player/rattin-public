@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import "./Detail.css";
@@ -21,13 +21,20 @@ export default function Detail() {
   const [pickerSeason, setPickerSeason] = useState(null);
   const [pickerEpisode, setPickerEpisode] = useState(null);
   const [expandedEps, setExpandedEps] = useState(new Set());
-  const [prePlay, setPrePlay] = useState(null); // { infoHash, fileIndex, tags, audioTracks, subtitleTracks, selectedAudio, selectedSub, loading }
+  const [prePlay, setPrePlay] = useState(null);
+  const [reviews, setReviews] = useState(null);
+  const [expandedReview, setExpandedReview] = useState(null);
 
   useEffect(() => {
     setData(null);
     setPlayState(null);
     const fetcher = type === "tv" ? fetchTV : fetchMovie;
     fetcher(id).then(setData).catch(() => {});
+  }, [id, type]);
+
+  useEffect(() => {
+    setReviews(null);
+    fetchReviews(type, id).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
   }, [id, type]);
 
   useEffect(() => {
@@ -351,6 +358,104 @@ export default function Detail() {
           </div>
         )}
 
+        {reviews && (reviews.reviews.length > 0 || reviews.reddit.length > 0) && (
+          <div className="reviews-section">
+            {reviews.reviews.length > 0 && (
+              <div className="reviews-block">
+                <div className="reviews-header">
+                  <h3>Reviews</h3>
+                  {reviews.imdbId && (
+                    <a
+                      className="reviews-imdb-link"
+                      href={`https://www.imdb.com/title/${reviews.imdbId}/reviews`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Read on IMDb
+                    </a>
+                  )}
+                </div>
+                <div className="reviews-list">
+                  {reviews.reviews.map((r) => {
+                    const isExpanded = expandedReview === r.id;
+                    const isLong = r.content.length > 300;
+                    return (
+                      <div key={r.id} className="review-card">
+                        <div className="review-author">
+                          {r.avatar ? (
+                            <img className="review-avatar" src={r.avatar} alt="" />
+                          ) : (
+                            <div className="review-avatar-placeholder">
+                              {r.author.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="review-author-name">{r.author}</span>
+                          {r.rating && (
+                            <span className="review-author-rating" style={{ color: ratingColor(r.rating) }}>
+                              ★ {r.rating}/10
+                            </span>
+                          )}
+                        </div>
+                        <p className={`review-content${isExpanded ? " expanded" : ""}`}>
+                          {isExpanded || !isLong ? r.content : r.content.slice(0, 300) + "..."}
+                        </p>
+                        {isLong && (
+                          <button
+                            className="review-toggle"
+                            onClick={() => setExpandedReview(isExpanded ? null : r.id)}
+                          >
+                            {isExpanded ? "Show less" : "Read more"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {reviews.reddit.length > 0 && (
+              <div className="reviews-block">
+                <div className="reviews-header">
+                  <h3>Reddit Discussions</h3>
+                </div>
+                <div className="reddit-list">
+                  {reviews.reddit.map((t) => (
+                    <a
+                      key={t.id}
+                      className="reddit-card"
+                      href={t.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <div className="reddit-card-main">
+                        <span className="reddit-title">{t.title}</span>
+                        <div className="reddit-meta">
+                          <span className="reddit-sub">{t.subreddit}</span>
+                          {t.flair && <span className="reddit-flair">{t.flair}</span>}
+                        </div>
+                      </div>
+                      <div className="reddit-stats">
+                        <span className="reddit-score">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                          </svg>
+                          {t.score >= 1000 ? `${(t.score / 1000).toFixed(1)}k` : t.score}
+                        </span>
+                        <span className="reddit-comments">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                          </svg>
+                          {t.comments >= 1000 ? `${(t.comments / 1000).toFixed(1)}k` : t.comments}
+                        </span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {prePlay && (

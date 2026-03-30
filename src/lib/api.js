@@ -94,3 +94,7 @@ export function fetchSubtitleTracks(infoHash, fileIndex) {
 export function fetchAudioTracks(infoHash, fileIndex) {
   return get(`/api/audio-tracks/${infoHash}/${fileIndex}`);
 }
+
+export function fetchReviews(type, id) {
+  return get(`/api/reviews/${type}/${id}`);
+}
