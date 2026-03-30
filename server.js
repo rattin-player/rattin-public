@@ -124,9 +124,7 @@ function probeMedia(filePath) {
     proc.stdout.on("data", (d) => { out += d.toString(); });
     proc.on("close", (code) => {
       if (code !== 0) {
-        const result = { valid: false, reason: "ffprobe failed — not a valid media file" };
-        probeCache.set(filePath, result);
-        return resolve(result);
+        return resolve({ valid: false, reason: "ffprobe failed — not a valid media file" });
       }
       try {
         const data = JSON.parse(out);
@@ -136,9 +134,7 @@ function probeMedia(filePath) {
           s.codec_type === "video" || s.codec_type === "audio"
         );
         if (!hasMedia) {
-          const result = { valid: false, reason: "No video or audio streams detected" };
-          probeCache.set(filePath, result);
-          return resolve(result);
+          return resolve({ valid: false, reason: "No video or audio streams detected" });
         }
         const dur = parseFloat(data.format?.duration);
         const videoStream = streams.find((s) => s.codec_type === "video");
@@ -153,9 +149,7 @@ function probeMedia(filePath) {
         log("info", "Media probe OK", { file: path.basename(filePath), format: fmt, streams: streams.length, duration: result.duration, vcodec: result.videoCodec });
         resolve(result);
       } catch {
-        const result = { valid: false, reason: "Failed to parse probe output" };
-        probeCache.set(filePath, result);
-        resolve(result);
+        resolve({ valid: false, reason: "Failed to parse probe output" });
       }
     });
     proc.on("error", () => {
@@ -706,7 +700,9 @@ app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
   const complete = isFileComplete(torrent, file);
   const filePath = diskPath(torrent, file);
 
-  // Verify file is real media — only when complete (probing partial files can hang)
+  // Verify file is real media — only when complete.
+  // INVARIANT: probeMedia caches successes permanently. Calling on partial files
+  // would either hang ffprobe or return a transient failure that won't be retried.
   const jobKey = `${torrent.infoHash}:${req.params.fileIndex}`;
 
   if (complete) {
