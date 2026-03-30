@@ -1,25 +1,44 @@
 :root {
-  --bg-deep: #08080c;
-  --bg-base: #0c0c12;
-  --bg-surface: #12121a;
+  /* ── Background layers ── */
+  --bg-deep: #050507;
+  --bg-base: #0a0a0f;
+  --bg-surface: #111118;
   --bg-elevated: #1a1a24;
-  --bg-hover: #22222e;
-  --border: rgba(255, 255, 255, 0.06);
-  --border-light: rgba(255, 255, 255, 0.1);
-  --text-primary: #e8e8f0;
-  --text-secondary: #8888a0;
-  --text-muted: #555568;
-  --accent: #7c6aff;
-  --accent-bright: #9684ff;
-  --accent-glow: rgba(124, 106, 255, 0.3);
-  --accent-subtle: rgba(124, 106, 255, 0.08);
-  --green: #34d399;
-  --red: #f87171;
-  --yellow: #fbbf24;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-xs: 6px;
-  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --bg-hover: #23232f;
+
+  /* ── Borders ── */
+  --border: rgba(201, 168, 76, 0.08);
+  --border-light: rgba(201, 168, 76, 0.15);
+  --border-warm: rgba(201, 168, 76, 0.25);
+
+  /* ── Text ── */
+  --text-primary: #ede8df;
+  --text-secondary: #8a8594;
+  --text-muted: #4a4656;
+
+  /* ── Accent — warm gold ── */
+  --accent: #c9a84c;
+  --accent-bright: #e2c06d;
+  --accent-glow: rgba(201, 168, 76, 0.35);
+  --accent-subtle: rgba(201, 168, 76, 0.08);
+
+  /* ── Status ── */
+  --green: #4ade80;
+  --red: #fb7185;
+  --yellow: #f59e0b;
+
+  /* ── Radii ── */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+
+  /* ── Motion ── */
+  --transition: 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-slow: 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ── Typography ── */
+  --font-display: "Playfair Display", "Georgia", serif;
+  --font-body: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 *, *::before, *::after {
@@ -29,11 +48,25 @@
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg-deep);
   color: var(--text-primary);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle noise texture overlay on the whole app */
+#root::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
 
 a {
@@ -54,9 +87,10 @@ img {
   max-width: 100%;
 }
 
+/* ── Scrollbar — ultra thin, warm ── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -64,22 +98,50 @@ img {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-hover);
-  border-radius: 4px;
+  background: rgba(201, 168, 76, 0.15);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(201, 168, 76, 0.3);
 }
 
+/* ── Gold shimmer loading animation ── */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-elevated) 50%, var(--bg-surface) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 25%,
+    rgba(201, 168, 76, 0.06) 50%,
+    var(--bg-surface) 75%
+  );
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  animation: shimmer 2s ease-in-out infinite;
   border-radius: var(--radius-sm);
+}
+
+/* ── Staggered entrance animation ── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes softGlow {
+  0%, 100% { box-shadow: 0 0 0 rgba(201, 168, 76, 0); }
+  50% { box-shadow: 0 0 24px rgba(201, 168, 76, 0.15); }
 }

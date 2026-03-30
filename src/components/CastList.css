@@ -1,16 +1,17 @@
 .cast-list {
-  margin-top: 36px;
+  margin-top: 40px;
 }
 
 .cast-list h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 14px;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 500;
+  margin-bottom: 16px;
 }
 
 .cast-scroll {
   display: flex;
-  gap: 16px;
+  gap: 18px;
   overflow-x: auto;
   scrollbar-width: none;
   padding-bottom: 8px;
@@ -27,12 +28,18 @@
 }
 
 .cast-photo {
-  width: 80px;
-  height: 80px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   overflow: hidden;
-  margin: 0 auto 8px;
+  margin: 0 auto 10px;
   background: var(--bg-surface);
+  border: 1px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+.cast-member:hover .cast-photo {
+  border-color: var(--border-warm);
 }
 
 .cast-photo img {
@@ -51,7 +58,7 @@
 
 .cast-name {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -60,7 +67,7 @@
 
 .cast-char {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
