@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, autoPlay, searchStreams, playTorrent, backdrop, poster, still } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import "./Detail.css";
@@ -21,6 +21,7 @@ export default function Detail() {
   const [pickerSeason, setPickerSeason] = useState(null);
   const [pickerEpisode, setPickerEpisode] = useState(null);
   const [expandedEps, setExpandedEps] = useState(new Set());
+  const [prePlay, setPrePlay] = useState(null); // { infoHash, fileIndex, tags, audioTracks, subtitleTracks, selectedAudio, selectedSub, loading }
 
   useEffect(() => {
     setData(null);
@@ -75,15 +76,74 @@ export default function Detail() {
       const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode);
       if (isRemote) {
         sendRemoteStart(result, result.tags || stream.tags);
-      } else {
-        navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
-          state: { tags: result.tags || stream.tags, title: data.title || data.name },
-        });
+        return;
       }
+      setPlayState(null);
+      setPrePlay({
+        infoHash: result.infoHash,
+        fileIndex: result.fileIndex,
+        tags: result.tags || stream.tags,
+        audioTracks: [],
+        subtitleTracks: [],
+        selectedAudio: null,
+        selectedSub: "",
+        loading: true,
+      });
+      probeTracksForPrePlay(result.infoHash, result.fileIndex);
     } catch (err) {
       setPlayState("error");
       setPlayError(err.message);
     }
+  }
+
+  async function probeTracksForPrePlay(infoHash, fileIndex) {
+    let retries = 10;
+    while (retries > 0) {
+      try {
+        const [audioData, subData] = await Promise.all([
+          fetchAudioTracks(infoHash, fileIndex),
+          fetchSubtitleTracks(infoHash, fileIndex),
+        ]);
+        const audioTracks = (audioData.tracks || []).map((t) => ({
+          value: t.streamIndex,
+          label: (t.title || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
+        }));
+        const subtitleTracks = (subData.tracks || []).map((t) => ({
+          value: `embedded:${t.streamIndex}`,
+          label: t.title || t.lang || `Track ${t.streamIndex}`,
+        }));
+        if (audioTracks.length > 0 || subData.complete) {
+          setPrePlay((prev) => prev ? {
+            ...prev,
+            audioTracks,
+            subtitleTracks,
+            selectedAudio: prev.selectedAudio ?? (audioTracks[0]?.value ?? null),
+            loading: false,
+          } : null);
+          return;
+        }
+      } catch {}
+      retries--;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    setPrePlay((prev) => prev ? { ...prev, loading: false } : null);
+  }
+
+  function launchPrePlay() {
+    if (!prePlay) return;
+    const navState = {
+      tags: prePlay.tags,
+      title: data.title || data.name,
+    };
+    if (prePlay.selectedAudio !== null) navState.audioTrack = prePlay.selectedAudio;
+    if (prePlay.selectedSub) navState.subtitle = prePlay.selectedSub;
+    navigate(`/play/${prePlay.infoHash}/${prePlay.fileIndex}`, { state: navState });
+    setPrePlay(null);
+  }
+
+  function cancelPrePlay() {
+    setPrePlay(null);
+    setPlayState(null);
   }
 
   async function handlePlay(season, episode) {
@@ -292,6 +352,53 @@ export default function Detail() {
         )}
 
       </div>
+
+      {prePlay && (
+        <div className="picker-overlay" onClick={cancelPrePlay}>
+          <div className="picker-modal preplay-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="picker-header">
+              <h3>Track Selection</h3>
+              <button className="picker-close" onClick={cancelPrePlay}>✕</button>
+            </div>
+            <div className="preplay-content">
+              {prePlay.loading && <p className="preplay-loading">Detecting tracks...</p>}
+              {prePlay.audioTracks.length > 1 && (
+                <label className="preplay-field">
+                  <span>Audio</span>
+                  <select
+                    value={prePlay.selectedAudio ?? ""}
+                    onChange={(e) => setPrePlay((p) => ({ ...p, selectedAudio: parseInt(e.target.value, 10) }))}
+                  >
+                    {prePlay.audioTracks.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {prePlay.subtitleTracks.length > 0 && (
+                <label className="preplay-field">
+                  <span>Subtitles</span>
+                  <select
+                    value={prePlay.selectedSub}
+                    onChange={(e) => setPrePlay((p) => ({ ...p, selectedSub: e.target.value }))}
+                  >
+                    <option value="">Off</option>
+                    {prePlay.subtitleTracks.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button className="detail-play-btn preplay-go" onClick={launchPrePlay}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Play
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPicker && (
         <div className="picker-overlay" onClick={() => setShowPicker(false)}>
