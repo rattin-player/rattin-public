@@ -1141,7 +1141,10 @@ app.get("/api/tmdb/trending", async (req, res) => {
 // Stale-while-revalidate: discover
 app.get("/api/tmdb/discover", async (req, res) => {
   const { type = "movie", genre = "", page = 1, sort = "popularity.desc" } = req.query;
-  const key = `discover:${type}:${genre}:${page}`;
+  // Cache key must incorporate ALL query params that affect TMDB's response.
+  // Using sorted URLSearchParams ensures key stability regardless of param order.
+  const sortedParams = new URLSearchParams(Object.entries(req.query).sort());
+  const key = `discover:${sortedParams.toString()}`;
   let endpoint = `/discover/${type}?sort_by=${sort}&page=${page}`;
   if (genre) endpoint += `&with_genres=${genre}`;
   for (const [k, v] of Object.entries(req.query)) {
