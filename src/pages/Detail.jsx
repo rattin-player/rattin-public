@@ -95,6 +95,8 @@ export default function Detail() {
         selectedAudio: null,
         selectedSub: "",
         loading: true,
+        season: pickerSeason,
+        episode: pickerEpisode,
       });
       probeTracksForPrePlay(result.infoHash, result.fileIndex);
     } catch (err) {
@@ -141,7 +143,12 @@ export default function Detail() {
     const navState = {
       tags: prePlay.tags,
       title: data.title || data.name,
+      tmdbId: id,
     };
+    if (prePlay.season != null) {
+      navState.season = prePlay.season;
+      navState.episode = prePlay.episode;
+    }
     if (prePlay.selectedAudio !== null) navState.audioTrack = prePlay.selectedAudio;
     if (prePlay.selectedSub) navState.subtitle = prePlay.selectedSub;
     navigate(`/play/${prePlay.infoHash}/${prePlay.fileIndex}`, { state: navState });
@@ -165,9 +172,12 @@ export default function Detail() {
       if (isRemote) {
         sendRemoteStart(result, result.tags);
       } else {
-        navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
-          state: { tags: result.tags, title: data.title || data.name },
-        });
+        const navState = { tags: result.tags, title: data.title || data.name, tmdbId: id };
+        if (season != null) {
+          navState.season = season;
+          navState.episode = episode;
+        }
+        navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err) {
       setPlayState("error");
