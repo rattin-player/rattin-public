@@ -350,3 +350,36 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* Skip Intro Button */
+.player-skip-intro {
+  position: absolute;
+  bottom: 100px;
+  right: 30px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  animation: skipIntroFadeIn 0.3s ease;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.player-skip-intro:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes skipIntroFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

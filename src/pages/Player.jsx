@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
-import { fetchStatus, fetchDuration, fetchSubtitleTracks, fetchAudioTracks } from "../lib/api";
+import { fetchStatus, fetchDuration, fetchSubtitleTracks, fetchAudioTracks, fetchIntroTimestamps } from "../lib/api";
 import { formatTime, formatBytes } from "../lib/utils";
 import { encode } from "uqr";
 import "./Player.css";
@@ -20,7 +20,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken } = usePlayer();
+  const { videoRef, startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef } = usePlayer();
   const tags = location.state?.tags || active?.tags || [];
   const mediaTitle = location.state?.title || active?.title || "";
   const preSelectedAudio = location.state?.audioTrack ?? null;
@@ -79,6 +79,9 @@ export default function Player() {
   const [loading, setLoading] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [loadingReason, setLoadingReason] = useState("initial"); // "initial" | "seeking"
+  const [introRange, setIntroRange] = useState(null); // { start, end }
+  const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const skipIntroHideTimer = useRef(null);
 
   const seekOffsetRef = useRef(0);
   const isLiveRef = useRef(false);
@@ -245,6 +248,62 @@ export default function Player() {
     pollRef.current = setInterval(poll, 1500);
     return () => clearInterval(pollRef.current);
   }, [infoHash, fileIndex]);
+
+  // Fetch intro timestamps for skip-intro button
+  useEffect(() => {
+    const tmdbId = location.state?.tmdbId;
+    const season = location.state?.season;
+    const episode = location.state?.episode;
+
+    if (!infoHash || !fileIndex) return;
+
+    let cancelled = false;
+    // Delay slightly to let duration cache populate
+    const timer = setTimeout(async () => {
+      try {
+        const data = await fetchIntroTimestamps(infoHash, fileIndex, {
+          tmdbId, season, episode, title: mediaTitle,
+        });
+        if (!cancelled && data.detected) {
+          const range = { start: data.intro_start, end: data.intro_end };
+          setIntroRange(range);
+          introRangeRef.current = range;
+        }
+      } catch {}
+    }, 3000);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [infoHash, fileIndex]);
+
+  // Show/hide skip intro button based on current playback time
+  useEffect(() => {
+    if (!introRange) return;
+    const v = videoRef.current;
+    if (!v) return;
+
+    function checkIntro() {
+      const t = getEffectiveTime();
+      const inRange = t >= introRange.start && t < introRange.end;
+      setShowSkipIntro(inRange);
+      if (inRange) {
+        // Auto-hide after 10s
+        clearTimeout(skipIntroHideTimer.current);
+        skipIntroHideTimer.current = setTimeout(() => setShowSkipIntro(false), 10000);
+      }
+    }
+
+    v.addEventListener("timeupdate", checkIntro);
+    return () => {
+      v.removeEventListener("timeupdate", checkIntro);
+      clearTimeout(skipIntroHideTimer.current);
+    };
+  }, [introRange, getEffectiveTime]);
+
+  function handleSkipIntro() {
+    if (!introRange) return;
+    seekTo(introRange.end);
+    setShowSkipIntro(false);
+  }
 
   function switchToTranscoded() {
     const v = videoRef.current;
@@ -692,6 +751,18 @@ export default function Player() {
             </p>
           </div>
         </div>
+      )}
+
+      {showSkipIntro && introRange && (
+        <button
+          className="player-skip-intro"
+          onClick={(e) => { e.stopPropagation(); handleSkipIntro(); }}
+        >
+          Skip Intro
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+          </svg>
+        </button>
       )}
 
       <div className={`player-overlay ${showControls ? "visible" : ""}`}>
