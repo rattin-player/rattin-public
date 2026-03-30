@@ -1296,6 +1296,98 @@ app.get("/api/tmdb/tv/:id", async (req, res) => {
   }
 });
 
+// ---- Reviews & Discussions ----
+
+async function fetchRedditThreads(title, type) {
+  const subreddit = type === "tv" ? "television" : "movies";
+  const queries = [
+    `"${title}" discussion`,
+    `"${title}" official discussion`,
+  ];
+  const seen = new Set();
+  const threads = [];
+
+  for (const q of queries) {
+    try {
+      const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(q)}&restrict_sr=on&sort=relevance&t=all&limit=10`;
+      const resp = await fetch(url, {
+        headers: { "User-Agent": "MagnetPlayer/2.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      for (const child of (data?.data?.children || [])) {
+        const post = child.data;
+        if (seen.has(post.id)) continue;
+        seen.add(post.id);
+        threads.push({
+          id: post.id,
+          title: post.title,
+          subreddit: post.subreddit_name_prefixed,
+          url: `https://www.reddit.com${post.permalink}`,
+          score: post.score,
+          comments: post.num_comments,
+          created: post.created_utc,
+          isSelfPost: post.is_self,
+          flair: post.link_flair_text || null,
+        });
+      }
+    } catch {}
+  }
+
+  // Sort by relevance (score * comments gives a good proxy for engagement)
+  threads.sort((a, b) => (b.score * Math.log(b.comments + 1)) - (a.score * Math.log(a.comments + 1)));
+  return threads.slice(0, 10);
+}
+
+app.get("/api/reviews/:type/:id", async (req, res) => {
+  const { type, id } = req.params;
+  if (!["movie", "tv"].includes(type)) return res.status(400).json({ error: "Invalid type" });
+
+  const key = `reviews:${type}:${id}`;
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+
+  try {
+    // Get TMDB details (from cache if available) to extract title and IMDb ID
+    const detailKey = type === "tv" ? `tv:${id}` : `movie:${id}`;
+    let detail = tmdbCache.get(detailKey);
+    if (!detail) {
+      const append = type === "tv" ? "external_ids" : "";
+      detail = await fetchTMDB(`/${type}/${id}${append ? `?append_to_response=${append}` : ""}`);
+    }
+
+    const title = detail.title || detail.name || "";
+    const imdbId = detail.imdb_id || detail.external_ids?.imdb_id || null;
+
+    // Fetch TMDB reviews and Reddit threads in parallel
+    const [tmdbReviews, reddit] = await Promise.all([
+      fetchTMDB(`/${type}/${id}/reviews?language=en-US&page=1`).catch(() => ({ results: [] })),
+      fetchRedditThreads(title, type).catch(() => []),
+    ]);
+
+    const reviews = (tmdbReviews.results || []).slice(0, 10).map((r) => ({
+      id: r.id,
+      author: r.author,
+      avatar: r.author_details?.avatar_path
+        ? (r.author_details.avatar_path.startsWith("/http")
+          ? r.author_details.avatar_path.slice(1)
+          : `https://image.tmdb.org/t/p/w45${r.author_details.avatar_path}`)
+        : null,
+      rating: r.author_details?.rating || null,
+      content: r.content,
+      created: r.created_at,
+      url: r.url,
+    }));
+
+    const result = { reviews, reddit, imdbId };
+    tmdbCache.set(key, result, CACHE_TTL.REVIEWS);
+    res.json(result);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e)).json({ error: e.message });
+  }
+});
+
 // ---- Auto-Play Endpoint ----
 
 const TRACKERS = [
