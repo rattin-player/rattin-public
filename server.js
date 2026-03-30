@@ -643,6 +643,48 @@ app.get("/api/subtitles/:infoHash/:fileIndex", (req, res) => {
   });
 });
 
+// List embedded audio streams
+app.get("/api/audio-tracks/:infoHash/:fileIndex", (req, res) => {
+  const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
+  if (!torrent) return res.status(404).json({ error: "Torrent not found" });
+
+  const file = torrent.files[parseInt(req.params.fileIndex, 10)];
+  if (!file) return res.status(404).json({ error: "File not found" });
+
+  const complete = isFileComplete(torrent, file);
+  const filePath = diskPath(torrent, file);
+
+  try { statSync(filePath); } catch {
+    return res.json({ tracks: [], complete: false });
+  }
+
+  const probe = spawn("ffprobe", [
+    "-v", "quiet", "-print_format", "json",
+    "-show_streams", "-select_streams", "a",
+    filePath,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+
+  let out = "";
+  probe.stdout.on("data", (d) => { out += d.toString(); });
+  probe.on("close", (code) => {
+    if (code !== 0) return res.json({ tracks: [], complete });
+    try {
+      const data = JSON.parse(out);
+      const tracks = (data.streams || []).map((s) => ({
+        streamIndex: s.index,
+        lang: s.tags?.language || null,
+        title: s.tags?.title || null,
+        codec: s.codec_name,
+        channels: s.channels || 0,
+      }));
+      log("info", "Audio track probe", { file: file.name, tracks: tracks.length, complete });
+      res.json({ tracks, complete });
+    } catch {
+      res.json({ tracks: [], complete });
+    }
+  });
+});
+
 // Extract an embedded subtitle stream as WebVTT
 app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req, res) => {
   const torrent = client.torrents.find((t) => t.infoHash === req.params.infoHash);
