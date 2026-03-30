@@ -40,13 +40,15 @@ interface UseSubtitlesReturn {
   LANG_MAP: Record<string, string>;
 }
 
-/** Extract episode identifiers (e.g. "S01E03", "E03", "03") from a filename */
-export function extractEpisodeId(name: string): string | null {
-  const base = name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop() || "";
-  // Match S01E03, s1e3, etc.
-  const se = base.match(/[Ss]\d{1,2}[Ee](\d{1,3})/);
+/** Extract episode identifiers (e.g. "S01E03", "E03", "03") from a path or filename.
+ *  Checks the full path so directory names like "Subs/Show.S01E03/" are matched. */
+export function extractEpisodeId(pathOrName: string): string | null {
+  const str = pathOrName.replace(/\.[^.]+$/, "");
+  // Match S01E03, s1e3, etc. — anywhere in the path
+  const se = str.match(/[Ss]\d{1,2}[Ee](\d{1,3})/);
   if (se) return se[0].toUpperCase();
-  // Match standalone E03, EP03
+  // Match standalone E03, EP03 — only in the filename to avoid false positives from dirs
+  const base = str.split(/[/\\]/).pop() || "";
   const ep = base.match(/[Ee][Pp]?(\d{1,3})/);
   if (ep) return `E${ep[1].padStart(2, "0")}`;
   // Match " - 03" or ".03." patterns common in anime (but not years like 2024)
@@ -55,19 +57,21 @@ export function extractEpisodeId(name: string): string | null {
   return null;
 }
 
-/** Check if a subtitle file likely belongs to the given video file */
-export function subtitleMatchesVideo(subName: string, videoName: string): boolean {
-  const subBase = subName.replace(/\.[^.]+$/, "").split(/[/\\]/).pop()?.toLowerCase() || "";
-  const vidBase = videoName.replace(/\.[^.]+$/, "").split(/[/\\]/).pop()?.toLowerCase() || "";
+/** Check if a subtitle file likely belongs to the given video file.
+ *  subPath is the full torrent path (e.g. "Pack/Subs/Show.S01E03/3_English.srt")
+ *  videoPath is the full torrent path (e.g. "Pack/Show.S01E03.720p.mkv") */
+export function subtitleMatchesVideo(subPath: string, videoPath: string): boolean {
+  const subFile = subPath.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+  const vidFile = videoPath.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, "").toLowerCase() || "";
 
   // Exact base name match (e.g. "movie.srt" for "movie.mkv")
-  if (subBase === vidBase) return true;
+  if (subFile === vidFile) return true;
   // Sub starts with video base (e.g. "movie.en.srt" for "movie.mkv")
-  if (subBase.startsWith(vidBase)) return true;
+  if (subFile.startsWith(vidFile)) return true;
 
-  // Episode-based matching for season packs
-  const subEp = extractEpisodeId(subName);
-  const vidEp = extractEpisodeId(videoName);
+  // Episode-based matching — check the full path (parent dirs often have episode IDs)
+  const subEp = extractEpisodeId(subPath);
+  const vidEp = extractEpisodeId(videoPath);
   if (subEp && vidEp && subEp === vidEp) return true;
 
   return false;
@@ -250,11 +254,11 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
       const fi = parseInt(fileIndex, 10);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const videoFile = data.files.find((f: any) => f.index === fi);
-      const videoName = videoFile?.name || "";
+      const videoPath = videoFile?.path || videoFile?.name || "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allSubs = data.files.filter((f: any) => f.isSubtitle);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let matched = allSubs.filter((f: any) => subtitleMatchesVideo(f.name, videoName));
+      let matched = allSubs.filter((f: any) => subtitleMatchesVideo(f.path || f.name, videoPath));
       // If no match (e.g. single video with loose subs), fall back to all
       if (matched.length === 0 && allSubs.length > 0) matched = allSubs;
       if (matched.length > 0) {
