@@ -21,6 +21,11 @@ import {
   findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile,
 } from "./lib/torrent-scoring.js";
 import { createContext } from "./lib/server-context.js";
+import {
+  probeMedia as _probeMedia, startTranscode as _startTranscode,
+  serveFile, serveFromTorrent, serveLiveTranscode as _serveLiveTranscode,
+  buildTranscodeArgs, spawnWatchdog,
+} from "./lib/transcode.js";
 
 export function createApp(overrides = {}) {
   const __dirname = overrides.__dirname || path.dirname(fileURLToPath(import.meta.url));
@@ -35,144 +40,9 @@ export function createApp(overrides = {}) {
     rcSessions,
   } = ctx;
 
-// Verify a file is actually media by probing its content with ffprobe.
-// Returns { valid, format, streams } or { valid: false, reason }.
-function probeMedia(filePath) {
-  if (probeCache.has(filePath)) return Promise.resolve(probeCache.get(filePath));
-  return new Promise((resolve) => {
-    const proc = spawn("ffprobe", [
-      "-v", "quiet", "-print_format", "json",
-      "-show_format", "-show_streams",
-      filePath,
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-
-    let out = "";
-    proc.stdout.on("data", (d) => { out += d.toString(); });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        return resolve({ valid: false, reason: "ffprobe failed — not a valid media file" });
-      }
-      try {
-        const data = JSON.parse(out);
-        const fmt = data.format?.format_name || "";
-        const streams = data.streams || [];
-        const hasMedia = streams.some((s) =>
-          s.codec_type === "video" || s.codec_type === "audio"
-        );
-        if (!hasMedia) {
-          return resolve({ valid: false, reason: "No video or audio streams detected" });
-        }
-        const dur = parseFloat(data.format?.duration);
-        const videoStream = streams.find((s) => s.codec_type === "video");
-        const audioStream = streams.find((s) => s.codec_type === "audio");
-        const result = {
-          valid: true, format: fmt, streams: streams.length,
-          duration: dur && isFinite(dur) ? dur : 0,
-          videoCodec: videoStream?.codec_name || "",
-          audioCodec: audioStream?.codec_name || "",
-        };
-        probeCache.set(filePath, result);
-        log("info", "Media probe OK", { file: path.basename(filePath), format: fmt, streams: streams.length, duration: result.duration, vcodec: result.videoCodec });
-        resolve(result);
-      } catch {
-        resolve({ valid: false, reason: "Failed to parse probe output" });
-      }
-    });
-    proc.on("error", () => {
-      resolve({ valid: false, reason: "ffprobe not available" });
-    });
-  });
-}
-
-// Start background transcode to a proper MP4 with faststart (moov at beginning).
-// This is what makes seeking work - the browser can read the moov atom first
-// and know the full duration + seek table.
-function startTranscode(inputPath, cacheKey, audioStreamIdx = null) {
-  fs.mkdirSync(TRANSCODE_PATH, { recursive: true });
-  const outputPath = path.join(TRANSCODE_PATH, cacheKey.replace(/:/g, "_") + ".mp4");
-
-  if (transcodeJobs.has(cacheKey)) {
-    const job = transcodeJobs.get(cacheKey);
-    if ((job.done && !job.error) || (!job.done && !job.error)) return job;
-  }
-
-  // Check probe cache to decide whether remux is likely to work
-  const cached = probeCache.get(inputPath);
-  const canRemux = !cached?.videoCodec || cached.videoCodec === "h264";
-
-  log("info", "Starting transcode", { input: path.basename(inputPath), canRemux, vcodec: cached?.videoCodec });
-  const job = { outputPath, done: false, error: null, process: null };
-  transcodeJobs.set(cacheKey, job);
-
-  function startEncode() {
-    const proc2 = spawn("ffmpeg", [
-      "-i", inputPath,
-      ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
-      "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-      "-c:a", "aac",
-      "-movflags", "+faststart",
-      "-y", outputPath,
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-    job.process = proc2;
-
-    let encodeStderr = "";
-    proc2.stderr.on("data", (d) => {
-      const chunk = d.toString();
-      encodeStderr = (encodeStderr + chunk).slice(-1024);
-      const m = chunk.match(/time=(\S+)/);
-      if (m) log("info", "Transcode progress", { time: m[1] });
-    });
-
-    proc2.on("close", (code2) => {
-      if (code2 === 0) {
-        job.done = true;
-        log("info", "Transcode complete (re-encode)");
-      } else {
-        job.error = "Transcode failed (code " + code2 + ")";
-        log("err", "Transcode re-encode failed", { code: code2, stderr: encodeStderr.slice(-300) });
-      }
-    });
-    proc2.on("error", (err) => {
-      job.error = "ffmpeg error: " + err.message;
-    });
-  }
-
-  // Skip remux if video codec isn't H.264 — go straight to re-encode
-  if (!canRemux) {
-    startEncode();
-    return job;
-  }
-
-  // Try remux first (fast - just repackage, no re-encoding)
-  const proc = spawn("ffmpeg", [
-    "-i", inputPath,
-    ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
-    "-c:v", "copy", "-c:a", "aac",
-    "-movflags", "+faststart",
-    "-y", outputPath,
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  job.process = proc;
-
-  let remuxStderr = "";
-  proc.stderr.on("data", (d) => { remuxStderr = (remuxStderr + d.toString()).slice(-1024); });
-
-  proc.on("close", (code) => {
-    if (code === 0) {
-      job.done = true;
-      log("info", "Transcode complete (remux)", { output: path.basename(outputPath) });
-    } else {
-      log("info", "Remux failed (code " + code + "), re-encoding with H.264", { stderr: remuxStderr.slice(-200) });
-      startEncode();
-    }
-  });
-
-  proc.on("error", (err) => {
-    job.error = "ffmpeg error: " + err.message;
-    log("err", "ffmpeg spawn error", { error: err.message });
-  });
-
-  return job;
-}
+const probeMedia = (filePath) => _probeMedia(filePath, probeCache, log);
+const startTranscode = (inputPath, cacheKey, audioStreamIdx) =>
+  _startTranscode(inputPath, cacheKey, ctx, audioStreamIdx);
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -772,7 +642,13 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
           const ext = path.extname(cached.name).toLowerCase();
           log("info", "Serving from disk (torrent removed)", { file: cached.name });
           if (needsTranscode(ext)) {
-            return serveLiveTranscodeFromDisk(cached.path, cached.name, req, res);
+            return _serveLiveTranscode({
+              inputPath: cached.path,
+              useStdin: false,
+              seekTo: parseFloat(req.query.t) || 0,
+              audioStreamIdx: req.query.audio ? parseInt(req.query.audio, 10) : null,
+              streamKey: null,
+            }, req, res, ctx);
           }
           return serveFile(cached.path, cached.size,
             ext === ".webm" ? "video/webm" : "video/mp4", req, res);
@@ -793,6 +669,16 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
   const ext = path.extname(file.name).toLowerCase();
   const fileIdx = parseInt(req.params.fileIndex, 10);
   const audioStreamIdx = req.query.audio ? parseInt(req.query.audio, 10) : null;
+
+  // Helper: call unified serveLiveTranscode with torrent context
+  const liveTranscode = (isComplete, seek) => _serveLiveTranscode({
+    inputPath: diskPath(torrent, file),
+    useStdin: !isComplete,
+    createInputStream: !isComplete ? () => file.createReadStream() : undefined,
+    seekTo: seek,
+    audioStreamIdx,
+    streamKey: `${torrent.infoHash}:${fileIdx}`,
+  }, req, res, ctx);
 
   // Kill any previous live transcode for this file (e.g. from before a seek).
   // When the frontend seeks, it sets v.src to a new URL — but the old HTTP
@@ -857,7 +743,13 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
   }
   if (complete && !xcode && audioStreamIdx !== null) {
     log("info", "Serving with audio track override", { file: file.name, audioStreamIdx });
-    return serveLiveTranscode(torrent, file, true, req, res, parseFloat(req.query.t) || 0, audioStreamIdx);
+    return _serveLiveTranscode({
+      inputPath: diskPath(torrent, file),
+      useStdin: false,
+      seekTo: parseFloat(req.query.t) || 0,
+      audioStreamIdx,
+      streamKey: `${torrent.infoHash}:${fileIdx}`,
+    }, req, res, ctx);
   }
 
   // 3) Needs transcode but not ready yet - live pipe through ffmpeg
@@ -915,7 +807,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
           // Fast path: pieces on disk → input seeking + copy mode (near-instant)
           log("info", "Smart seek (instant)", { seekTo, byteStart, method: seekIndexCache.has(cacheKey) ? "index" : "estimate" });
           torrent.select(firstPiece, getFileEndPiece(file), 1);
-          return serveLiveTranscode(torrent, file, true, req, res, seekTo, audioStreamIdx);
+          return liveTranscode(true, seekTo);
         }
 
         // Pieces not ready — fetch them, then use fast path
@@ -924,10 +816,10 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
           try {
             await waitForPieces(torrent, file, byteStart, byteEnd, 30000);
             torrent.select(firstPiece, getFileEndPiece(file), 1);
-            return serveLiveTranscode(torrent, file, true, req, res, seekTo, audioStreamIdx);
+            return liveTranscode(true, seekTo);
           } catch {
             log("warn", "Smart seek timeout, falling back", { seekTo });
-            return serveLiveTranscode(torrent, file, complete, req, res, seekTo, audioStreamIdx);
+            return liveTranscode(complete, seekTo);
           }
         };
         return doSmartSeek();
@@ -935,7 +827,7 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
     }
 
     log("info", "Live transcode", { file: file.name, complete, seekTo });
-    return serveLiveTranscode(torrent, file, complete, req, res, seekTo, audioStreamIdx);
+    return liveTranscode(complete, seekTo);
   }
 
   // 4) Native format, still downloading - WebTorrent stream
@@ -943,273 +835,6 @@ app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req, res) => 
   serveFromTorrent(file, req, res);
 });
 
-// Serve a complete file from disk with proper range support
-function serveFile(filePath, fileSize, contentType, req, res) {
-  const range = req.headers.range;
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": end - start + 1,
-      "Content-Type": contentType,
-      "X-Accel-Buffering": "no",
-    });
-    const s = createReadStream(filePath, { start, end });
-    s.on("error", () => s.destroy());
-    res.on("close", () => s.destroy());
-    s.pipe(res);
-  } else {
-    res.writeHead(200, {
-      "Content-Length": fileSize,
-      "Content-Type": contentType,
-      "Accept-Ranges": "bytes",
-      "X-Accel-Buffering": "no",
-    });
-    const s = createReadStream(filePath);
-    s.on("error", () => s.destroy());
-    res.on("close", () => s.destroy());
-    s.pipe(res);
-  }
-}
-
-// Stream from WebTorrent (still downloading, native format)
-// Deselects file before creating the stream so the FileIterator's internal
-// selection (priority 1) becomes the sole active selection — this ensures
-// WebTorrent downloads pieces at the requested byte range, not sequentially.
-// File selection is restored when the response closes.
-function serveFromTorrent(file, req, res) {
-  const range = req.headers.range;
-  const size = file.length;
-  file.deselect();
-  res.on("close", () => file.select());
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${size}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": end - start + 1,
-      "Content-Type": "video/mp4",
-      "X-Accel-Buffering": "no",
-    });
-    const s = file.createReadStream({ start, end });
-    s.on("error", () => s.destroy());
-    res.on("close", () => s.destroy());
-    s.pipe(res);
-  } else {
-    res.writeHead(200, {
-      "Content-Length": size,
-      "Content-Type": "video/mp4",
-      "Accept-Ranges": "bytes",
-      "X-Accel-Buffering": "no",
-    });
-    const s = file.createReadStream();
-    s.on("error", () => s.destroy());
-    res.on("close", () => s.destroy());
-    s.pipe(res);
-  }
-}
-
-// Live transcode through ffmpeg (for MKV etc, before background transcode is ready)
-function serveLiveTranscode(torrent, file, complete, req, res, seekTo = 0, audioStreamIdx = null) {
-  const filePath = diskPath(torrent, file);
-  // Only use disk file when download is complete — partial files have gaps that break ffmpeg
-  const useStdin = !complete;
-  const input = useStdin ? "pipe:0" : filePath;
-
-  const doSeek = seekTo > 0;
-
-  // Never use copy mode — it causes random freezes and A/V desync due to
-  // B-frame DTS going backward across fragmented MP4 fragment boundaries.
-  const cached = probeCache.get(filePath);
-  const browserSafeCodec = !cached?.videoCodec || cached.videoCodec === "h264";
-  const needsDownscale = !browserSafeCodec && cached?.videoCodec;
-
-  const vFilters = [];
-  if (needsDownscale) vFilters.push("scale=-2:1080");
-  if (!browserSafeCodec) vFilters.push("format=yuv420p");
-
-  const args = [
-    ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
-    ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
-    "-i", input,
-    ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
-    "-map", "0:v:0", "-map", audioStreamIdx !== null ? `0:${audioStreamIdx}` : "0:a:0",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-    ...(vFilters.length > 0 ? ["-vf", vFilters.join(",")] : []),
-    "-c:a", "aac", "-ac", "2",
-    "-max_muxing_queue_size", "1024",
-    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-    "-f", "mp4", "-v", "warning",
-    "-progress", "pipe:2",
-    "pipe:1",
-  ];
-
-  log("info", "Live transcode", { input: useStdin ? "pipe" : "disk", seekTo, doSeek });
-
-  const ffmpeg = spawn("ffmpeg", args, {
-    stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
-  });
-
-  let torrentStream = null;
-  if (useStdin) {
-    torrentStream = file.createReadStream();
-    torrentStream.on("error", () => { torrentStream.destroy(); ffmpeg.kill(); });
-    torrentStream.pipe(ffmpeg.stdin);
-    ffmpeg.stdin.on("error", () => {});
-  }
-
-  // Register this transcode so it can be killed if a new request arrives
-  // (e.g. user seeks — browser may not close the old connection promptly)
-  const fileIdx = torrent.files.indexOf(file);
-  const streamKey = `${torrent.infoHash}:${fileIdx}`;
-  const cleanup = () => {
-    if (torrentStream) torrentStream.destroy();
-    ffmpeg.kill("SIGKILL");
-  };
-  activeTranscodes.set(streamKey, { ffmpeg, torrentStream, cleanup });
-  ffmpeg.on("close", () => activeTranscodes.delete(streamKey));
-
-  // Track both stdout data and stderr progress as heartbeat
-  let lastActivity = Date.now();
-  ffmpeg.stdout.on("data", () => { lastActivity = Date.now(); });
-  ffmpeg.stderr.on("data", () => { lastActivity = Date.now(); });
-
-  res.writeHead(200, {
-    "Content-Type": "video/mp4",
-    "Transfer-Encoding": "chunked",
-    "X-Accel-Buffering": "no",
-    "Cache-Control": "no-cache",
-  });
-
-  ffmpeg.stdout.pipe(res);
-
-  // Watchdog: kill ffmpeg if no activity (stdout OR stderr) for 120s
-  const WATCHDOG_TIMEOUT = 120000;
-  const watchdog = setInterval(() => {
-    if (Date.now() - lastActivity > WATCHDOG_TIMEOUT) {
-      clearInterval(watchdog);
-      log("warn", "Watchdog: killing stale ffmpeg (no activity for 120s)");
-      if (torrentStream) torrentStream.destroy();
-      ffmpeg.kill("SIGKILL");
-    }
-  }, 10000);
-
-  ffmpeg.on("close", (code) => {
-    clearInterval(watchdog);
-    if (code && code !== 0 && code !== 255 && !res.destroyed) {
-      log("warn", "First attempt failed, retrying with full re-encode");
-      const retryFilters = [];
-      if (needsDownscale) retryFilters.push("scale=-2:1080");
-      retryFilters.push("format=yuv420p");
-      const args2 = [
-        ...(useStdin ? ["-analyzeduration", "5000000", "-probesize", "5000000"] : []),
-        ...(doSeek && !useStdin ? ["-ss", String(seekTo)] : []),
-        "-i", input,
-        ...(doSeek && useStdin ? ["-ss", String(seekTo)] : []),
-        "-map", "0:v:0", "-map", audioStreamIdx !== null ? `0:${audioStreamIdx}` : "0:a:0",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-        "-vf", retryFilters.join(","),
-        "-c:a", "aac", "-ac", "2",
-        "-max_muxing_queue_size", "1024",
-        "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-        "-f", "mp4", "-v", "warning",
-        "-progress", "pipe:2",
-        "pipe:1",
-      ];
-      const ff2 = spawn("ffmpeg", args2, { stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"] });
-      activeTranscodes.set(streamKey, { ffmpeg: ff2, torrentStream: null, cleanup: () => ff2.kill("SIGKILL") });
-      let lastActivity2 = Date.now();
-      ff2.stdout.on("data", () => { lastActivity2 = Date.now(); });
-      ff2.stderr.on("data", () => { lastActivity2 = Date.now(); });
-      const watchdog2 = setInterval(() => {
-        if (Date.now() - lastActivity2 > WATCHDOG_TIMEOUT) {
-          clearInterval(watchdog2);
-          log("warn", "Watchdog: killing stale retry ffmpeg (no activity for 120s)");
-          ff2.kill("SIGKILL");
-        }
-      }, 10000);
-      ff2.on("close", () => { clearInterval(watchdog2); activeTranscodes.delete(streamKey); });
-      if (useStdin) {
-        const ts2 = file.createReadStream();
-        ts2.on("error", () => { ts2.destroy(); ff2.kill(); });
-        ts2.pipe(ff2.stdin);
-        ff2.stdin.on("error", () => {});
-        res.on("close", () => { clearInterval(watchdog2); ts2.destroy(); ff2.kill(); });
-      }
-      ff2.stdout.pipe(res, { end: true });
-      if (!useStdin) res.on("close", () => { clearInterval(watchdog2); ff2.kill(); });
-    }
-  });
-
-  res.on("close", () => {
-    clearInterval(watchdog);
-    if (torrentStream) torrentStream.destroy();
-    ffmpeg.kill();
-  });
-}
-
-// Live transcode from disk only (for serving after torrent removal)
-function serveLiveTranscodeFromDisk(filePath, fileName, req, res) {
-  const seekTo = parseFloat(req.query.t) || 0;
-  const doSeek = seekTo > 0;
-
-  const cached = probeCache.get(filePath);
-  const browserSafeCodec = !cached?.videoCodec || cached.videoCodec === "h264";
-  const needsDownscale = !browserSafeCodec && cached?.videoCodec;
-
-  const vFilters = [];
-  if (needsDownscale) vFilters.push("scale=-2:1080");
-  if (!browserSafeCodec) vFilters.push("format=yuv420p");
-
-  const audioStreamIdx = req.query.audio ? parseInt(req.query.audio, 10) : null;
-
-  const args = [
-    ...(doSeek ? ["-ss", String(seekTo)] : []),
-    "-i", filePath,
-    "-map", "0:v:0", "-map", audioStreamIdx !== null ? `0:${audioStreamIdx}` : "0:a:0",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-    ...(vFilters.length > 0 ? ["-vf", vFilters.join(",")] : []),
-    "-c:a", "aac", "-ac", "2",
-    "-max_muxing_queue_size", "1024",
-    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-    "-f", "mp4", "-v", "warning",
-    "-progress", "pipe:2",
-    "pipe:1",
-  ];
-
-  log("info", "Live transcode (disk fallback)", { file: path.basename(filePath), seekTo });
-
-  const ffmpeg = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
-
-  let lastActivity = Date.now();
-  ffmpeg.stdout.on("data", () => { lastActivity = Date.now(); });
-  ffmpeg.stderr.on("data", () => { lastActivity = Date.now(); });
-
-  const WATCHDOG_TIMEOUT = 120000;
-  const watchdog = setInterval(() => {
-    if (Date.now() - lastActivity > WATCHDOG_TIMEOUT) {
-      clearInterval(watchdog);
-      log("warn", "Watchdog: killing stale disk-fallback ffmpeg");
-      ffmpeg.kill("SIGKILL");
-    }
-  }, 10000);
-
-  res.writeHead(200, {
-    "Content-Type": "video/mp4",
-    "Transfer-Encoding": "chunked",
-    "X-Accel-Buffering": "no",
-    "Cache-Control": "no-cache",
-  });
-
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.on("close", () => { clearInterval(watchdog); });
-  res.on("close", () => { clearInterval(watchdog); ffmpeg.kill(); });
-}
 
 // Status
 app.get("/api/status/:infoHash", (req, res) => {
