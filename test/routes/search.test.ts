@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
 
 describe("Search routes", () => {
-  let baseUrl, close;
+  let baseUrl: string, close: () => Promise<void>;
 
   before(async () => {
     ({ baseUrl, close } = await startTestServer());
@@ -23,7 +23,7 @@ describe("Search routes", () => {
         body: JSON.stringify({}),
       });
       assert.equal(res.status, 400);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.ok(body.error, "should have an error field");
     });
 
@@ -34,7 +34,7 @@ describe("Search routes", () => {
         body: JSON.stringify({ title: "Test Movie", year: 2020, type: "movie" }),
       });
       assert.equal(res.status, 200);
-      const body = await res.json();
+      const body = await res.json() as { results: unknown[] };
       assert.ok(Object.prototype.hasOwnProperty.call(body, "results"), "should have results field");
       assert.ok(Array.isArray(body.results), "results should be an array");
     });
@@ -50,7 +50,7 @@ describe("Search routes", () => {
         body: JSON.stringify({}),
       });
       assert.equal(res.status, 400);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.ok(body.error, "should have an error field");
     });
   });
@@ -65,7 +65,7 @@ describe("Search routes", () => {
         body: JSON.stringify({}),
       });
       assert.equal(res.status, 400);
-      const body = await res.json();
+      const body = await res.json() as { error: string };
       assert.ok(body.error, "should have an error field");
     });
   });
@@ -80,7 +80,7 @@ describe("Search routes", () => {
         body: JSON.stringify({ items: [] }),
       });
       assert.equal(res.status, 200);
-      const body = await res.json();
+      const body = await res.json() as { available: unknown[] };
       assert.ok(Object.prototype.hasOwnProperty.call(body, "available"), "should have available field");
       assert.deepEqual(body.available, [], "available should be an empty array");
     });

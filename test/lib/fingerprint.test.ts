@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { popcount32, matchScore, crossCorrelate, extractFingerprint } from "../../lib/fingerprint.js";
 
 // Simple LCG to generate pseudo-random 32-bit values for fingerprint test data.
-function lcg(seed) {
+function lcg(seed: number): () => number {
   return function () {
     seed = (Math.imul(1664525, seed) + 1013904223) >>> 0;
     return seed;
   };
 }
 
-function lcgArr(seed, n) {
+function lcgArr(seed: number, n: number): number[] {
   const gen = lcg(seed);
   return Array.from({ length: n }, gen);
 }
@@ -19,8 +19,8 @@ function lcgArr(seed, n) {
 // Uses alternating 0x00000000 and 0xFFFFFFFF — matchScore between these is 0.0,
 // and matchScore between either of these and random LCG data is ~0.5
 // (not high enough to trigger the match threshold consistently).
-function noiseA(n) { return Array.from({ length: n }, () => 0x00000000); }
-function noiseB(n) { return Array.from({ length: n }, () => 0xFFFFFFFF); }
+function noiseA(n: number): number[] { return Array.from({ length: n }, () => 0x00000000); }
+function noiseB(n: number): number[] { return Array.from({ length: n }, () => 0xFFFFFFFF); }
 
 describe("popcount32", () => {
   it("returns 0 for 0", () => {
@@ -56,9 +56,9 @@ describe("crossCorrelate", () => {
     const fp = lcgArr(0xABCD1234, 120);
     const result = crossCorrelate(fp, fp);
     assert.ok(result, "should find a match");
-    assert.equal(result.offsetA, 0);
-    assert.equal(result.offsetB, 0);
-    assert.ok(result.score > 0.9);
+    assert.equal(result!.offsetA, 0);
+    assert.equal(result!.offsetB, 0);
+    assert.ok(result!.score > 0.9);
   });
 
   it("finds shifted matching segment", () => {
@@ -67,10 +67,10 @@ describe("crossCorrelate", () => {
     const fpB = [...noiseB(60), ...intro];
     const result = crossCorrelate(fpA, fpB);
     assert.ok(result, "should find a match");
-    assert.equal(result.offsetA, 30);
-    assert.equal(result.offsetB, 60);
-    assert.equal(result.duration, 90);
-    assert.ok(result.score > 0.9);
+    assert.equal(result!.offsetA, 30);
+    assert.equal(result!.offsetB, 60);
+    assert.equal(result!.duration, 90);
+    assert.ok(result!.score > 0.9);
   });
 
   it("returns null for completely different arrays", () => {
@@ -103,9 +103,9 @@ describe("crossCorrelate", () => {
     const fpB = [...noiseB(180), ...intro]; // 180 samples = 60 seconds
     const result = crossCorrelate(fpA, fpB, 3);
     assert.ok(result, "should find a match");
-    assert.equal(result.offsetA, 30); // 90 samples / 3 = 30 sec
-    assert.equal(result.offsetB, 60); // 180 samples / 3 = 60 sec
-    assert.equal(result.duration, 90); // 270 samples / 3 = 90 sec
+    assert.equal(result!.offsetA, 30); // 90 samples / 3 = 30 sec
+    assert.equal(result!.offsetB, 60); // 180 samples / 3 = 60 sec
+    assert.equal(result!.duration, 90); // 270 samples / 3 = 90 sec
   });
 });
 

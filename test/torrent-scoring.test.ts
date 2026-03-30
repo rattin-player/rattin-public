@@ -65,62 +65,62 @@ describe("parseTags", () => {
 });
 
 describe("scoreTorrent", () => {
-  const makeTorrent = (name, seeders = 10) => ({ name, seeders });
+  const makeTorrent = (name: string, seeders = 10) => ({ name, seeders });
 
   it("returns -1 when first title word is missing", () => {
-    assert.equal(scoreTorrent(makeTorrent("Unrelated.Movie.2024"), "Inception", 2010), -1);
+    assert.equal(scoreTorrent(makeTorrent("Unrelated.Movie.2024"), "Inception", 2010, "movie"), -1);
   });
 
   it("returns -1 for zero seeders", () => {
-    assert.equal(scoreTorrent(makeTorrent("Inception.2010.1080p", 0), "Inception", 2010), -1);
+    assert.equal(scoreTorrent(makeTorrent("Inception.2010.1080p", 0), "Inception", 2010, "movie"), -1);
   });
 
   it("scores higher with more title words matched", () => {
-    const full = scoreTorrent(makeTorrent("The.Dark.Knight.2008.1080p"), "The Dark Knight", 2008);
-    const partial = scoreTorrent(makeTorrent("The.Other.Movie.2008.1080p"), "The Dark Knight", 2008);
+    const full = scoreTorrent(makeTorrent("The.Dark.Knight.2008.1080p"), "The Dark Knight", 2008, "movie");
+    const partial = scoreTorrent(makeTorrent("The.Other.Movie.2008.1080p"), "The Dark Knight", 2008, "movie");
     assert.ok(full > partial);
   });
 
   it("adds year bonus", () => {
-    const withYear = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010);
-    const noYear = scoreTorrent(makeTorrent("Inception.1080p"), "Inception", 2010);
+    const withYear = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010, "movie");
+    const noYear = scoreTorrent(makeTorrent("Inception.1080p"), "Inception", 2010, "movie");
     assert.ok(withYear > noYear);
   });
 
   it("scores 1080p higher than 720p", () => {
-    const hd = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010);
-    const sd = scoreTorrent(makeTorrent("Inception.2010.720p"), "Inception", 2010);
+    const hd = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010, "movie");
+    const sd = scoreTorrent(makeTorrent("Inception.2010.720p"), "Inception", 2010, "movie");
     assert.ok(hd > sd);
   });
 
   it("penalizes CAM quality heavily", () => {
-    const good = scoreTorrent(makeTorrent("Inception.2010.1080p.BluRay"), "Inception", 2010);
-    const cam = scoreTorrent(makeTorrent("Inception.2010.CAM"), "Inception", 2010);
+    const good = scoreTorrent(makeTorrent("Inception.2010.1080p.BluRay"), "Inception", 2010, "movie");
+    const cam = scoreTorrent(makeTorrent("Inception.2010.CAM"), "Inception", 2010, "movie");
     assert.ok(good > cam);
   });
 
   it("prefers MP4 over MKV", () => {
-    const mp4 = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mp4"), "Inception", 2010);
-    const mkv = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mkv"), "Inception", 2010);
+    const mp4 = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mp4"), "Inception", 2010, "movie");
+    const mkv = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mkv"), "Inception", 2010, "movie");
     assert.ok(mp4 > mkv);
   });
 
   it("gives seeder bonus (logarithmic)", () => {
-    const few = scoreTorrent(makeTorrent("Inception.2010.1080p", 2), "Inception", 2010);
-    const many = scoreTorrent(makeTorrent("Inception.2010.1080p", 1000), "Inception", 2010);
+    const few = scoreTorrent(makeTorrent("Inception.2010.1080p", 2), "Inception", 2010, "movie");
+    const many = scoreTorrent(makeTorrent("Inception.2010.1080p", 1000), "Inception", 2010, "movie");
     assert.ok(many > few);
   });
 
   it("caps seeder bonus at 30", () => {
-    const big = scoreTorrent(makeTorrent("Inception.2010.1080p", 100000), "Inception", 2010);
-    const huge = scoreTorrent(makeTorrent("Inception.2010.1080p", 10000000), "Inception", 2010);
+    const big = scoreTorrent(makeTorrent("Inception.2010.1080p", 100000), "Inception", 2010, "movie");
+    const huge = scoreTorrent(makeTorrent("Inception.2010.1080p", 10000000), "Inception", 2010, "movie");
     // Both should be capped, so difference should be 0 or very small
     assert.ok(Math.abs(big - huge) < 1);
   });
 
   it("adds source quality bonus", () => {
-    const bluray = scoreTorrent(makeTorrent("Inception.2010.1080p.BluRay"), "Inception", 2010);
-    const bare = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010);
+    const bluray = scoreTorrent(makeTorrent("Inception.2010.1080p.BluRay"), "Inception", 2010, "movie");
+    const bare = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010, "movie");
     assert.ok(bluray > bare);
   });
 });
@@ -181,8 +181,8 @@ describe("matchEpisodePattern", () => {
 
 describe("findLargestVideoFile", () => {
   it("returns null for null/undefined files", () => {
-    assert.equal(findLargestVideoFile(null), null);
-    assert.equal(findLargestVideoFile(undefined), null);
+    assert.equal(findLargestVideoFile(null as unknown as []), null);
+    assert.equal(findLargestVideoFile(undefined as unknown as []), null);
   });
 
   it("returns null for empty array", () => {
@@ -196,8 +196,8 @@ describe("findLargestVideoFile", () => {
       { name: "medium.mkv", length: 3000 },
     ];
     const result = findLargestVideoFile(files);
-    assert.equal(result.index, 1);
-    assert.equal(result.file.name, "big.mp4");
+    assert.equal(result!.index, 1);
+    assert.equal(result!.file.name, "big.mp4");
   });
 
   it("skips non-video files", () => {
@@ -206,7 +206,7 @@ describe("findLargestVideoFile", () => {
       { name: "movie.mp4", length: 1000 },
     ];
     const result = findLargestVideoFile(files);
-    assert.equal(result.file.name, "movie.mp4");
+    assert.equal(result!.file.name, "movie.mp4");
   });
 
   it("returns null when no video files exist", () => {
@@ -226,8 +226,8 @@ describe("findEpisodeFile", () => {
       { name: "Show.S01E06.720p.mkv", length: 500 },
     ];
     const result = findEpisodeFile(files, 1, 5);
-    assert.equal(result.file.name, "Show.S01E05.720p.mkv");
-    assert.equal(result.index, 1);
+    assert.equal(result!.file.name, "Show.S01E05.720p.mkv");
+    assert.equal(result!.index, 1);
   });
 
   it("falls back to largest video when no episode match", () => {
@@ -236,7 +236,7 @@ describe("findEpisodeFile", () => {
       { name: "big.mp4", length: 5000 },
     ];
     const result = findEpisodeFile(files, 1, 5);
-    assert.equal(result.file.name, "big.mp4");
+    assert.equal(result!.file.name, "big.mp4");
   });
 
   it("falls back to largest video when no season/episode given", () => {
@@ -244,11 +244,11 @@ describe("findEpisodeFile", () => {
       { name: "Show.S01E05.720p.mkv", length: 100 },
       { name: "big.mp4", length: 5000 },
     ];
-    const result = findEpisodeFile(files, null, null);
-    assert.equal(result.file.name, "big.mp4");
+    const result = findEpisodeFile(files, null as unknown as number, null as unknown as number);
+    assert.equal(result!.file.name, "big.mp4");
   });
 
   it("returns null for null files", () => {
-    assert.equal(findEpisodeFile(null, 1, 5), null);
+    assert.equal(findEpisodeFile(null as unknown as [], 1, 5), null);
   });
 });

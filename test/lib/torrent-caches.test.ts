@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   jobKey,
@@ -30,9 +30,9 @@ describe("jobKey()", () => {
 // registers its OWN maps and only asserts on those maps.
 
 describe("registerCache + cleanupHash", () => {
-  const hashIndexMap = new Map();
-  const hashMap = new Map();
-  const pathMap = new Map();
+  const hashIndexMap = new Map<string, string>();
+  const hashMap = new Map<string, string>();
+  const pathMap = new Map<string, string>();
 
   // Register once at suite load time
   registerCache("test-hashindex", hashIndexMap, "hash:index");
@@ -75,9 +75,9 @@ describe("registerCache + cleanupHash", () => {
 });
 
 describe("registerCache + pruneOrphans", () => {
-  const hiMap = new Map();
-  const hMap = new Map();
-  const pMap = new Map();
+  const hiMap = new Map<string, string>();
+  const hMap = new Map<string, string>();
+  const pMap = new Map<string, string>();
 
   registerCache("prune-hashindex", hiMap, "hash:index");
   registerCache("prune-hash", hMap, "hash");
@@ -93,7 +93,7 @@ describe("registerCache + pruneOrphans", () => {
     const activeHashes = new Set(["aaa"]);
     const mockStatSync = () => {}; // not reached for non-path maps
 
-    const pruned = pruneOrphans(activeHashes, mockStatSync);
+    const pruned = pruneOrphans(activeHashes, mockStatSync as (path: string) => void);
 
     // "bbb" entries should be gone
     assert.equal(hiMap.has("bbb:0"), false);
@@ -113,8 +113,8 @@ describe("registerCache + pruneOrphans", () => {
     pMap.set("/tmp/exists.mp4", "probe-yes");
     pMap.set("/tmp/gone.mp4", "probe-no");
 
-    const activeHashes = new Set(); // irrelevant for path-keyed
-    const mockStatSync = (path) => {
+    const activeHashes = new Set<string>(); // irrelevant for path-keyed
+    const mockStatSync = (path: string) => {
       if (path === "/tmp/gone.mp4") throw new Error("ENOENT");
       // /tmp/exists.mp4 succeeds (no throw)
     };

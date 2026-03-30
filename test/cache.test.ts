@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TTLCache, CACHE_TTL } from "../lib/cache.js";
 
 describe("TTLCache", () => {
-  let cache;
+  let cache: TTLCache;
 
   beforeEach(() => {
     cache = new TTLCache(1000); // 1 second default TTL
