@@ -90,7 +90,41 @@
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Install
+
+One command. Fresh machine. Everything handled.
+
+**Linux** (Ubuntu 22.04+, Debian 12+, Fedora 39+):
+
+```bash
+(curl -fsSL https://raw.githubusercontent.com/rattin-player/player/main/install/install.sh || wget -qO- https://raw.githubusercontent.com/rattin-player/player/main/install/install.sh) | sudo bash
+```
+
+**Windows** (10/11, as Administrator):
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rattin-player/player/main/install/install.ps1 | iex"
+```
+
+The installer downloads Node, ffmpeg, and the app — all bundled locally in `/opt/rattin` (Linux) or `C:\Program Files\rattin` (Windows). You'll be prompted for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
+
+**Uninstall:**
+
+```bash
+# Linux
+(curl -fsSL https://raw.githubusercontent.com/rattin-player/player/main/install/install.sh || wget -qO- https://raw.githubusercontent.com/rattin-player/player/main/install/install.sh) | sudo bash -s -- --uninstall
+
+# Windows
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rattin-player/player/main/install/install.ps1 | iex" -Uninstall
+```
+
+**Update:** Rerun the install command. It detects the existing installation and updates in place.
+
+---
+
+## 🛠️ Manual Setup
+
+If you prefer to set things up yourself:
 
 ### Prerequisites
 
@@ -120,7 +154,7 @@ Start the server:
 npm start
 ```
 
-Open **http://localhost:3000** and you're in. 🎉
+Open **http://localhost:3000** and you're in.
 
 ### Development
 
