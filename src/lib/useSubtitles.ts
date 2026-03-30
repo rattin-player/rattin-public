@@ -247,6 +247,13 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
     }
   }, [infoHash, fileIndex]);
 
+  // Clear stale subs when switching torrent/file
+  useEffect(() => {
+    setSubs([]);
+    setActiveSub("");
+    clearAllTracks();
+  }, [infoHash, fileIndex]);
+
   // Load external subtitle files — only those matching the current video
   useEffect(() => {
     fetchStatus(infoHash).then((data) => {
