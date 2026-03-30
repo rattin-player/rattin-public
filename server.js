@@ -8,6 +8,15 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "./lib/cache.js";
 import { buildSeekIndex, findSeekOffset, waitForPieces, getSeekByteRange } from "./lib/seek-index.js";
+import {
+  VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
+  ALLOWED_EXTENSIONS, BROWSER_NATIVE,
+  needsTranscode, isAllowedFile, srtToVtt, magnetToInfoHash, fmtBytes, throttle,
+} from "./lib/media-utils.js";
+import {
+  scoreTorrent, parseTags, matchEpisodePattern,
+  findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile,
+} from "./lib/torrent-scoring.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,11 +25,6 @@ const client = new WebTorrent();
 
 const DOWNLOAD_PATH = "/tmp/rattin";
 const TRANSCODE_PATH = "/tmp/rattin-transcoded";
-const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".flv", ".wmv"];
-const AUDIO_EXTENSIONS = [".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma"];
-const SUBTITLE_EXTENSIONS = [".srt", ".ass", ".ssa", ".vtt", ".sub"];
-const ALLOWED_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS, ...SUBTITLE_EXTENSIONS]);
-const BROWSER_NATIVE = new Set([".mp4", ".m4v", ".webm"]);
 
 const transcodeJobs = new Map();
 const durationCache = new Map(); // "infoHash:fileIndex" -> seconds
@@ -50,14 +54,6 @@ function isFileComplete(torrent, file) {
   }
 }
 
-function needsTranscode(ext) {
-  return !BROWSER_NATIVE.has(ext);
-}
-
-function isAllowedFile(name) {
-  const ext = path.extname(name).toLowerCase();
-  return ALLOWED_EXTENSIONS.has(ext);
-}
 
 // Clean all caches associated with a torrent (call BEFORE torrent.destroy)
 function cleanupTorrentCaches(infoHash, torrent) {
@@ -636,25 +632,6 @@ app.get("/api/subtitle/:infoHash/:fileIndex", (req, res) => {
   res.on("close", () => ffmpeg.kill());
 });
 
-// Simple SRT to VTT converter
-function srtToVtt(srt) {
-  let vtt = "WEBVTT\n\n";
-  // Normalize line endings and split into blocks
-  const blocks = srt.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim().split(/\n\n+/);
-  for (const block of blocks) {
-    const lines = block.split("\n");
-    // Find the timestamp line (contains " --> ")
-    const tsIdx = lines.findIndex((l) => l.includes(" --> "));
-    if (tsIdx === -1) continue;
-    // Convert commas to dots in timestamps (SRT uses commas, VTT uses dots)
-    const timestamp = lines[tsIdx].replace(/,/g, ".");
-    const text = lines.slice(tsIdx + 1).join("\n");
-    if (text.trim()) {
-      vtt += timestamp + "\n" + text + "\n\n";
-    }
-  }
-  return vtt;
-}
 
 // Probe embedded subtitle streams in a video file
 app.get("/api/subtitles/:infoHash/:fileIndex", (req, res) => {
@@ -1242,22 +1219,6 @@ function torrentInfo(torrent) {
   return { infoHash: torrent.infoHash, name: torrent.name, files };
 }
 
-function magnetToInfoHash(magnet) {
-  const m = magnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/);
-  return m ? m[1].toLowerCase() : null;
-}
-
-function fmtBytes(b) {
-  if (b === 0) return "0 B";
-  const k = 1024, s = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(b) / Math.log(k));
-  return (b / Math.pow(k, i)).toFixed(1) + " " + s[i];
-}
-
-function throttle(fn, ms) {
-  let last = 0;
-  return (...a) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...a); } };
-}
 
 // Explicit clear endpoint - deletes all downloaded files and transcodes
 app.delete("/api/clear", (req, res) => {
@@ -1572,39 +1533,6 @@ async function searchTorrents(query, imdbId) {
   return merged;
 }
 
-function scoreTorrent(result, title, year, type) {
-  let score = 0;
-  const name = result.name.toLowerCase();
-  const titleLower = title.toLowerCase();
-
-  if (!name.includes(titleLower.split(" ")[0])) return -1;
-
-  const titleWords = titleLower.split(/\s+/);
-  const matchedWords = titleWords.filter((w) => name.includes(w)).length;
-  score += (matchedWords / titleWords.length) * 50;
-
-  if (year && name.includes(String(year))) score += 15;
-
-  if (/1080p/.test(name)) score += 20;
-  if (/2160p|4k/i.test(name)) score += 15;
-  if (/720p/.test(name)) score += 10;
-  if (/blu-?ray|bdrip|bdremux/i.test(name)) score += 15;
-  if (/web-?dl|webrip/i.test(name)) score += 12;
-  if (/remux/i.test(name)) score += 10;
-
-  if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
-
-  // Prefer MP4 (browser-native, no transcode needed)
-  if (/\.mp4\b/i.test(name)) score += 15;
-  if (/\bx264\b.*\.mp4|\.mp4\b.*\bx264\b/i.test(name)) score += 5;
-  // Penalize MKV slightly (needs transcode)
-  if (/\.mkv\b/i.test(name)) score -= 5;
-
-  if (result.seeders === 0) return -1;
-  score += Math.min(30, Math.log2(result.seeders + 1) * 3);
-
-  return score;
-}
 
 // ---- Availability Check ----
 
@@ -1660,38 +1588,6 @@ app.post("/api/check-availability", async (req, res) => {
   }
 });
 
-function parseTags(name) {
-  const tags = [];
-  const n = name;
-  // Resolution
-  if (/2160p/i.test(n)) tags.push("4K");
-  else if (/1080p/i.test(n)) tags.push("1080p");
-  else if (/720p/i.test(n)) tags.push("720p");
-  else if (/480p/i.test(n)) tags.push("480p");
-  // Source
-  if (/blu-?ray|bdremux/i.test(n)) tags.push("BluRay");
-  else if (/web-?dl/i.test(n)) tags.push("WEB-DL");
-  else if (/webrip/i.test(n)) tags.push("WEBRip");
-  else if (/bdrip/i.test(n)) tags.push("BDRip");
-  else if (/hdtv/i.test(n)) tags.push("HDTV");
-  else if (/\bcam\b|hdcam/i.test(n)) tags.push("CAM");
-  // Codec
-  if (/\bx265\b|\bhevc\b/i.test(n)) tags.push("HEVC");
-  else if (/\bx264\b|\bavc\b/i.test(n)) tags.push("x264");
-  else if (/\bav1\b/i.test(n)) tags.push("AV1");
-  // Audio
-  if (/atmos/i.test(n)) tags.push("Atmos");
-  else if (/\bdts\b/i.test(n)) tags.push("DTS");
-  else if (/ddp?\s?5\.1|dd\+?\s?5\.1|eac3/i.test(n)) tags.push("5.1");
-  // Container
-  if (/\.mp4\b/i.test(n)) tags.push("MP4");
-  else if (/\.mkv\b/i.test(n)) tags.push("MKV");
-  // Extras
-  if (/remux/i.test(n)) tags.push("Remux");
-  if (/hdr10\+/i.test(n)) tags.push("HDR10+");
-  else if (/hdr/i.test(n)) tags.push("HDR");
-  return tags;
-}
 
 async function searchTV(title, season, episode, imdbId) {
   const s = String(season).padStart(2, "0");
@@ -1992,50 +1888,11 @@ app.post("/api/play-torrent", async (req, res) => {
 });
 
 function findLargestVideo(torrent) {
-  let best = null;
-  if (!torrent.files) return null;
-  torrent.files.forEach((f, i) => {
-    const ext = path.extname(f.name).toLowerCase();
-    if (VIDEO_EXTENSIONS.includes(ext)) {
-      if (!best || f.length > best.file.length) best = { file: f, index: i };
-    }
-  });
-  return best;
+  return findLargestVideoFile(torrent.files);
 }
 
 function findEpisodeFile(torrent, season, episode) {
-  if (!torrent.files || !season || !episode) return findLargestVideo(torrent);
-  const s = String(season).padStart(2, "0");
-  const e = String(episode).padStart(2, "0");
-  const sNum = String(season);
-  const eNum = String(episode);
-  // Match patterns: S01E05, S1E5, 1x05, E05, Episode 5, Episode.05, Ep05
-  const patterns = [
-    new RegExp(`S${s}E${e}(?!\\d)`, "i"),           // S01E05
-    new RegExp(`S${sNum}E${eNum}(?!\\d)`, "i"),      // S1E5
-    new RegExp(`${sNum}x${e}(?!\\d)`, "i"),           // 1x05
-    new RegExp(`${sNum}x${eNum}(?!\\d)`, "i"),        // 1x5
-    new RegExp(`[._\\s/-]E${e}(?!\\d)`, "i"),         // .E05 _E05
-    new RegExp(`[._\\s/-]E${eNum}(?!\\d)`, "i"),      // .E5
-    new RegExp(`Episode[._\\s-]?${e}(?!\\d)`, "i"),   // Episode.05, Episode 05
-    new RegExp(`Episode[._\\s-]?${eNum}(?!\\d)`, "i"),// Episode.5, Episode 5
-    new RegExp(`Ep[._\\s-]?${e}(?!\\d)`, "i"),        // Ep05, Ep.05
-  ];
-  let best = null;
-  torrent.files.forEach((f, i) => {
-    const ext = path.extname(f.name).toLowerCase();
-    if (!VIDEO_EXTENSIONS.includes(ext)) return;
-    // Use just the filename, not the full path with folders
-    const name = f.name.split("/").pop();
-    for (const pat of patterns) {
-      if (pat.test(name)) {
-        if (!best || f.length > best.file.length) best = { file: f, index: i };
-        return;
-      }
-    }
-  });
-  // If no episode match found, fall back to largest (single-episode torrent)
-  return best || findLargestVideo(torrent);
+  return findEpisodeFileFromList(torrent.files, season, episode);
 }
 
 // Cache janitor — every 5 min, prune entries for removed torrents
