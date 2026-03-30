@@ -5,3 +5,6 @@ deploy/inventory.ini
 public/assets/
 public/index.html
 .env
+.npm/
+.claude/
+docs/superpowers/
