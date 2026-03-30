@@ -560,8 +560,8 @@ function Install-Service {
         $batContent = @"
 @echo off
 set PATH=C:\Program Files\rattin\runtime\node;C:\Program Files\rattin\runtime\bin;%PATH%
-set DOWNLOAD_DIR=C:\Program Files\rattin\data\downloads
-set TRANSCODE_DIR=C:\Program Files\rattin\data\transcoded
+set DOWNLOAD_PATH=C:\Program Files\rattin\data\downloads
+set TRANSCODE_PATH=C:\Program Files\rattin\data\transcoded
 set HOST=127.0.0.1
 cd /d "C:\Program Files\rattin\app"
 "C:\Program Files\rattin\runtime\node\node.exe" --max-old-space-size=256 --env-file=.env server.js
@@ -596,8 +596,8 @@ cd /d "C:\Program Files\rattin\app"
   <env name="PATH" value="C:\Program Files\rattin\runtime\node;C:\Program Files\rattin\runtime\bin;%PATH%"/>
   <env name="PORT" value="3000"/>
   <env name="HOST" value="127.0.0.1"/>
-  <env name="DOWNLOAD_DIR" value="C:\Program Files\rattin\data\downloads"/>
-  <env name="TRANSCODE_DIR" value="C:\Program Files\rattin\data\transcoded"/>
+  <env name="DOWNLOAD_PATH" value="C:\Program Files\rattin\data\downloads"/>
+  <env name="TRANSCODE_PATH" value="C:\Program Files\rattin\data\transcoded"/>
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
     <keepFiles>3</keepFiles>

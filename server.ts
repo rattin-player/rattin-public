@@ -168,7 +168,8 @@ if (isMain) {
   process.on("SIGTERM", cleanup);
 
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://localhost:${PORT}`);
+  const HOST = process.env.HOST || "0.0.0.0";
+  app.listen(PORT, HOST, () => {
+    console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://${HOST}:${PORT}`);
   });
 }
