@@ -20,25 +20,73 @@
 
 ## ✨ Features
 
-🎬 **Instant Streaming** — Start watching while it downloads. No waiting for full files.
+### 🎬 Streaming & Playback
 
-🔍 **Built-in Search** — Search multiple torrent providers (TPB, EZTV, YTS) with smart ranking that picks the best quality match.
+- **Instant Streaming** — Start watching while it downloads. No waiting for full files.
+- **Universal Format Support** — Play anything: MKV, AVI, MP4, WebM, MOV, FLV, WMV, and more. Non-native formats are transcoded on-the-fly via ffmpeg.
+- **Smart Seeking** — Builds a keyframe index in the background so you can seek anywhere, even in incomplete downloads. Auto-prioritizes the right torrent pieces.
+- **Background Transcoding** — Completed files are transcoded to MP4 with faststart for instant seeking. Tries remux first (fast), falls back to full re-encode if needed.
+- **Download Overlay** — Real-time download progress in the seek bar, plus speed and peer count in the controls.
+- **Resume Playback** — Automatically saves your position and resumes where you left off.
 
-🎥 **Universal Format Support** — Play anything: MKV, AVI, MP4, WebM, MOV, FLV, WMV. Non-native formats are transcoded on-the-fly with ffmpeg.
+### ⏭️ Skip Intro
 
-📺 **Movie & TV Browser** — Discover trending content, browse by genre, and view full details via TMDB integration.
+- **Automatic Intro Detection** — Detects TV show intros by fingerprinting audio across episodes using Chromaprint (`fpcalc`). Compares the first few minutes of 2+ episodes to find matching segments.
+- **AniSkip Fallback** — For anime, falls back to the AniSkip API (via Jikan/MAL) to look up known intro timestamps.
+- **One-Click Skip Button** — A "Skip Intro" button appears on-screen when playback enters the intro range. Auto-hides after 10 seconds. Click it and you're past the opening.
 
-📱 **Phone Remote** — Scan a QR code, control playback from your phone. Play/pause, seek, volume, subtitles — all from the couch.
+### 📺 Movie & TV Browser
 
-🔤 **Subtitle Support** — Embedded and external subtitles auto-detected. SRT, ASS, SSA, VTT all converted to WebVTT on the fly. Offset adjustment included.
+- **TMDB Integration** — Full movie and TV metadata: posters, backdrops, synopses, ratings, runtime, genres, cast photos, and trailers.
+- **Trending & Discovery** — Homepage sections for Trending This Week, New Releases, Popular Movies, Popular TV, Top Rated Movies, Top Rated TV, plus genre rows (Action, Comedy, Sci-Fi, Horror).
+- **Hero Banner** — Featured trending content displayed as a full-width hero at the top of the homepage.
+- **Availability Filtering** — Content rows only show titles that actually have available torrents.
+- **TV Season & Episode Browser** — Season selector dropdown, episode grid with thumbnails, runtimes, and expandable synopses. Play or pick a source per episode.
+- **Reviews** — Reddit discussions and IMDB user reviews displayed on detail pages with scores, comment counts, and expandable text.
+- **Trailers** — YouTube trailer links auto-detected and shown when available.
+- **Rating Color Coding** — Ratings are green (7+), yellow (5–7), or red (<5) at a glance.
 
-⏩ **Smart Seeking** — Builds a keyframe index in the background so you can seek anywhere, even in incomplete downloads. Prioritizes the right pieces automatically.
+### 🔍 Torrent Search & Ranking
 
-🖥️ **Background Transcoding** — Completed files are transcoded to MP4 with faststart for instant full seeking. Remux first (fast), re-encode if needed.
+- **Multi-Provider Search** — Searches **TPB**, **EZTV**, and **YTS** simultaneously.
+- **Smart Scoring** — Ranks results by title match, resolution (1080p > 720p > 480p), source quality (BluRay > WEB-DL > HDTV), codec (x264 > HEVC), seeder count. Penalizes CAM/telesync.
+- **Quality Tags** — Each result shows parsed tags: resolution, codec, source, audio format, container, HDR, Atmos, Season Pack, etc.
+- **Auto-Play** — One click picks the best torrent and starts streaming.
+- **Manual Picker** — Or browse the full ranked list and choose yourself.
 
-📦 **Multi-file Torrents** — Select which files to download. Skip what you don't need.
+### 📱 Phone Remote Control
 
-🪟 **Windows One-Click** — Double-click `start.bat` and it handles everything: downloads Node.js, grabs ffmpeg, installs deps, and opens the browser.
+- **QR Code Pairing** — Scan a QR code from the player to connect your phone as a remote.
+- **Full Playback Control** — Play/pause, seek ±10s, volume slider, subtitle/audio track selection, fullscreen toggle, stop.
+- **Real-Time Sync** — Server-Sent Events keep the remote and player in lockstep. Shows current position, duration, download speed, and peers.
+- **Browse from Phone** — Browse and start content directly from the remote, with a Now Playing bar showing what's on.
+- **Persistent Sessions** — Auth cookies last 30 days with automatic reconnection. Visual connection-status feedback throughout.
+
+### 🔤 Subtitles & Audio
+
+- **Embedded & External Subtitles** — Auto-detects both. Supports SRT, ASS, SSA, VTT, SUB — all converted to WebVTT on the fly.
+- **Multi-Language Detection** — Extracts language tags from embedded streams (English, Spanish, French, German, Japanese, Korean, and more).
+- **Subtitle Offset** — Compensates for time misalignment between video and subtitle tracks.
+- **Audio Track Selection** — Switch between multiple audio tracks. Surround sound detection (shows "5.1" badge).
+- **Pre-Play Track Selection** — Modal to choose audio and subtitle tracks before playback starts.
+
+### 🖥️ Player UI
+
+- **Keyboard Shortcuts** — `Space` play/pause, `←`/`→` seek ±10s, `F` fullscreen, `Esc` exit fullscreen.
+- **Mini Player** — Keep watching in a corner widget while browsing other content. Shows play/pause, expand, close, time, and progress bar.
+- **Polished Controls** — Auto-hide after inactivity, seek preview tooltip on hover, remote connection toasts.
+
+### 📦 Torrent Management
+
+- **Multi-File Torrents** — Select which files to download, skip what you don't need.
+- **Season Pack Support** — Detects and tags season packs, lets you pick individual episodes.
+- **Bandwidth Prioritization** — Deselects other files when streaming one to focus bandwidth.
+- **Media Validation** — Files verified with ffprobe before streaming to catch fakes and corruption.
+- **Auto-Cleanup** — Idle torrents are automatically removed after 2 minutes of inactivity. Background transcodes are killed when streams close.
+
+### 🎨 UI/UX
+
+- Dark-themed SPA with skeleton loading, lazy images, smooth horizontal-scroll content rows, and deep linking via React Router.
 
 ---
 
@@ -48,13 +96,14 @@
 
 - [Node.js](https://nodejs.org/) v20+
 - [ffmpeg](https://ffmpeg.org/) installed and on PATH
+- [fpcalc](https://acoustid.org/chromaprint) (Chromaprint) on PATH — for intro detection
 - A [TMDB API key](https://www.themoviedb.org/settings/api) (free, for movie/TV browsing)
 
 ### Install & Run
 
 ```bash
-git clone https://github.com/your-username/rattin.git
-cd rattin
+git clone https://github.com/rattin-player/player.git
+cd player
 npm install
 npm run build
 ```
@@ -73,9 +122,13 @@ npm start
 
 Open **http://localhost:3000** and you're in. 🎉
 
-### Windows (Easiest)
+### Development
 
-Just double-click **`start.bat`** — it auto-downloads Node.js and ffmpeg, installs everything, and opens the browser. Zero setup.
+```bash
+npm run dev    # Vite dev server with hot reload
+```
+
+The dev server proxies `/api` requests to the backend at `localhost:3000`, so run `node --env-file=.env server.js` in a separate terminal.
 
 ---
 
@@ -102,7 +155,7 @@ Just double-click **`start.bat`** — it auto-downloads Node.js and ffmpeg, inst
                      │           │
                 ┌────┴────┐ ┌───┴────────┐
                 │WebTorrent│ │ Seek Index │
-                │  Client  │ │  Builder   │
+                │  Client  │ │+ Intro Det.│
                 └─────────┘ └────────────┘
 ```
 
@@ -113,22 +166,35 @@ Just double-click **`start.bat`** — it auto-downloads Node.js and ffmpeg, inst
 ```
 rattin/
 ├── server.js              # Express backend — streaming, transcoding, search, remote
+├── index.html             # HTML entry point
+├── vite.config.js         # Frontend build config
 ├── lib/
 │   ├── cache.js           # TMDB cache with TTL + stale-while-revalidate
-│   └── seek-index.js      # Keyframe index for smart seeking
+│   ├── seek-index.js      # Keyframe index for smart seeking
+│   ├── intro-detect.js    # Intro detection orchestrator
+│   ├── fingerprint.js     # Chromaprint audio fingerprinting & cross-correlation
+│   ├── torrent-scoring.js # Multi-provider torrent ranking
+│   ├── torrent-caches.js  # Bounded caches for torrent state
+│   ├── media-utils.js     # ffprobe helpers & format detection
+│   ├── idle-tracker.js    # Stream idle timeout tracking
+│   ├── torrent-compat.js  # WebTorrent compatibility helpers
+│   └── bounded-map.js     # Size-limited Map implementation
 ├── src/
 │   ├── App.jsx            # Router & layout
 │   ├── components/
 │   │   ├── Navbar.jsx     # Search bar, navigation
 │   │   ├── MiniPlayer.jsx # Persistent mini player widget
-│   │   ├── MovieCard.jsx  # Content thumbnails
-│   │   ├── HeroSection.jsx# Featured content banner
-│   │   └── PairRemoteModal.jsx  # QR code pairing
+│   │   ├── MovieCard.jsx  # Content thumbnails with ratings
+│   │   ├── ContentRow.jsx # Horizontal scrollable content row
+│   │   ├── HeroSection.jsx          # Featured content banner
+│   │   ├── PairRemoteModal.jsx      # QR code pairing modal
+│   │   ├── QrScanner.jsx            # Phone QR scanner
+│   │   └── RemoteNowPlaying.jsx     # Now playing bar for remote
 │   ├── pages/
 │   │   ├── Home.jsx       # Trending, genres, discovery
-│   │   ├── Detail.jsx     # Movie/TV detail + play
-│   │   ├── Player.jsx     # Full video player
-│   │   ├── Search.jsx     # Search results
+│   │   ├── Detail.jsx     # Movie/TV detail, episodes, reviews
+│   │   ├── Player.jsx     # Full video player with skip intro
+│   │   ├── Search.jsx     # Search results grid
 │   │   └── Remote.jsx     # Phone remote UI
 │   └── lib/
 │       ├── PlayerContext.jsx  # Playback state context
@@ -136,7 +202,6 @@ rattin/
 │       └── utils.js       # Formatting helpers
 ├── public/                # Built frontend assets
 ├── deploy/                # Ansible playbook for server deployment
-├── start.bat              # Windows one-click launcher
 └── .env                   # TMDB_API_KEY (create this)
 ```
 
@@ -153,16 +218,6 @@ Download and transcode paths default to `/tmp/rattin` and `/tmp/rattin-transcode
 
 ---
 
-## 📱 Phone Remote
-
-1. Click the remote icon in the player
-2. Scan the QR code with your phone
-3. Control everything: play/pause, seek, volume, subtitles
-
-Uses Server-Sent Events for real-time sync. Sessions persist for 24 hours, auth cookies last 30 days.
-
----
-
 ## 🎯 How Streaming Works
 
 Rattin adapts its strategy based on file state:
@@ -175,23 +230,6 @@ Rattin adapts its strategy based on file state:
 | Incomplete file, non-native | ffmpeg transcode from torrent stream |
 | Seeking in incomplete file | Build keyframe index → prioritize pieces at target → serve |
 
-Background transcoding kicks in for completed non-native files: tries remux first (fast, copies codecs), falls back to full re-encode (H.264 + AAC) if needed.
-
----
-
-## 🔍 Torrent Search & Ranking
-
-Searches across **TPB**, **EZTV**, and **YTS** simultaneously, then scores results by:
-
-- 🎯 Title match accuracy
-- 📐 Resolution (1080p > 720p > 480p)
-- 💿 Source quality (BluRay > WEB-DL > HDTV)
-- 🎞️ Codec preference (x264 > HEVC)
-- 🌱 Seeder count
-- 🚫 Penalizes CAM/telesync
-
-**Auto-play** picks the top result automatically, or use the manual picker to choose.
-
 ---
 
 ## 🎬 Supported Formats
@@ -203,13 +241,6 @@ Searches across **TPB**, **EZTV**, and **YTS** simultaneously, then scores resul
 | **Subtitles** | SRT, ASS, SSA, VTT, SUB |
 
 ---
-
-## 🛡️ Security
-
-- Only media files are allowed — executables, archives, and documents are blocked
-- Files are validated with ffprobe before streaming
-- Remote sessions use short-lived tokens
-- No credentials stored — TMDB key lives in `.env`
 
 ---
 
@@ -245,8 +276,10 @@ npm run build:exe
 | **Backend** | Express 5, Node.js 20+ |
 | **Torrents** | WebTorrent |
 | **Transcoding** | ffmpeg / ffprobe |
+| **Intro Detection** | Chromaprint (fpcalc) + AniSkip API |
 | **Metadata** | TMDB API |
-| **Remote** | Server-Sent Events + QR pairing |
+| **Reviews** | Reddit + IMDB |
+| **Remote** | Server-Sent Events + QR pairing (uqr) |
 
 ---
 
