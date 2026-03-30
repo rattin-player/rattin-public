@@ -742,6 +742,7 @@ app.get("/api/audio-tracks/:infoHash/:fileIndex", (req, res) => {
 
 // Intro detection — returns skip timestamps for TV episode intros
 app.get("/api/intro/:infoHash/:fileIndex", async (req, res) => {
+  res.set("Cache-Control", "no-store");
   const tmdbId = req.query.tmdbId;
   const season = parseInt(req.query.season, 10);
   const episode = parseInt(req.query.episode, 10);

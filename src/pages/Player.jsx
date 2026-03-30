@@ -259,8 +259,8 @@ export default function Player() {
     if (!infoHash || !fileIndex) return;
 
     let cancelled = false;
-    // Delay slightly to let duration cache populate
-    const timer = setTimeout(async () => {
+    // Retry periodically — files may not be ready on first attempt (still downloading)
+    async function tryFetch() {
       try {
         const data = await fetchIntroTimestamps(infoHash, fileIndex, {
           tmdbId, season, episode, title: mediaTitle,
@@ -269,11 +269,28 @@ export default function Player() {
           const range = { start: data.intro_start, end: data.intro_end };
           setIntroRange(range);
           introRangeRef.current = range;
+          return true;
         }
       } catch {}
-    }, 3000);
+      return false;
+    }
 
-    return () => { cancelled = true; clearTimeout(timer); };
+    let attempt = 0;
+    const maxAttempts = 5;
+    const delays = [3000, 15000, 30000, 60000, 120000]; // 3s, 15s, 30s, 1m, 2m
+    function scheduleNext() {
+      if (cancelled || attempt >= maxAttempts) return;
+      const delay = delays[attempt] || 60000;
+      attempt++;
+      setTimeout(async () => {
+        if (cancelled) return;
+        const found = await tryFetch();
+        if (!found) scheduleNext();
+      }, delay);
+    }
+    scheduleNext();
+
+    return () => { cancelled = true; };
   }, [infoHash, fileIndex]);
 
   // Show/hide skip intro button based on current playback time
