@@ -438,6 +438,42 @@
   background: var(--bg-base);
 }
 
+.remote-sub-size {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.remote-sub-size-btn {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.remote-sub-size-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.remote-sub-size-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.remote-sub-size-val {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  min-width: 30px;
+  text-align: center;
+}
+
 /* ── Bottom actions ── */
 .remote-bottom-row {
   display: flex;

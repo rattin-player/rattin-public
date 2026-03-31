@@ -571,6 +571,11 @@ export default function Remote() {
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
+          <div className="remote-sub-size">
+            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", -5)} disabled={isReconnecting}>A−</button>
+            <span className="remote-sub-size-val">{state.subSize ?? 55}</span>
+            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", 5)} disabled={isReconnecting}>A+</button>
+          </div>
         </div>
       )}
 

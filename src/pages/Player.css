@@ -348,6 +348,35 @@
   border-color: var(--accent);
 }
 
+.player-sub-size {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.player-sub-size-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.player-sub-size-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.player-sub-size-val {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  min-width: 24px;
+  text-align: center;
+}
+
 .player-fullscreen {
   padding: 4px;
   transition: transform var(--transition);

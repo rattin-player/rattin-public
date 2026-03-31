@@ -16,7 +16,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef } = usePlayer();
+  const { videoRef, startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize } = usePlayer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = location.state as any;
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
@@ -204,7 +204,7 @@ export default function Player() {
         else seekTo(seconds);
       },
       seekRelative: (delta: number) => {
-        const t = getEffectiveTime();
+        const t = isNative ? (effectiveTimeRef.current?.time ?? 0) : getEffectiveTime();
         if (isNative) mpvSeek(Math.max(0, t + delta));
         else seekTo(Math.max(0, t + delta));
       },
@@ -499,6 +499,13 @@ export default function Player() {
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
+            )}
+            {isNative && subs.length > 0 && (
+              <div className="player-sub-size">
+                <button className="player-sub-size-btn" onClick={() => adjustSubSize(-5)} title="Decrease subtitle size">A−</button>
+                <span className="player-sub-size-val">{subSize}</span>
+                <button className="player-sub-size-btn" onClick={() => adjustSubSize(5)} title="Increase subtitle size">A+</button>
+              </div>
             )}
             {audioTracks.length > 1 && (
               <select

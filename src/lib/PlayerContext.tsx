@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject, type RefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { isNative, mpvTogglePause, mpvSetVolume } from "./native-bridge";
+import { isNative, mpvTogglePause, mpvSetVolume, mpvSetSubFontSize } from "./native-bridge";
 
 interface ActiveStream {
   infoHash: string;
@@ -62,6 +62,8 @@ interface PlayerContextValue {
   introRangeRef: MutableRefObject<IntroRange | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sourcesRef: MutableRefObject<any[]>;
+  subSize: number;
+  adjustSubSize: (delta: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -128,6 +130,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const introRangeRef = useRef<IntroRange | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sourcesRef = useRef<any[]>([]);
+  const [subSize, setSubSize] = useState(55);
+  const subSizeRef = useRef(55);
+  subSizeRef.current = subSize;
 
   // Remote control session (TV mode — not remote mode)
   // Persist in sessionStorage so PC page reload preserves the session
@@ -148,6 +153,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const rcEventSourceRef = useRef<EventSource | null>(null);
   const stateReportTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastReportedState = useRef<string | null>(null);
+  const reportStateRef = useRef<(() => void) | null>(null);
   const navigateRef = useRef<NavigateFn | null>(null);
 
   // Stable refs for SSE command handler (avoid reconnecting SSE when callbacks change)
@@ -168,8 +174,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         setCurrentTime(v!.currentTime || 0);
         if (v!.duration && isFinite(v!.duration)) setDuration(v!.duration);
       }
-      setPlaying(!v!.paused);
-      setVolume(v!.volume);
+      if (!isNative) setPlaying(!v!.paused);
+      if (!isNative) setVolume(v!.volume);
     }
     v.addEventListener("timeupdate", sync);
     v.addEventListener("play", sync);
@@ -243,13 +249,21 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const togglePlay = useCallback(() => {
     if (isNative) {
       mpvTogglePause();
-      setPlaying((p) => !p);
+      // Don't set playing optimistically — onMpvPauseChanged is the source of truth
       return;
     }
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) v.play().catch(() => {});
     else v.pause();
+  }, []);
+
+  const adjustSubSize = useCallback((delta: number) => {
+    setSubSize((prev) => {
+      const next = Math.max(20, Math.min(100, prev + delta));
+      if (isNative) mpvSetSubFontSize(next);
+      return next;
+    });
   }, []);
 
   startStreamRef.current = startStream;
@@ -301,6 +315,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
           break;
         case "audio":
           if (commandRef.current?.switchAudio) commandRef.current.switchAudio(value);
+          break;
+        case "sub-size":
+          adjustSubSize(value);
           break;
         case "skip-intro": {
           const range = introRangeRef.current;
@@ -401,6 +418,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         dlPeers: dlPeersRef.current,
         introActive: !!(introRangeRef.current && ct >= introRangeRef.current.start && ct < introRangeRef.current.end),
         introEnd: introRangeRef.current?.end ?? null,
+        subSize: subSizeRef.current,
         sources: sourcesRef.current,
         connected: true,
       };
@@ -417,6 +435,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       }).catch(() => {});
     }
 
+    reportStateRef.current = reportState;
+
     // Report immediately on play/pause/seek events
     const v = videoRef.current;
     function onEvent() { reportState(); }
@@ -430,6 +450,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     stateReportTimer.current = setInterval(reportState, 1000);
 
     return () => {
+      reportStateRef.current = null;
       if (stateReportTimer.current) clearInterval(stateReportTimer.current);
       if (v) {
         v.removeEventListener("play", onEvent);
@@ -439,6 +460,12 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     };
   }, [rcSessionId, active]);
 
+  // In native mode, immediately report state when playing changes (mpv events
+  // don't fire on the HTML video element, so the event listeners above miss it)
+  useEffect(() => {
+    if (isNative && rcSessionId) reportStateRef.current?.();
+  }, [playing, rcSessionId]);
+
   return (
     <PlayerContext.Provider value={{
       videoRef, active, playing, currentTime, duration, volume,
@@ -447,6 +474,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
       introRangeRef, sourcesRef,
+      subSize, adjustSubSize,
     }}>
       <video ref={videoRef} style={{ display: "none" }} />
       {children}
