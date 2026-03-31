@@ -381,24 +381,29 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req: Request, res: Response) => {
     const params = req.params as Record<string, string>;
     const torrent = client.torrents.find((t) => t.infoHash === params.infoHash);
-    if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(params.fileIndex, 10)];
-    if (!file) return res.status(404).json({ error: "File not found" });
+    let filePath: string;
 
-    const filePath = diskPath(torrent, file);
+    if (torrent) {
+      const file = torrent.files[parseInt(params.fileIndex, 10)];
+      if (!file) return res.status(404).json({ error: "File not found" });
+      filePath = diskPath(torrent, file);
+      try { statSync(filePath); } catch {
+        return res.status(202).json({ error: "File not on disk yet" });
+      }
+    } else {
+      const debridUrl = getActiveDebridUrl(params.infoHash, parseInt(params.fileIndex, 10));
+      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+      filePath = debridUrl;
+    }
+
     const streamIdx = parseInt(params.streamIndex, 10);
     if (isNaN(streamIdx) || streamIdx < 0 || streamIdx > 100) {
       return res.status(400).json({ error: "Invalid stream index" });
     }
 
-    // Check file exists on disk
-    try { statSync(filePath); } catch {
-      return res.status(202).json({ error: "File not on disk yet" });
-    }
-
     const offset = parseFloat(req.query.offset as string) || 0;
-    log("info", "Extracting embedded subtitle", { file: file.name, stream: streamIdx, offset });
+    log("info", "Extracting embedded subtitle", { path: filePath.slice(-60), stream: streamIdx, offset });
 
     const args = [
       ...(offset > 0 ? ["-ss", String(offset)] : []),

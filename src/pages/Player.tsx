@@ -128,6 +128,7 @@ export default function Player() {
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
     preSelectedAudio, getEffectiveTime, isLiveRef,
     setLoading, setLoadingReason, pendingSubReload,
+    debridUrl: state?.debridUrl,
   });
 
   // seekTo is defined below but only used by handleSkipIntro (user-triggered callback)
@@ -211,7 +212,9 @@ export default function Player() {
         }
       });
       onNativeAudioChanged((mpvId) => {
-        switchAudio(mpvId);
+        // Only update React state — mpv already switched the track.
+        // Don't call switchAudio() which reloads v.src in web mode.
+        activeAudioRef.current = mpvId;
       });
       onNativeVolumeChanged((percent) => {
         const v = videoRef.current;
