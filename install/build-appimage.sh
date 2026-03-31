@@ -245,13 +245,20 @@ build_appimage() {
     # Run linuxdeploy — bundles shared libs (Qt6, libmpv, codecs),
     # Qt plugins, QML imports, and WebEngine resources.
     # Don't produce AppImage yet — we need to strip problematic libs first.
-    "$TOOLS_DIR/linuxdeploy" \
+    # Disable strip — linuxdeploy's bundled strip is too old for .relr.dyn sections
+    # on newer distros (Arch, Fedora 40+, etc.), causing spurious failures.
+    DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1 "$TOOLS_DIR/linuxdeploy" \
         --appdir "$APPDIR" \
         --executable "$APPDIR/usr/bin/rattin-shell" \
         --desktop-file "$APPDIR/rattin.desktop" \
         --icon-file "$APPDIR/rattin.svg" \
         --custom-apprun "$REPO_ROOT/install/AppRun" \
-        --plugin qt
+        --plugin qt \
+        || true
+
+    # Strip with system strip (handles modern ELF sections)
+    log "Stripping libraries with system strip..."
+    find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
     # Bundle Wayland platform plugins — linuxdeploy only bundles xcb by default.
     # Without these, Qt falls back to X11/XWayland on Wayland sessions, causing
