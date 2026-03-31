@@ -166,8 +166,13 @@ export default function Player() {
     waitForBridge().then(() => {
       const streamUrl = `${window.location.origin}/api/stream/${infoHash}/${fileIndex}?native=1`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
-      mpvPlay(streamUrl);
-    });
+      try {
+        mpvPlay(streamUrl);
+        console.log("[native-bridge] mpvPlay sent");
+      } catch (e) {
+        console.error("[native-bridge] mpvPlay error:", e);
+      }
+    }).catch((e) => console.error("[native-bridge] waitForBridge error:", e));
 
     onMpvTimeChanged((t) => {
       if (effectiveTimeRef.current) {
