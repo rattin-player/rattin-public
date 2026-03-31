@@ -38,6 +38,8 @@ export default function Player() {
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
   const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
+  // Native mode: track when mpv has actually started playing
+  const [nativeReady, setNativeReady] = useState(false);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {
@@ -190,10 +192,14 @@ export default function Player() {
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
+        setNativeReady(true);
+        setLoading(false);
       });
       onMpvDurationChanged((d) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
+        setNativeReady(true);
+        setLoading(false);
       });
       onMpvEofReached(() => {
         navigate(-1);
@@ -301,6 +307,7 @@ export default function Player() {
 
   function handlePageClick(e: React.MouseEvent) {
     // If clicking the video area (not a control), toggle play and show controls
+    if (isNative && !nativeReady) return;
     const tag = (e.target as HTMLElement).tagName;
     if (tag === "BUTTON" || tag === "SELECT" || tag === "OPTION" || tag === "SVG" || tag === "PATH") return;
     togglePlay();
@@ -309,6 +316,7 @@ export default function Player() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (isNative && !nativeReady) return;
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
       const v = videoRef.current;
       if (!v) return;
@@ -479,7 +487,7 @@ export default function Player() {
         </div>
       )}
 
-      <div className={`player-overlay ${showControls ? "visible" : ""}`}>
+      <div className={`player-overlay ${showControls ? "visible" : ""}${isNative && !nativeReady ? " disabled" : ""}`}>
         <div className="player-top" onClick={(e) => e.stopPropagation()}>
           <button className="player-back" onClick={() => navigate(-1)}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">

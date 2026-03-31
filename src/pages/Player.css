@@ -140,6 +140,11 @@
   pointer-events: auto;
 }
 
+.player-overlay.disabled .player-bottom {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
 .player-top {
   display: flex;
   align-items: center;
