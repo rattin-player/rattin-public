@@ -83,7 +83,15 @@ if [ "$UNINSTALL" = true ]; then
     rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.svg"
     # Close firewall port
     if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "9630"; then
-        sudo ufw delete allow 9630/tcp >/dev/null 2>&1 || true
+        # Handle both blanket rules (allow 9630/tcp) and subnet rules (allow from X to any port 9630)
+        sudo ufw delete allow 9630/tcp 2>/dev/null || true
+        sudo ufw delete allow from 192.168.0.0/16 to any port 9630 proto tcp 2>/dev/null || true
+        # Delete by rule number as fallback — find any remaining 9630 rules
+        while sudo ufw status numbered 2>/dev/null | grep -q "9630"; do
+            local rule_num
+            rule_num=$(sudo ufw status numbered 2>/dev/null | grep "9630" | head -1 | sed 's/\[ *\([0-9]*\)\].*/\1/')
+            [ -n "$rule_num" ] && echo "y" | sudo ufw delete "$rule_num" 2>/dev/null || break
+        done
     elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --list-ports 2>/dev/null | grep -q "9630/tcp"; then
         sudo firewall-cmd --permanent --remove-port=9630/tcp >/dev/null 2>&1 && sudo firewall-cmd --reload >/dev/null 2>&1 || true
     fi
