@@ -199,7 +199,7 @@ get_source() {
 
     rm -rf "$INSTALL_DIR/source"
     mkdir -p "$INSTALL_DIR/source"
-    tar -xzf "$tmpfile" -C "$INSTALL_DIR/source/" --strip-components=1
+    tar -xzf "$tmpfile" -C "$INSTALL_DIR/source/"
     rm -f "$tmpfile"
 
     # Restore .env if it existed
