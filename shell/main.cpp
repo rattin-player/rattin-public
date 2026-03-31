@@ -31,7 +31,7 @@ static void waitForServer(int port, QObject *parent, std::function<void()> onRea
     auto *timer = new QTimer(parent);
     timer->setInterval(200);
     QObject::connect(timer, &QTimer::timeout, [=]() {
-        auto url = QUrl(QString("http://localhost:%1/").arg(port));
+        auto url = QUrl(QString("http://127.0.0.1:%1/").arg(port));
         auto *reply = mgr->get(QNetworkRequest(url));
         QObject::connect(reply, &QNetworkReply::finished, [=]() {
             reply->deleteLater();
@@ -40,6 +40,10 @@ static void waitForServer(int port, QObject *parent, std::function<void()> onRea
                 timer->deleteLater();
                 mgr->deleteLater();
                 onReady();
+            } else {
+                fprintf(stderr, "[shell] poll failed: %s (HTTP %d)\n",
+                    reply->errorString().toUtf8().constData(),
+                    reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
             }
         });
     });
