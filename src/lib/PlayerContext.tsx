@@ -220,7 +220,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const stopStream = useCallback(() => {
     if (active) {
       const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
-      const t = effectiveTimeRef.current?.time || 0;
+      const t = effectiveTimeRef.current?.time || videoRef.current?.currentTime || 0;
       if (t > 0) sessionStorage.setItem(posKey, String(t));
     }
     const v = videoRef.current;
