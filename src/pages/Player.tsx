@@ -254,11 +254,24 @@ export default function Player() {
         if (isNative) {
           const idx = subs.findIndex(s => s.value === val);
           mpvSetSubtitleTrack(idx);
+          // Update React state without loading tracks into the HTML video
+          activeSubRef.current = val;
+          return;
         }
         switchSubtitle(val);
       },
       switchAudio: (streamIndex: string | number) => {
-        if (isNative) mpvSetAudioTrack(typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex);
+        if (isNative) {
+          // streamIndex is the absolute container stream index from ffprobe.
+          // mpvSetAudioTrack expects a 0-based index into audio tracks only,
+          // so find the position in the audioTracks array.
+          const idx = audioTracks.findIndex(t => t.value === Number(streamIndex));
+          if (idx >= 0) mpvSetAudioTrack(idx);
+          // Don't call switchAudio — it reloads the HTML video src which causes
+          // double audio in native mode. Just update the ref.
+          activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
+          return;
+        }
         switchAudio(streamIndex);
       },
       switchSource: handleSwitchSource,
