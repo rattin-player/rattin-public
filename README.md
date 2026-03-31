@@ -17,36 +17,30 @@
 
 ---
 
-## What you get
+## Why Rattin
 
-Rattin turns magnet links into a streaming experience. Search for any movie or TV show, pick a source, and it starts playing instantly - like any other streaming app, except the content comes from torrents.
+Most tools in this space make you choose. Torrent clients that stream but can't browse. Media servers that browse but can't stream from torrents without bolting on five extra tools. Apps that do both but choke on MKV or HEVC unless you pay for transcoding.
 
-It runs on your own machine. No subscriptions. No accounts. No limits.
+Rattin is a single self-hosted process that does all of it — browse TMDB, click play, watch.
+
+🎬 Every codec, every container, every format — transcoded on the fly for browsers, hardware-accelerated natively on desktop<br>
+⏩ Smart seeking in incomplete files — jump anywhere, even before it's downloaded<br>
+🔍 TMDB discovery — trending, genres, search, trailers, cast, one-click play<br>
+⏭️ Audio-fingerprint intro skip — no manual timestamps, no third-party databases<br>
+📱 Phone remote via QR scan — no app install, just point your camera<br>
+🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine
+
+The whole thing runs on one TMDB API key and an `npm install`.
 
 ### Two ways to watch
 
-<table>
-<tr>
-<td width="50%" valign="top">
+| | Web Mode | Native Mode |
+|---|---|---|
+| **How it works** | Browser tab — any device on your network | Desktop app powered by libmpv |
+| **Format handling** | Non-native formats (MKV, HEVC) transcoded on the fly | Every format plays directly with GPU hardware decoding |
+| **Best for** | Multi-device, couch/TV, remote access | Main PC, best quality, 4K HDR, Dolby Atmos |
 
-#### :globe_with_meridians: Web Mode
-Open a browser tab and stream. Works on any device on your network - laptop, tablet, TV, phone. Formats that browsers can't play natively (MKV, HEVC) get transcoded on the fly.
-
-**Best for:** Watching from the couch on your TV, sharing with devices on your network, remote access.
-
-</td>
-<td width="50%" valign="top">
-
-#### :desktop_computer: Native Mode
-A desktop app with a real video engine under the hood (libmpv). Plays every format natively with hardware acceleration - no transcoding, no quality loss. 4K HEVC, HDR, Dolby Atmos, all handled directly by your GPU.
-
-**Best for:** Your main PC. Best possible quality. Instant seeking. HDR content.
-
-</td>
-</tr>
-</table>
-
-Both modes share the same interface and backend. The native version just swaps the browser's video player for something better.
+Same interface, same backend. Native mode just replaces the browser's video element with a real video engine.
 
 ---
 
@@ -116,6 +110,10 @@ npm start
 ```
 
 Open `http://<your-ip>:3000` from any device. Requires Node.js 20+ and ffmpeg.
+
+### :window: Desktop App (Windows)
+
+Coming soon.
 
 ---
 
