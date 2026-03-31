@@ -31,7 +31,7 @@ static void waitForServer(int port, QObject *parent, std::function<void()> onRea
     auto *timer = new QTimer(parent);
     timer->setInterval(200);
     QObject::connect(timer, &QTimer::timeout, [=]() {
-        auto url = QUrl(QString("http://localhost:%1/api/status/health").arg(port));
+        auto url = QUrl(QString("http://localhost:%1/").arg(port));
         auto *reply = mgr->get(QNetworkRequest(url));
         QObject::connect(reply, &QNetworkReply::finished, [=]() {
             reply->deleteLater();
