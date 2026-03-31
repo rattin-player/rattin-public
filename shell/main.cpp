@@ -1,11 +1,55 @@
+#include <clocale>
 #include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QQuickWindow>
+#include <QProcess>
+#include <QTimer>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QTcpServer>
 #include <QtWebEngineQuick>
+
+#include "mpvobject.h"
+#include "mpvbridge.h"
+
+static int findFreePort()
+{
+    // Bind to port 0, read the OS-assigned port, then close.
+    QTcpServer tmp;
+    tmp.listen(QHostAddress::LocalHost, 0);
+    int port = tmp.serverPort();
+    tmp.close();
+    return port;
+}
+
+static void waitForServer(int port, QObject *parent, std::function<void()> onReady)
+{
+    auto *mgr = new QNetworkAccessManager(parent);
+    auto *timer = new QTimer(parent);
+    timer->setInterval(200);
+    QObject::connect(timer, &QTimer::timeout, [=]() {
+        auto url = QUrl(QString("http://localhost:%1/api/status/health").arg(port));
+        auto *reply = mgr->get(QNetworkRequest(url));
+        QObject::connect(reply, &QNetworkReply::finished, [=]() {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) {
+                timer->stop();
+                timer->deleteLater();
+                mgr->deleteLater();
+                onReady();
+            }
+        });
+    });
+    timer->start();
+}
 
 int main(int argc, char *argv[])
 {
-    // Force OpenGL backend — required for QQuickFramebufferObject + mpv.
-    // Verified working in qt6-mpv-reference (qt6-mpv-reference).
+    std::setlocale(LC_NUMERIC, "C");
+
+    // Force OpenGL — required for QQuickFramebufferObject + libmpv.
+    // Verified working: known working pattern on Qt6.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
@@ -14,7 +58,66 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("Rattin");
     app.setOrganizationName("MagnetPlayer");
+    app.setApplicationVersion("1.0.0");
 
-    // TODO: Tasks 4-7 will fill in the QML engine, mpv, bridge, and server launch
+    // Register MpvObject QML type
+    qmlRegisterType<MpvObject>("com.magnetplayer.mpv", 1, 0, "MpvObject");
+
+    // Determine server port
+    int port = findFreePort();
+
+    // Spawn Express server as child process
+    auto *serverProcess = new QProcess(&app);
+    serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
+
+    // Find the app directory (where server.ts and node_modules live)
+    QString appDir = QCoreApplication::applicationDirPath() + "/../";
+    serverProcess->setWorkingDirectory(appDir);
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("PORT", QString::number(port));
+    env.insert("HOST", "127.0.0.1");
+    serverProcess->setProcessEnvironment(env);
+
+    // In dev, use tsx for TypeScript. In production/packaged builds, the
+    // server is pre-compiled to JS (see build-appimage.sh) and run with node.
+    // Check if server.js exists (compiled), fall back to tsx (dev).
+    QString serverScript = QFile::exists(appDir + "/server.js") ? "server.js" : "server.ts";
+    QString runner = serverScript.endsWith(".ts") ? "tsx" : "node";
+    QStringList args = serverScript.endsWith(".ts")
+        ? QStringList{"--env-file=.env", serverScript}
+        : QStringList{"--env-file=.env", serverScript};
+    serverProcess->start(runner, args);
+
+    // Clean up server on exit
+    QObject::connect(&app, &QGuiApplication::aboutToQuit, [serverProcess]() {
+        serverProcess->terminate();
+        if (!serverProcess->waitForFinished(3000)) {
+            serverProcess->kill();
+        }
+    });
+
+    // Wait for server, then launch QML UI
+    waitForServer(port, &app, [&app, port]() {
+        auto *engine = new QQmlApplicationEngine(&app);
+        engine->rootContext()->setContextProperty("serverPort", port);
+
+        // Create mpv bridge (needs the MpvObject from QML — connected in main.qml)
+        engine->rootContext()->setContextProperty("initialUrl",
+            QString("http://localhost:%1").arg(port));
+
+        engine->load(QUrl("qrc:/main.qml"));
+
+        // After QML loads, find the MpvObject and create the bridge
+        QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [engine](QObject *obj) {
+            if (!obj) return;
+            auto *mpvObj = obj->findChild<MpvObject *>();
+            if (!mpvObj) return;
+
+            auto *bridge = new MpvBridge(mpvObj, obj);
+            engine->rootContext()->setContextProperty("mpvBridgeObj", bridge);
+        });
+    });
+
     return app.exec();
 }
