@@ -218,17 +218,18 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   }, [active]);
 
   const stopStream = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
     if (active) {
       const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
-      const t = effectiveTimeRef.current?.time || v.currentTime || 0;
+      const t = effectiveTimeRef.current?.time || 0;
       if (t > 0) sessionStorage.setItem(posKey, String(t));
     }
-    v.pause();
-    v.src = "";
-    for (const t of v.textTracks) t.mode = "disabled";
-    v.querySelectorAll("track").forEach((el) => el.remove());
+    const v = videoRef.current;
+    if (v) {
+      v.pause();
+      v.src = "";
+      for (const t of v.textTracks) t.mode = "disabled";
+      v.querySelectorAll("track").forEach((el) => el.remove());
+    }
     introRangeRef.current = null;
     setActive(null);
     setPlaying(false);
