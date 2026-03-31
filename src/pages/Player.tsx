@@ -635,7 +635,7 @@ export default function Player() {
                       <div className="player-source-item-tags">
                         {isCurrent && <span className="player-source-tag current">Playing</span>}
                         {s.seasonPack && <span className="player-source-tag season-pack">Season Pack</span>}
-                        {s.tags?.map((t: string) => (
+                        {s.tags?.filter((t: string) => !(isNative && t === "Native")).map((t: string) => (
                           <span key={t} className={`player-source-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
                         ))}
                         {s.multiAudio && <span className="player-source-tag multi-audio">Multi Audio</span>}

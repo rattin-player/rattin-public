@@ -100,10 +100,10 @@ describe("scoreTorrent", () => {
     assert.ok(good > cam);
   });
 
-  it("prefers MP4 over MKV", () => {
+  it("treats MP4 and MKV equally", () => {
     const mp4 = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mp4"), "Inception", 2010, "movie");
     const mkv = scoreTorrent(makeTorrent("Inception.2010.1080p.file.mkv"), "Inception", 2010, "movie");
-    assert.ok(mp4 > mkv);
+    assert.strictEqual(mp4, mkv);
   });
 
   it("gives seeder bonus (logarithmic)", () => {
