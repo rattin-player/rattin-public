@@ -11,6 +11,9 @@
 #include <QDir>
 #include <QFile>
 #include <QtWebEngineQuick>
+#include <QWebEngineProfile>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
@@ -137,6 +140,24 @@ int main(int argc, char *argv[])
     // once the event loop is running.
     waitForServer(port, &app, [&app, port]() {
         fprintf(stderr, "[shell] server ready, loading QML\n");
+
+        // Inject qwebchannel.js into MainWorld via the default profile.
+        // Must happen before any WebEngineView loads a page.
+        {
+            QFile f(":/qtwebchannel/qwebchannel.js");
+            if (f.open(QIODevice::ReadOnly)) {
+                QWebEngineScript script;
+                script.setName("qwebchannel");
+                script.setSourceCode(QString::fromUtf8(f.readAll()));
+                script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+                script.setWorldId(QWebEngineScript::MainWorld);
+                script.setRunsOnSubFrames(false);
+                QWebEngineProfile::defaultProfile()->scripts()->insert(script);
+                fprintf(stderr, "[shell] injected qwebchannel.js into MainWorld (%lld bytes)\n", f.size());
+            } else {
+                fprintf(stderr, "[shell] ERROR: could not open qrc:///qtwebchannel/qwebchannel.js\n");
+            }
+        }
 
         // Create bridge BEFORE loading QML so it's available for bindings
         auto *bridge = new MpvBridge(&app);
