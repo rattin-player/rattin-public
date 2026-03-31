@@ -11,8 +11,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/share/rattin}"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-REPO_URL="https://github.com/rattin-player/player"
-BRANCH="native-desktop-pivot"
+APP_TARBALL_URL="https://github.com/rattin-player/rattin-public/releases/latest/download/native-app.tar.gz"
 
 # ---------------------------------------------------------------------------
 # Color helpers
@@ -172,17 +171,42 @@ Then re-run this installer."
 # Download / update app source
 # ---------------------------------------------------------------------------
 get_source() {
-    if [ -d "$INSTALL_DIR/source/.git" ]; then
-        log "Updating existing source..."
-        cd "$INSTALL_DIR/source"
-        git fetch origin
-        git checkout "$BRANCH"
-        git reset --hard "origin/$BRANCH"
+    log "Downloading application..."
+
+    local tmpfile="/tmp/rattin-native-download.tar.gz"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL "$APP_TARBALL_URL" -o "$tmpfile"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$APP_TARBALL_URL" -O "$tmpfile"
     else
-        log "Cloning repository..."
-        mkdir -p "$INSTALL_DIR"
-        git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR/source"
+        die "Neither curl nor wget found."
     fi
+
+    # Verify download
+    local filesize
+    filesize="$(stat -c%s "$tmpfile" 2>/dev/null || stat -f%z "$tmpfile" 2>/dev/null || echo 0)"
+    if [ "$filesize" -lt 100000 ]; then
+        rm -f "$tmpfile"
+        die "Download too small (${filesize} bytes). Check the release URL."
+    fi
+
+    # Extract (wipe old source on update, preserve .env)
+    local saved_env=""
+    if [ -f "$INSTALL_DIR/source/.env" ]; then
+        saved_env="$(cat "$INSTALL_DIR/source/.env")"
+    fi
+
+    rm -rf "$INSTALL_DIR/source"
+    mkdir -p "$INSTALL_DIR/source"
+    tar -xzf "$tmpfile" -C "$INSTALL_DIR/source/" --strip-components=1
+    rm -f "$tmpfile"
+
+    # Restore .env if it existed
+    if [ -n "$saved_env" ]; then
+        echo "$saved_env" > "$INSTALL_DIR/source/.env"
+    fi
+
     cd "$INSTALL_DIR/source"
     log "Source ready at $INSTALL_DIR/source"
 }
