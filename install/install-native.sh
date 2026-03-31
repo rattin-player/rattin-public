@@ -217,7 +217,7 @@ elif [ "$HAS_FIREWALL" = true ]; then
 fi
 
 if [ "$OPEN_PORT" = true ]; then
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
         log "Opening port $APP_PORT in ufw..."
         sudo ufw allow "$APP_PORT"/tcp comment "Rattin" >/dev/null 2>&1 && \
             log "Port $APP_PORT opened" || \
