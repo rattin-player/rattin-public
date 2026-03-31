@@ -144,13 +144,17 @@ if [ ! -f "$CONFIG_DIR/.env" ]; then
         echo "TMDB_API_KEY=$TMDB_KEY" > "$CONFIG_DIR/.env"
         log "Created config with provided TMDB key"
     else
-        # Try to prompt interactively
-        if [ -t 0 ]; then
-            printf "${CYAN}Enter your TMDB API key (get one at https://www.themoviedb.org/settings/api):${NC} "
+        # Prompt interactively via /dev/tty (stdin is the pipe when curl | bash)
+        if [ -e /dev/tty ]; then
+            echo ""
+            printf "${CYAN}A free TMDB API key is required for browsing movies and TV shows.${NC}\n"
+            printf "${CYAN}Get one at: https://www.themoviedb.org/settings/api${NC}\n"
+            printf "${CYAN}Enter your TMDB API key (or press Enter to skip):${NC} "
             read -r key < /dev/tty || key=""
+            echo ""
             if [ -n "$key" ]; then
                 echo "TMDB_API_KEY=$key" > "$CONFIG_DIR/.env"
-                log "Created config"
+                log "Created config with TMDB key"
             else
                 echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
                 warn "No TMDB key provided — browsing won't work until you add one to $CONFIG_DIR/.env"
@@ -165,27 +169,57 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Firewall — open port 9630 for phone remote control
+# Firewall — optionally open port 9630 for phone remote control
 # ---------------------------------------------------------------------------
 APP_PORT=9630
+OPEN_PORT=false
+HAS_FIREWALL=false
+
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-    if ! ufw status | grep -q "$APP_PORT"; then
-        log "Opening port $APP_PORT in ufw for phone remote..."
+    HAS_FIREWALL=true
+    # Already open? Skip the prompt.
+    if ufw status | grep -q "$APP_PORT"; then
+        log "Port $APP_PORT already open in ufw"
+        HAS_FIREWALL=false  # no action needed
+    fi
+elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+    HAS_FIREWALL=true
+    if firewall-cmd --list-ports 2>/dev/null | grep -q "$APP_PORT/tcp"; then
+        log "Port $APP_PORT already open in firewalld"
+        HAS_FIREWALL=false
+    fi
+fi
+
+if [ "$HAS_FIREWALL" = true ] && [ -e /dev/tty ]; then
+    echo ""
+    printf "${CYAN}Rattin has a phone remote feature — scan a QR code${NC}\n"
+    printf "${CYAN}on your phone to control playback from the couch.${NC}\n"
+    printf "${CYAN}This requires opening port $APP_PORT in your firewall so${NC}\n"
+    printf "${CYAN}your phone can reach the player on your local network.${NC}\n"
+    printf "${CYAN}Enable phone remote? [Y/n]:${NC} "
+    read -r answer < /dev/tty || answer=""
+    echo ""
+    case "$answer" in
+        [nN]*) log "Skipping firewall setup — phone remote won't work from other devices" ;;
+        *)     OPEN_PORT=true ;;
+    esac
+elif [ "$HAS_FIREWALL" = true ]; then
+    # Non-interactive — open by default
+    OPEN_PORT=true
+fi
+
+if [ "$OPEN_PORT" = true ]; then
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+        log "Opening port $APP_PORT in ufw..."
         sudo ufw allow "$APP_PORT"/tcp comment "Rattin" >/dev/null 2>&1 && \
             log "Port $APP_PORT opened" || \
             warn "Could not open port $APP_PORT — phone remote may not work on other devices"
-    else
-        skip "Port $APP_PORT already open in ufw"
-    fi
-elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q "running"; then
-    if ! firewall-cmd --list-ports 2>/dev/null | grep -q "$APP_PORT/tcp"; then
-        log "Opening port $APP_PORT in firewalld for phone remote..."
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+        log "Opening port $APP_PORT in firewalld..."
         sudo firewall-cmd --permanent --add-port="$APP_PORT"/tcp >/dev/null 2>&1 && \
         sudo firewall-cmd --reload >/dev/null 2>&1 && \
             log "Port $APP_PORT opened" || \
             warn "Could not open port $APP_PORT — phone remote may not work on other devices"
-    else
-        skip "Port $APP_PORT already open in firewalld"
     fi
 fi
 
