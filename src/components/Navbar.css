@@ -19,6 +19,55 @@
   border-bottom-color: var(--border);
 }
 
+/* ── High-contrast mode when navbar is transparent ── */
+.navbar:not(.scrolled) .navbar-brand {
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+.navbar:not(.scrolled) .navbar-brand svg {
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.7));
+}
+
+.navbar:not(.scrolled) .navbar-search {
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+}
+
+.navbar:not(.scrolled) .navbar-search svg {
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.navbar:not(.scrolled) .navbar-search input {
+  color: #fff;
+}
+
+.navbar:not(.scrolled) .navbar-search input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.navbar:not(.scrolled) .navbar-pair-btn {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.navbar:not(.scrolled) .navbar-pair-btn svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.navbar:not(.scrolled) .navbar-vpn-pill {
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.15);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.navbar:not(.scrolled) .navbar-vpn-pill.active {
+  color: var(--green);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
 .navbar-brand {
   display: flex;
   align-items: center;
@@ -28,7 +77,7 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   color: var(--accent-bright);
-  transition: color var(--transition);
+  transition: color var(--transition-slow), text-shadow var(--transition-slow);
 }
 
 .navbar-brand:hover {
@@ -37,6 +86,7 @@
 
 .navbar-brand svg {
   filter: drop-shadow(0 0 6px var(--accent-glow));
+  transition: filter var(--transition-slow);
 }
 
 .navbar-search {
@@ -48,13 +98,17 @@
   border-radius: 28px;
   padding: 9px 18px;
   width: 340px;
-  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+  transition: border-color var(--transition-slow), background var(--transition-slow), box-shadow var(--transition-slow);
 }
 
 .navbar-search:focus-within {
   border-color: var(--accent);
   background: rgba(201, 168, 76, 0.03);
   box-shadow: 0 0 20px rgba(201, 168, 76, 0.06);
+}
+
+.navbar-search svg {
+  transition: fill var(--transition-slow);
 }
 
 .navbar-search input {
@@ -67,10 +121,12 @@
   font-family: var(--font-body);
   font-weight: 400;
   letter-spacing: 0.2px;
+  transition: color var(--transition-slow);
 }
 
 .navbar-search input::placeholder {
   color: var(--text-muted);
+  transition: color var(--transition-slow);
 }
 
 .navbar-vpn-pill {
@@ -86,7 +142,7 @@
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--text-muted);
-  transition: all var(--transition);
+  transition: all var(--transition-slow);
   cursor: pointer;
 }
 
@@ -125,7 +181,7 @@
   letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--text-secondary);
-  transition: border-color var(--transition), color var(--transition), background var(--transition);
+  transition: border-color var(--transition-slow), color var(--transition-slow), background var(--transition-slow), text-shadow var(--transition-slow);
 }
 
 .navbar-pair-btn:hover {
