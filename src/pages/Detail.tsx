@@ -47,9 +47,9 @@ export default function Detail() {
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
   const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
 
-  // Poll live peer counts while picker is open
+  // Poll live peer counts as soon as streams are loaded (resolve-formats adds them to WebTorrent)
   useEffect(() => {
-    if (!showPicker || !streams || streams.length === 0) {
+    if (!streams || streams.length === 0) {
       clearInterval(livePeerTimer.current);
       return;
     }
@@ -57,10 +57,10 @@ export default function Detail() {
       const hashes = streams.map((s: { infoHash: string }) => s.infoHash).filter(Boolean);
       if (hashes.length > 0) fetchLivePeers(hashes).then(setLivePeers).catch(() => {});
     };
-    poll(); // immediate first poll
+    poll();
     livePeerTimer.current = setInterval(poll, 3000);
     return () => clearInterval(livePeerTimer.current);
-  }, [showPicker, streams]);
+  }, [streams]);
 
   useEffect(() => {
     setData(null);
@@ -101,7 +101,17 @@ export default function Detail() {
           body: JSON.stringify({ infoHashes: hashes }),
         })
           .then((r) => r.json())
-          .then((formats: Record<string, { native: boolean }>) => {
+          .then((formats: Record<string, { native: boolean; numPeers?: number }>) => {
+            // Seed live peer counts from resolve-formats response
+            const initialPeers: Record<string, { numPeers: number; downloadSpeed: number }> = {};
+            for (const [hash, info] of Object.entries(formats)) {
+              if (info.numPeers != null) {
+                initialPeers[hash] = { numPeers: info.numPeers, downloadSpeed: 0 };
+              }
+            }
+            if (Object.keys(initialPeers).length > 0) {
+              setLivePeers((prev) => ({ ...prev, ...initialPeers }));
+            }
             setStreams((prev) => {
               if (!prev) return null;
               const updated = prev.map((s: { infoHash: string; tags: string[] }) => {
