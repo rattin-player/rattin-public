@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import os from "os";
 import type { Express, Request, Response } from "express";
 import type { ServerContext, RCSession, RCClient } from "../lib/types.js";
 
@@ -40,6 +41,20 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     });
     log("info", "RC session created", { sessionId });
     res.json({ sessionId, authToken });
+  });
+
+  // LAN IP for phone remote pairing (native shell binds to 0.0.0.0 but QR needs a real IP)
+  app.get("/api/rc/lan-ip", (_req: Request, res: Response) => {
+    const interfaces = os.networkInterfaces();
+    for (const addrs of Object.values(interfaces)) {
+      if (!addrs) continue;
+      for (const addr of addrs) {
+        if (addr.family === "IPv4" && !addr.internal) {
+          return res.json({ ip: addr.address, port: Number(process.env.PORT) || 3000 });
+        }
+      }
+    }
+    res.json({ ip: null, port: Number(process.env.PORT) || 3000 });
   });
 
   // Session status probe (used by phone to detect expired sessions)

@@ -12,6 +12,10 @@ async function get(url: string): Promise<any> {
   return res.json();
 }
 
+export function fetchLanIp(): Promise<{ ip: string | null; port: number }> {
+  return get("/api/rc/lan-ip");
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fetchTrending(page = 1): Promise<any> {
   return get(`/api/tmdb/trending?page=${page}`);

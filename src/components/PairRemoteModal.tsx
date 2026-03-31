@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { encode } from "uqr";
 import { usePlayer } from "../lib/PlayerContext";
+import { isNative } from "../lib/native-bridge";
+import { fetchLanIp } from "../lib/api";
 import "./PairRemoteModal.css";
 
 interface PairRemoteModalProps {
@@ -35,12 +37,23 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
   }, []);
 
   useEffect(() => {
-    if (sessionId && authToken) {
-      const url = `${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`;
-      setRemoteUrl(url);
-    } else {
+    if (!sessionId || !authToken) {
       setRemoteUrl("");
+      return;
     }
+    if (!isNative) {
+      setRemoteUrl(`${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
+      return;
+    }
+    // Native mode: QR must contain a LAN IP reachable by the phone
+    fetchLanIp()
+      .then(({ ip, port }) => {
+        const origin = ip ? `http://${ip}:${port}` : window.location.origin;
+        setRemoteUrl(`${origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
+      })
+      .catch(() => {
+        setRemoteUrl(`${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
+      });
   }, [sessionId, authToken]);
 
   async function createSession() {
