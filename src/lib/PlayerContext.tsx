@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject, type RefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
+import { isNative } from "./native-bridge";
 
 interface ActiveStream {
   infoHash: string;
@@ -180,7 +181,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
   const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[]) => {
     const v = videoRef.current;
-    if (!v) return;
     // Coerce to string for comparison — URL params are strings, API returns numbers
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
@@ -190,25 +190,30 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     const posKey = `playback:${ih}:${fi}`;
     const savedPos = parseFloat(sessionStorage.getItem(posKey) || "0") || 0;
     fetch(`/api/set-active/${ih}`, { method: "POST" }).catch(() => {});
-    v.src = `/api/stream/${ih}/${fi}`;
-    if (savedPos > 0) {
-      v.addEventListener("loadedmetadata", function onMeta() {
-        v.removeEventListener("loadedmetadata", onMeta);
-        v.currentTime = savedPos;
+
+    // In native mode, mpv handles playback — don't set video.src (triggers transcode)
+    if (!isNative && v) {
+      v.src = `/api/stream/${ih}/${fi}`;
+      if (savedPos > 0) {
+        v.addEventListener("loadedmetadata", function onMeta() {
+          v.removeEventListener("loadedmetadata", onMeta);
+          v.currentTime = savedPos;
+          v.play().catch(() => {});
+        });
+      } else {
         v.play().catch(() => {});
-      });
-    } else {
-      v.play().catch(() => {});
+      }
+      // Remove any lingering subtitle tracks from the video element
+      for (const t of v.textTracks) t.mode = "disabled";
+      v.querySelectorAll("track").forEach((el) => el.remove());
     }
+
     effectiveTimeRef.current = null;
     subsRef.current = [];
     activeSubRef.current = "";
     audioTracksRef.current = [];
     activeAudioRef.current = null;
     introRangeRef.current = null;
-    // Remove any lingering subtitle tracks from the video element
-    for (const t of v.textTracks) t.mode = "disabled";
-    v.querySelectorAll("track").forEach((el) => el.remove());
     setActive({ infoHash: ih, fileIndex: fi, title, tags });
   }, [active]);
 
