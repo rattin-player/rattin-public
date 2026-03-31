@@ -79,14 +79,29 @@ int main(int argc, char *argv[])
     env.insert("HOST", "127.0.0.1");
     serverProcess->setProcessEnvironment(env);
 
-    // In dev, use tsx for TypeScript. In production/packaged builds, the
-    // server is pre-compiled to JS (see build-appimage.sh) and run with node.
-    // Check if server.js exists (compiled), fall back to tsx (dev).
-    QString serverScript = QFile::exists(appDir + "/server.js") ? "server.js" : "server.ts";
-    QString runner = serverScript.endsWith(".ts") ? "tsx" : "node";
-    QStringList args = serverScript.endsWith(".ts")
-        ? QStringList{"--env-file=.env", serverScript}
-        : QStringList{"--env-file=.env", serverScript};
+    // Determine how to start the server:
+    // 1. If server.js exists (pre-compiled), use node
+    // 2. Otherwise use local node_modules/.bin/tsx (not global tsx which may not exist)
+    QString serverScript;
+    QString runner;
+    QStringList args;
+
+    if (QFile::exists(appDir + "/server.js")) {
+        serverScript = "server.js";
+        runner = "node";
+        args = {"--env-file=.env", serverScript};
+    } else {
+        serverScript = "server.ts";
+        // Use local tsx from node_modules — global tsx may not be installed
+        QString localTsx = appDir + "/node_modules/.bin/tsx";
+        if (QFile::exists(localTsx)) {
+            runner = localTsx;
+        } else {
+            // Fall back to global tsx (might work if user installed it)
+            runner = "tsx";
+        }
+        args = {"--env-file=.env", serverScript};
+    }
     serverProcess->start(runner, args);
 
     // Clean up server on exit
