@@ -287,6 +287,20 @@ main() {
     [ -f "$REPO_ROOT/server.ts" ] || die "Run from the repository root"
     [ -f "$REPO_ROOT/shell/CMakeLists.txt" ] || die "Qt shell source not found"
 
+    # Check build prerequisites
+    command -v cmake >/dev/null 2>&1 || die "cmake not found. Install: sudo apt install cmake"
+    command -v g++ >/dev/null 2>&1   || die "g++ not found. Install: sudo apt install g++"
+    command -v npm >/dev/null 2>&1   || die "npm not found. Install Node.js 20+"
+    local qml_dir
+    qml_dir="$(qmake6 -query QT_INSTALL_QML 2>/dev/null || true)"
+    if [ -z "$qml_dir" ] || [ ! -d "$qml_dir/QtWebEngine" ]; then
+        die "Qt6 QML modules not found. Install:
+  sudo apt install qt6-base-dev qt6-webengine-dev qt6-declarative-dev qt6-webchannel-dev \\
+    libmpv-dev qml6-module-qtwebengine qml6-module-qtwebengine-controlsdelegates \\
+    qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \\
+    qml6-module-qtquick-controls qml6-module-qtwebchannel"
+    fi
+
     download_tools
     build_frontend
     build_shell
