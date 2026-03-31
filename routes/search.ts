@@ -14,6 +14,7 @@ interface SearchResult {
   source: string;
   seasonPack?: boolean;
   fileIdx?: number;
+  native?: boolean;
 }
 
 export default function searchRoutes(app: Express, ctx: ServerContext): void {
@@ -299,13 +300,19 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
     const scored = results
       .map((r) => {
         const tags = parseTags(r.name);
-        // Check if torrent is already loaded — if so, inspect actual file extensions
-        const loaded = client.torrents.find((t) => t.infoHash === r.infoHash);
-        if (loaded && loaded.files.length > 0) {
-          const hasNativeFile = loaded.files.some((f) =>
-            !needsTranscode(path.extname(f.name).toLowerCase())
-          );
-          if (hasNativeFile) tags.push("Native");
+        // Torrentio already tells us if the file is browser-native
+        if (r.native && !tags.includes("Native")) {
+          tags.push("Native");
+        }
+        // Fallback: check if torrent is already loaded
+        if (!tags.includes("Native")) {
+          const loaded = client.torrents.find((t) => t.infoHash === r.infoHash);
+          if (loaded && loaded.files.length > 0) {
+            const hasNativeFile = loaded.files.some((f) =>
+              !needsTranscode(path.extname(f.name).toLowerCase())
+            );
+            if (hasNativeFile) tags.push("Native");
+          }
         }
         return {
           name: r.name,
