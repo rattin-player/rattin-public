@@ -38,20 +38,19 @@ export default function Player() {
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
   const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
 
-  // Poll live peers when source panel is open
+  // Poll live peers only for the currently playing torrent
   useEffect(() => {
-    if (!showSources || sources.length === 0) {
+    if (!showSources || !active?.infoHash) {
       clearInterval(livePeerTimer.current);
       return;
     }
     const poll = () => {
-      const hashes = sources.map((s: { infoHash: string }) => s.infoHash).filter(Boolean);
-      if (hashes.length > 0) fetchLivePeers(hashes).then(setLivePeers).catch(() => {});
+      fetchLivePeers([active.infoHash]).then(setLivePeers).catch(() => {});
     };
     poll();
     livePeerTimer.current = setInterval(poll, 3000);
     return () => clearInterval(livePeerTimer.current);
-  }, [showSources, sources]);
+  }, [showSources, active?.infoHash]);
 
   // Switch to a different source
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -474,10 +473,8 @@ export default function Player() {
             <div className="player-sources-list">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {sources.map((s: any) => {
-                const live = livePeers[s.infoHash];
-                const peerCount = live ? live.numPeers : null;
-                const isLow = peerCount !== null && peerCount < 5;
                 const isCurrent = s.infoHash === active?.infoHash;
+                const live = isCurrent ? livePeers[s.infoHash] : null;
                 const isSwitching = switchingSource === s.infoHash;
                 return (
                   <button
@@ -494,15 +491,14 @@ export default function Player() {
                         {s.tags?.map((t: string) => (
                           <span key={t} className={`player-source-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
                         ))}
-                        {isLow && <span className="player-source-tag low-peers">Low Peers</span>}
                       </div>
                     </div>
                     <div className="player-source-item-meta">
                       <span className="player-source-provider">{s.source?.toUpperCase()}</span>
-                      <span className={`player-source-seeds${isLow ? " low" : ""}`}>
-                        <span className={`player-source-seed-dot${isLow ? " low" : ""}`} />
-                        {peerCount !== null ? peerCount : s.seeders}
-                        {peerCount !== null && <span className="player-source-seed-label">live</span>}
+                      <span className="player-source-seeds">
+                        <span className="player-source-seed-dot" />
+                        {live ? live.numPeers : s.seeders}
+                        {live && <span className="player-source-seed-label">live</span>}
                       </span>
                       <span className="player-source-size">{formatBytes(s.size)}</span>
                       {isSwitching && <span className="player-source-switching">Switching...</span>}

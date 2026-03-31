@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, fetchLivePeers, backdrop, poster, still } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import "./Detail.css";
@@ -44,23 +44,6 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reviews, setReviews] = useState<any>(null);
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
-  const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
-  const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
-
-  // Poll live peer counts as soon as streams are loaded (resolve-formats adds them to WebTorrent)
-  useEffect(() => {
-    if (!streams || streams.length === 0) {
-      clearInterval(livePeerTimer.current);
-      return;
-    }
-    const poll = () => {
-      const hashes = streams.map((s: { infoHash: string }) => s.infoHash).filter(Boolean);
-      if (hashes.length > 0) fetchLivePeers(hashes).then(setLivePeers).catch(() => {});
-    };
-    poll();
-    livePeerTimer.current = setInterval(poll, 3000);
-    return () => clearInterval(livePeerTimer.current);
-  }, [streams]);
 
   useEffect(() => {
     setData(null);
@@ -93,42 +76,13 @@ export default function Detail() {
       const results = await searchStreams(title, year, type, season, episode, imdbId);
       setStreams(results);
       // Resolve actual file formats in background
+      // Sort native sources to the top
       if (results.length > 0) {
-        const hashes = results.map((s: { infoHash: string }) => s.infoHash).filter(Boolean);
-        fetch("/api/resolve-formats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ infoHashes: hashes }),
-        })
-          .then((r) => r.json())
-          .then((formats: Record<string, { native: boolean; numPeers?: number }>) => {
-            // Seed live peer counts from resolve-formats response
-            const initialPeers: Record<string, { numPeers: number; downloadSpeed: number }> = {};
-            for (const [hash, info] of Object.entries(formats)) {
-              if (info.numPeers != null) {
-                initialPeers[hash] = { numPeers: info.numPeers, downloadSpeed: 0 };
-              }
-            }
-            if (Object.keys(initialPeers).length > 0) {
-              setLivePeers((prev) => ({ ...prev, ...initialPeers }));
-            }
-            setStreams((prev) => {
-              if (!prev) return null;
-              const updated = prev.map((s: { infoHash: string; tags: string[] }) => {
-                const info = formats[s.infoHash];
-                if (info?.native && !s.tags.includes("Native")) {
-                  return { ...s, tags: [...s.tags, "Native"] };
-                }
-                return s;
-              });
-              // Sort native sources to the top, preserve order within each group
-              return [
-                ...updated.filter((s: { tags: string[] }) => s.tags.includes("Native")),
-                ...updated.filter((s: { tags: string[] }) => !s.tags.includes("Native")),
-              ];
-            });
-          })
-          .catch(() => {});
+        const sorted = [
+          ...results.filter((s: { tags: string[] }) => s.tags.includes("Native")),
+          ...results.filter((s: { tags: string[] }) => !s.tags.includes("Native")),
+        ];
+        setStreams(sorted);
       }
     } catch {
       setStreams([]);
@@ -623,11 +577,7 @@ export default function Detail() {
                 <div className="picker-empty">No streams found</div>
               ) : (
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                streams.map((s: any) => {
-                  const live = livePeers[s.infoHash];
-                  const peerCount = live ? live.numPeers : null;
-                  const isLow = peerCount !== null && peerCount < 5;
-                  return (
+                streams.map((s: any) => (
                   <button
                     key={s.infoHash}
                     className="picker-item"
@@ -640,21 +590,18 @@ export default function Detail() {
                         {s.tags.map((t: string) => (
                           <span key={t} className={`picker-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
                         ))}
-                        {isLow && <span className="picker-tag low-peers">Low Peers</span>}
                       </div>
                     </div>
                     <div className="picker-item-meta">
                       <span className="picker-source">{s.source.toUpperCase()}</span>
-                      <span className={`picker-seeds${isLow ? " low" : ""}`}>
-                        <span className={`picker-seed-dot${isLow ? " low" : ""}`} />
-                        {peerCount !== null ? peerCount : s.seeders}
-                        {peerCount !== null && <span className="picker-seed-label">live</span>}
+                      <span className="picker-seeds">
+                        <span className="picker-seed-dot" />
+                        {s.seeders}
                       </span>
                       <span className="picker-size">{formatBytes(s.size)}</span>
                     </div>
                   </button>
-                  );
-                })
+                ))
               )}
             </div>
           </div>
