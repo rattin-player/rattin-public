@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode } from "../lib/api";
 import "./SettingsModal.css";
 
 interface SettingsModalProps {
@@ -16,6 +16,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     premium?: boolean;
     username?: string | null;
     expiration?: string | null;
+    mode?: "always" | "cached";
   } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -127,6 +128,23 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                     </span>
                   </div>
                 )}
+                <div className="settings-info-row">
+                  <span className="settings-info-label">Mode</span>
+                  <select
+                    className="settings-mode-select"
+                    value={status.mode || "always"}
+                    onChange={async (e) => {
+                      const mode = e.target.value as "always" | "cached";
+                      try {
+                        await setDebridMode(mode);
+                        setStatus((prev) => prev ? { ...prev, mode } : prev);
+                      } catch {}
+                    }}
+                  >
+                    <option value="always">Always use debrid</option>
+                    <option value="cached">Cached only (instant)</option>
+                  </select>
+                </div>
                 <button className="settings-remove-btn" onClick={handleRemove}>
                   Disconnect
                 </button>

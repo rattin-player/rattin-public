@@ -158,13 +158,22 @@ export function verifyDebridKey(): Promise<any> {
   return get("/api/debrid/verify");
 }
 
-export async function setDebridConfig(apiKey: string, provider = "realdebrid"): Promise<void> {
+export async function setDebridConfig(apiKey: string, provider = "realdebrid", mode = "always"): Promise<void> {
   const res = await fetch("/api/debrid/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey, provider }),
+    body: JSON.stringify({ apiKey, provider, mode }),
   });
   if (!res.ok) throw new Error("config_failed");
+}
+
+export async function setDebridMode(mode: "always" | "cached"): Promise<void> {
+  const res = await fetch("/api/debrid/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error("mode_failed");
 }
 
 export async function deleteDebridConfig(): Promise<void> {

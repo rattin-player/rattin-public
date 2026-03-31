@@ -131,8 +131,12 @@ Coming soon.
 1. Get a [Real-Debrid](https://real-debrid.com) account (~$3/month)
 2. Copy your API token from [real-debrid.com/apitoken](https://real-debrid.com/apitoken)
 3. Open Rattin, click the **Debrid** button in the navbar, paste your key, click **Connect**
+4. Choose your streaming mode:
 
-Cached torrents stream instantly over HTTPS. Uncached torrents fall back to WebTorrent.
+| Mode | Behavior |
+|------|----------|
+| **Always use debrid** | Every play goes through Real-Debrid. Waits for RD to download if not cached. Best seeking, full privacy, but uncached content has a cold start delay. |
+| **Cached only** | Uses debrid when content is already cached on RD (instant). Falls back to WebTorrent for uncached content (zero delay). |
 
 ### VPN Setup (optional)
 

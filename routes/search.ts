@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
 import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
 import { searchTorrentio } from "../lib/torrentio.js";
-import { getDebridProvider, setActiveDebridStream } from "../lib/debrid.js";
+import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/debrid.js";
 import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
 
@@ -542,22 +542,44 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
     const magnet = `magnet:?xt=urn:btih:${best.infoHash}&dn=${encodeURIComponent(best.name)}${trackerParams}`;
 
-    // Try debrid — always attempt, fall back to WebTorrent on failure/timeout
+    // Try debrid based on configured mode
     const debrid = getDebridProvider();
     if (debrid) {
+      const mode = getDebridMode();
       try {
-        const stream = await debrid.unrestrict(magnet, best.fileIdx);
-        log("info", "Auto-play via debrid", { name: best.name, filename: stream.filename });
-        setActiveDebridStream(best.infoHash, stream.url, stream.files);
-        return res.json({
-          infoHash: best.infoHash,
-          fileIndex: stream.fileIndex,
-          fileName: stream.filename,
-          torrentName: best.name,
-          totalSize: stream.filesize,
-          tags,
-          debridUrl: stream.url,
-        } satisfies TorrentPlayResult);
+        if (mode === "cached") {
+          // Only use debrid if already cached on RD (instant, no delay)
+          const cached = await debrid.checkCached([best.infoHash]);
+          if (cached.get(best.infoHash.toLowerCase())) {
+            const stream = await debrid.unrestrict(magnet, best.fileIdx);
+            log("info", "Auto-play via debrid (cached)", { name: best.name, filename: stream.filename });
+            setActiveDebridStream(best.infoHash, stream.url, stream.files);
+            return res.json({
+              infoHash: best.infoHash,
+              fileIndex: stream.fileIndex,
+              fileName: stream.filename,
+              torrentName: best.name,
+              totalSize: stream.filesize,
+              tags,
+              debridUrl: stream.url,
+            } satisfies TorrentPlayResult);
+          }
+          log("info", "Debrid not cached, using WebTorrent", { name: best.name });
+        } else {
+          // Always wait for debrid — no fallback
+          const stream = await debrid.unrestrict(magnet, best.fileIdx);
+          log("info", "Auto-play via debrid", { name: best.name, filename: stream.filename });
+          setActiveDebridStream(best.infoHash, stream.url, stream.files);
+          return res.json({
+            infoHash: best.infoHash,
+            fileIndex: stream.fileIndex,
+            fileName: stream.filename,
+            torrentName: best.name,
+            totalSize: stream.filesize,
+            tags,
+            debridUrl: stream.url,
+          } satisfies TorrentPlayResult);
+        }
       } catch (err) {
         log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
       }
@@ -661,22 +683,42 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
   const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
   const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}${trackerParams}`;
 
-  // Try debrid — always attempt, fall back to WebTorrent on failure/timeout
+  // Try debrid based on configured mode
   const debrid = getDebridProvider();
   if (debrid) {
+    const mode = getDebridMode();
     try {
-      const stream = await debrid.unrestrict(magnet, fileIdx);
-      log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
-      setActiveDebridStream(infoHash, stream.url, stream.files);
-      return res.json({
-        infoHash,
-        fileIndex: stream.fileIndex,
-        fileName: stream.filename,
-        torrentName: name || stream.filename,
-        totalSize: stream.filesize,
-        tags,
-        debridUrl: stream.url,
-      } satisfies TorrentPlayResult);
+      if (mode === "cached") {
+        const cached = await debrid.checkCached([infoHash]);
+        if (cached.get(infoHash.toLowerCase())) {
+          const stream = await debrid.unrestrict(magnet, fileIdx);
+          log("info", "Play-torrent via debrid (cached)", { infoHash, filename: stream.filename });
+          setActiveDebridStream(infoHash, stream.url, stream.files);
+          return res.json({
+            infoHash,
+            fileIndex: stream.fileIndex,
+            fileName: stream.filename,
+            torrentName: name || stream.filename,
+            totalSize: stream.filesize,
+            tags,
+            debridUrl: stream.url,
+          } satisfies TorrentPlayResult);
+        }
+        log("info", "Debrid not cached, using WebTorrent", { infoHash });
+      } else {
+        const stream = await debrid.unrestrict(magnet, fileIdx);
+        log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
+        setActiveDebridStream(infoHash, stream.url, stream.files);
+        return res.json({
+          infoHash,
+          fileIndex: stream.fileIndex,
+          fileName: stream.filename,
+          torrentName: name || stream.filename,
+          totalSize: stream.filesize,
+          tags,
+          debridUrl: stream.url,
+        } satisfies TorrentPlayResult);
+      }
     } catch (err) {
       log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
     }

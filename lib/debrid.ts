@@ -27,9 +27,12 @@ export interface DebridProvider {
   validateKey(): Promise<{ valid: boolean; premium: boolean; expiration: string | null; username: string | null }>;
 }
 
+export type DebridMode = "always" | "cached";
+
 interface DebridConfig {
   provider: string;
   apiKey: string;
+  mode?: DebridMode;
 }
 
 interface RDTorrentInfo {
@@ -56,9 +59,14 @@ export function loadConfig(): DebridConfig | null {
   }
 }
 
-export function saveConfig(provider: string, apiKey: string): void {
+export function saveConfig(provider: string, apiKey: string, mode: DebridMode = "always"): void {
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  writeFileSync(CONFIG_PATH, JSON.stringify({ provider, apiKey }), { mode: 0o600 });
+  writeFileSync(CONFIG_PATH, JSON.stringify({ provider, apiKey, mode }), { mode: 0o600 });
+}
+
+export function getDebridMode(): DebridMode {
+  const cfg = loadConfig();
+  return cfg?.mode || "always";
 }
 
 export function deleteConfig(): void {
