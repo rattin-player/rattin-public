@@ -11,9 +11,6 @@
 #include <QDir>
 #include <QFile>
 #include <QtWebEngineQuick>
-#include <QWebEngineProfile>
-#include <QWebEngineScript>
-#include <QWebEngineScriptCollection>
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
@@ -140,24 +137,6 @@ int main(int argc, char *argv[])
     // once the event loop is running.
     waitForServer(port, &app, [&app, port]() {
         fprintf(stderr, "[shell] server ready, loading QML\n");
-
-        // Inject qwebchannel.js into MainWorld. Qt auto-injects it into
-        // IsolatedWorld only, but runJavaScript runs in MainWorld.
-        {
-            QFile f(":/qtwebchannel/qwebchannel.js");
-            if (f.open(QIODevice::ReadOnly)) {
-                QWebEngineScript script;
-                script.setName("qwebchannel");
-                script.setSourceCode(QString::fromUtf8(f.readAll()));
-                script.setInjectionPoint(QWebEngineScript::DocumentCreation);
-                script.setWorldId(QWebEngineScript::MainWorld);
-                script.setRunsOnSubFrames(false);
-                QWebEngineProfile::defaultProfile()->scripts()->insert(script);
-                fprintf(stderr, "[shell] injected qwebchannel.js into MainWorld\n");
-            } else {
-                fprintf(stderr, "[shell] ERROR: could not read qwebchannel.js\n");
-            }
-        }
 
         auto *bridge = new MpvBridge(&app);
 
