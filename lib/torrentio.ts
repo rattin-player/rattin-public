@@ -67,6 +67,10 @@ export interface TorrentioResult {
   fileIdx?: number;
   seasonPack?: boolean;
   native?: boolean;
+  languages?: string[];
+  hasSubs?: boolean;
+  multiAudio?: boolean;
+  foreignOnly?: boolean;
 }
 
 export async function searchTorrentio(
@@ -91,6 +95,7 @@ export async function searchTorrentio(
       .filter((s) => s.infoHash)
       .map((s) => {
         const parsed = parseTorrentioTitle(s.title || "");
+        const meta = parseTorrentioMeta(s.title || "");
         const filename = s.behaviorHints?.filename || "";
         const ext = filename.includes(".") ? ("." + filename.split(".").pop()!.toLowerCase()) : "";
         return {
@@ -105,6 +110,10 @@ export async function searchTorrentio(
             s.fileIdx !== undefined &&
             !/S\d{1,2}E\d{1,2}/i.test(parsed.torrentName),
           native: BROWSER_NATIVE_EXT.has(ext),
+          languages: meta.languages,
+          hasSubs: meta.hasSubs,
+          multiAudio: meta.multiAudio,
+          foreignOnly: meta.foreignOnly,
         };
       });
   } catch {

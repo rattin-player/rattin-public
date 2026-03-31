@@ -15,6 +15,10 @@ interface SearchResult {
   seasonPack?: boolean;
   fileIdx?: number;
   native?: boolean;
+  languages?: string[];
+  hasSubs?: boolean;
+  multiAudio?: boolean;
+  foreignOnly?: boolean;
 }
 
 export default function searchRoutes(app: Express, ctx: ServerContext): void {
@@ -325,10 +329,19 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
           tags,
           seasonPack: r.seasonPack || false,
           fileIdx: r.fileIdx,
+          languages: r.languages || [],
+          hasSubs: r.hasSubs || false,
+          multiAudio: r.multiAudio || false,
+          foreignOnly: r.foreignOnly || false,
         };
       })
       .filter((r) => r.score > 0)
-      .sort((a, b) => b.seeders - a.seeders || b.score - a.score)
+      .sort((a, b) => {
+        const aForeign = a.foreignOnly ? 1 : 0;
+        const bForeign = b.foreignOnly ? 1 : 0;
+        if (aForeign !== bForeign) return aForeign - bForeign;
+        return b.seeders - a.seeders || b.score - a.score;
+      })
       .slice(0, 20);
 
     res.json({ results: scored });
