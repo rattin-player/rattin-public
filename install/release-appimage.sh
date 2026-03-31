@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Upload AppImage + sync install script to rattin-player/rattin-public
+# Upload AppImage + sync install script to rattin-player/rattin-install
 # Run this after build-appimage.sh produces Rattin-x86_64.AppImage
 # =============================================================================
 
@@ -18,22 +18,22 @@ fi
 
 echo "Uploading AppImage..."
 gh release upload v1.0.0-native "$APPIMAGE" \
-    --repo rattin-player/rattin-public --clobber
+    --repo rattin-player/rattin-install --clobber
 
-echo "Syncing install script to rattin-player/rattin-public..."
+echo "Syncing install script to rattin-player/rattin-install..."
 INSTALL_REPO="/tmp/rattin-public-sync"
 rm -rf "$INSTALL_REPO"
-gh repo clone rattin-player/rattin-public "$INSTALL_REPO" -- --depth 1
+gh repo clone rattin-player/rattin-install "$INSTALL_REPO" -- --depth 1
 cp "$REPO_ROOT/install/install-native.sh" "$INSTALL_REPO/install-native.sh"
 cd "$INSTALL_REPO"
 if ! git diff --quiet; then
     git config user.email "rattin@noreply.github.com"
     git config user.name "Rattin"
     git add install-native.sh
-    git commit -m "sync install script from rattin-player/player"
+    git commit -m "sync install script from rattin-player/rattin"
     git push
 fi
 rm -rf "$INSTALL_REPO"
 
 echo "Done. Users can now install with:"
-echo "  curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh | bash"
+echo "  curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-install/main/install-native.sh | bash"

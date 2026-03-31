@@ -95,21 +95,21 @@ Both modes share the same interface and backend. The native version just swaps t
 One command:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash
+curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-install/main/install-native.sh" | bash
 ```
 
 Downloads the AppImage, creates a desktop entry, opens the firewall port for phone remote, and prompts for a free [TMDB API key](https://www.themoviedb.org/settings/api). Shows up in your app launcher as "Rattin".
 
 To update, rerun the same command. To uninstall: add `--uninstall`.
 
-You can also grab the AppImage directly from the [latest release](https://github.com/rattin-player/rattin-public/releases/latest) and run it manually.
+You can also grab the AppImage directly from the [latest release](https://github.com/rattin-player/rattin-install/releases/latest) and run it manually.
 
 ### :globe_with_meridians: Web Mode (self-hosted server)
 
 For running as a web server accessible from any browser on your network:
 
 ```bash
-git clone https://github.com/rattin-player/player.git && cd player
+git clone https://github.com/rattin-player/rattin.git && cd player
 npm install && npm run build
 echo "TMDB_API_KEY=your_key" > .env
 npm start
