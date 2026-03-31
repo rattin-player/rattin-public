@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("PORT", QString::number(port));
-    env.insert("HOST", "127.0.0.1");
+    env.insert("HOST", "0.0.0.0");
     serverProcess->setProcessEnvironment(env);
 
     // Determine how to start the server:
