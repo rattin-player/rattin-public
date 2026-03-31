@@ -81,6 +81,12 @@ if [ "$UNINSTALL" = true ]; then
     # Also clean up old installs that used 256x256 icon path
     rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.png"
     rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.svg"
+    # Close firewall port
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "9630"; then
+        sudo ufw delete allow 9630/tcp >/dev/null 2>&1 || true
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --list-ports 2>/dev/null | grep -q "9630/tcp"; then
+        sudo firewall-cmd --permanent --remove-port=9630/tcp >/dev/null 2>&1 && sudo firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
     log "Updating desktop database..."
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
     gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
@@ -155,6 +161,31 @@ if [ ! -f "$CONFIG_DIR/.env" ]; then
     fi
 else
     log "Config already exists, keeping it"
+fi
+
+# ---------------------------------------------------------------------------
+# Firewall — open port 9630 for phone remote control
+# ---------------------------------------------------------------------------
+APP_PORT=9630
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    if ! ufw status | grep -q "$APP_PORT"; then
+        log "Opening port $APP_PORT in ufw for phone remote..."
+        sudo ufw allow "$APP_PORT"/tcp comment "Rattin" >/dev/null 2>&1 && \
+            log "Port $APP_PORT opened" || \
+            warn "Could not open port $APP_PORT — phone remote may not work on other devices"
+    else
+        skip "Port $APP_PORT already open in ufw"
+    fi
+elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+    if ! firewall-cmd --list-ports 2>/dev/null | grep -q "$APP_PORT/tcp"; then
+        log "Opening port $APP_PORT in firewalld for phone remote..."
+        sudo firewall-cmd --permanent --add-port="$APP_PORT"/tcp >/dev/null 2>&1 && \
+        sudo firewall-cmd --reload >/dev/null 2>&1 && \
+            log "Port $APP_PORT opened" || \
+            warn "Could not open port $APP_PORT — phone remote may not work on other devices"
+    else
+        skip "Port $APP_PORT already open in firewalld"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
