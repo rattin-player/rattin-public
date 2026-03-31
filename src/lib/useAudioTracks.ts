@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type RefObject, type MutableRefObject } from "react";
 import { LANG_MAP } from "./useSubtitles";
 import { fetchAudioTracks } from "./api";
+import { isNative } from "./native-bridge";
 
 export interface AudioTrackOption {
   value: number;
@@ -18,6 +19,7 @@ interface UseAudioTracksDeps {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingReason: React.Dispatch<React.SetStateAction<string>>;
   pendingSubReload: MutableRefObject<number | null>;
+  debridUrl?: string;
 }
 
 interface UseAudioTracksReturn {
@@ -31,6 +33,7 @@ export function useAudioTracks(videoRef: RefObject<HTMLVideoElement | null>, dep
     infoHash, fileIndex, audioTracksRef, activeAudioRef,
     preSelectedAudio, getEffectiveTime, isLiveRef,
     setLoading, setLoadingReason, pendingSubReload,
+    debridUrl,
   } = deps;
 
   const [audioTracks, setAudioTracksRaw] = useState<AudioTrackOption[]>([]);
@@ -82,15 +85,26 @@ export function useAudioTracks(videoRef: RefObject<HTMLVideoElement | null>, dep
     if (isNaN(idx)) return;
     if (activeAudioRef.current === idx) return;
     setActiveAudio(idx);
+
+    // Native mode: mpv handles audio switching via bridge, don't touch v.src
+    if (isNative) return;
+
     const v = videoRef.current;
     if (!v) return;
     const pos = getEffectiveTime();
     setLoading(true);
     setLoadingReason("seeking");
+
+    // Debrid mode: use debrid-stream proxy instead of /api/stream
+    const base = debridUrl
+      ? `/api/debrid-stream?url=${encodeURIComponent(debridUrl)}`
+      : `/api/stream/${infoHash}/${fileIndex}`;
+    const sep = debridUrl ? "&" : "?";
+
     if (isLiveRef.current) {
-      v.src = `/api/stream/${infoHash}/${fileIndex}?t=${pos}&audio=${idx}`;
+      v.src = `${base}${sep}t=${pos}&audio=${idx}`;
     } else {
-      v.src = `/api/stream/${infoHash}/${fileIndex}?audio=${idx}`;
+      v.src = `${base}${sep}audio=${idx}`;
       v.addEventListener("loadedmetadata", function onMeta() {
         v.removeEventListener("loadedmetadata", onMeta);
         v.currentTime = pos;
@@ -98,7 +112,7 @@ export function useAudioTracks(videoRef: RefObject<HTMLVideoElement | null>, dep
     }
     v.play().catch(() => {});
     pendingSubReload.current = isLiveRef.current ? pos : 0;
-  }, [infoHash, fileIndex]);
+  }, [infoHash, fileIndex, debridUrl]);
 
   return { audioTracks, activeAudio, switchAudio };
 }
