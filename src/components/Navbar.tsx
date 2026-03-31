@@ -65,6 +65,7 @@ export default function Navbar() {
   }
 
   return (
+    <>
     <nav className={`navbar ${scrolled ? "scrolled" : ""} ${isRemote ? "navbar-remote" : ""}`}>
       <Link to="/" className="navbar-brand">
         <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
@@ -121,8 +122,9 @@ export default function Navbar() {
           </button>
         </>
       )}
-      {showPairing && <PairRemoteModal onClose={() => setShowPairing(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </nav>
+    {showPairing && <PairRemoteModal onClose={() => setShowPairing(false)} />}
+    {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    </>
   );
 }
