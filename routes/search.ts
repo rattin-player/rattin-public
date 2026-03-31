@@ -12,6 +12,7 @@ interface SearchResult {
   leechers: number;
   source: string;
   seasonPack?: boolean;
+  fileIdx?: number;
 }
 
 export default function searchRoutes(app: Express, ctx: ServerContext): void {
@@ -290,6 +291,7 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
           score: scoreTorrent(r, title, year, type || "movie"),
           tags,
           seasonPack: r.seasonPack || false,
+          fileIdx: r.fileIdx,
         };
       })
       .filter((r) => r.score > 0)
@@ -366,12 +368,20 @@ interface TorrentPlayResult {
   tags: string[];
 }
 
-function respondWithTorrent(torrent: Torrent, season: number | undefined, episode: number | undefined, tags: string[]): TorrentPlayResult | null {
-  const videoFile = (season && episode)
-    ? findEpisodeFile(torrent, season, episode)
-    : findLargestVideo(torrent);
+function respondWithTorrent(torrent: Torrent, season: number | undefined, episode: number | undefined, tags: string[], preferredFileIdx?: number): TorrentPlayResult | null {
+  let videoFile: { file: { name: string; length: number }; index: number } | null = null;
+
+  // If we have a preferred fileIdx from Torrentio, use it directly
+  if (preferredFileIdx !== undefined && preferredFileIdx >= 0 && preferredFileIdx < torrent.files.length) {
+    const f = torrent.files[preferredFileIdx];
+    videoFile = { file: { name: f.name, length: f.length }, index: preferredFileIdx };
+  } else if (season && episode) {
+    videoFile = findEpisodeFile(torrent, season, episode);
+  } else {
+    videoFile = findLargestVideo(torrent);
+  }
+
   if (!videoFile) return null;
-  // The underlying file is a TorrentFile with select(), but torrent-scoring returns FileEntry
   (torrent.files[videoFile.index] as { select(): void }).select();
   return {
     infoHash: torrent.infoHash,
@@ -511,8 +521,8 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
 
 // Play a specific torrent by infoHash (user-selected from search-streams)
 app.post("/api/play-torrent", async (req: Request, res: Response) => {
-  const { infoHash, name, season, episode } = req.body as {
-    infoHash: string; name?: string; season?: number; episode?: number;
+  const { infoHash, name, season, episode, fileIdx } = req.body as {
+    infoHash: string; name?: string; season?: number; episode?: number; fileIdx?: number;
   };
   if (!infoHash) return res.status(400).json({ error: "infoHash is required" });
 
@@ -527,7 +537,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
   try {
     if (existing) {
       if (existing.files && existing.files.length > 0) {
-        const result = respondWithTorrent(existing, season, episode, tags);
+        const result = respondWithTorrent(existing, season, episode, tags, fileIdx);
         if (result) return res.json(result);
         // Torrent is ready but no matching video — don't wait for "ready" (it already fired)
         log("info", "Existing torrent has no matching video, retrying fresh", { infoHash: existing.infoHash });
@@ -538,7 +548,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
           existing.on("ready", () => { clearTimeout(timeout); resolve(); });
           existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
         });
-        const result = respondWithTorrent(existing, season, episode, tags);
+        const result = respondWithTorrent(existing, season, episode, tags, fileIdx);
         if (result) return res.json(result);
         try { existing.destroy({ destroyStore: false }); } catch {}
       }
@@ -561,7 +571,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
           torrent.pause();
         });
         torrent.on("error", (err) => log("err", "Torrent error", { error: (err as Error).message }));
-        const result = respondWithTorrent(torrent, season, episode, tags);
+        const result = respondWithTorrent(torrent, season, episode, tags, fileIdx);
         if (!result) { reject(new Error("No video files")); return; }
         resolve(result);
       });
