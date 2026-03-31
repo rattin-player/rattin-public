@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
 import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
+import { searchTorrentio } from "../lib/torrentio.js";
 import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
 
@@ -214,11 +215,26 @@ app.post("/api/check-availability", async (req: Request, res: Response) => {
 
 
 async function searchTV(title: string, season: number, episode: number, imdbId?: string): Promise<SearchResult[]> {
+  // Primary: try Torrentio (requires IMDB ID)
+  if (imdbId) {
+    try {
+      const torrentioResults = await searchTorrentio(imdbId, "tv", season, episode);
+      if (torrentioResults.length > 0) {
+        log("info", "Torrentio search succeeded", { title, season, episode, results: torrentioResults.length });
+        return torrentioResults;
+      }
+    } catch (err) {
+      log("warn", "Torrentio search failed, falling back", { error: (err as Error).message });
+    }
+  }
+
+  // Fallback: existing multi-provider search
+  log("info", "Using fallback search", { title, season, episode });
   const s = String(season).padStart(2, "0");
   const e = String(episode).padStart(2, "0");
   const episodeQuery = `${title} S${s}E${e}`;
   const seasonQuery = `${title} S${s}`;
-  const titleQuery = title; // catches multi-season packs like "S01-S31", "Complete Series"
+  const titleQuery = title;
 
   const [episodeResults, seasonResults, titleResults] = await Promise.all([
     searchTorrents(episodeQuery, imdbId),
@@ -226,28 +242,21 @@ async function searchTV(title: string, season: number, episode: number, imdbId?:
     searchTorrents(titleQuery, imdbId),
   ]);
 
-  // Filter title-only results: keep only multi-season packs or complete series
-  // that plausibly contain our target season
   const filteredTitleResults = titleResults.filter((r) => coversTargetSeason(r.name, season));
 
-  // Dedupe and filter
   const seen = new Map<string, SearchResult>();
   for (const r of [...episodeResults, ...seasonResults, ...filteredTitleResults]) {
     if (!r.infoHash) continue;
-
-    // Filter out torrents for the WRONG episode: if the name contains a specific
-    // episode marker (S01E03) that doesn't match our target, skip it entirely.
-    // This prevents e.g. S01E01 showing up when searching for S01E05.
     if (hasWrongEpisode(r.name, season, episode)) continue;
 
     const existing = seen.get(r.infoHash);
     if (!existing || r.seeders > existing.seeders) {
-      const hasEpisode = new RegExp(`S${s}E${e}(?!\\d)`, "i").test(r.name)
+      const hasEp = new RegExp(`S${s}E${e}(?!\\d)`, "i").test(r.name)
         || new RegExp(`S${season}E${episode}(?!\\d)`, "i").test(r.name);
-      const hasSeason = new RegExp(`S${s}(?!\\d)`, "i").test(r.name)
+      const hasSsn = new RegExp(`S${s}(?!\\d)`, "i").test(r.name)
         || /complete|full.season|season.\d|all.seasons/i.test(r.name)
         || coversTargetSeason(r.name, season);
-      const isSeasonPack = !hasEpisode && hasSeason;
+      const isSeasonPack = !hasEp && hasSsn;
       seen.set(r.infoHash, { ...r, seasonPack: isSeasonPack });
     }
   }
@@ -265,8 +274,25 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
   if (type === "tv" && season && episode) {
     results = await searchTV(title, season, episode, imdbId);
   } else {
-    const query = year ? `${title} ${year}` : title;
-    results = await searchTorrents(query, imdbId);
+    // Primary: try Torrentio for movies
+    if (imdbId) {
+      try {
+        const torrentioResults = await searchTorrentio(imdbId, "movie");
+        if (torrentioResults.length > 0) {
+          log("info", "Torrentio movie search succeeded", { title, results: torrentioResults.length });
+          results = torrentioResults;
+        } else {
+          const query = year ? `${title} ${year}` : title;
+          results = await searchTorrents(query, imdbId);
+        }
+      } catch {
+        const query = year ? `${title} ${year}` : title;
+        results = await searchTorrents(query, imdbId);
+      }
+    } else {
+      const query = year ? `${title} ${year}` : title;
+      results = await searchTorrents(query, imdbId);
+    }
   }
 
   try {
@@ -404,9 +430,27 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     log("info", "Auto-play search (TV)", { title, season, episode });
     results = await searchTV(title, season, episode, imdbId);
   } else {
-    const query = year ? `${title} ${year}` : title;
-    log("info", "Auto-play search", { query });
-    results = await searchTorrents(query, imdbId);
+    if (imdbId) {
+      try {
+        const torrentioResults = await searchTorrentio(imdbId, "movie");
+        if (torrentioResults.length > 0) {
+          log("info", "Auto-play Torrentio succeeded", { title, results: torrentioResults.length });
+          results = torrentioResults;
+        } else {
+          const query = year ? `${title} ${year}` : title;
+          log("info", "Auto-play search", { query });
+          results = await searchTorrents(query, imdbId);
+        }
+      } catch {
+        const query = year ? `${title} ${year}` : title;
+        log("info", "Auto-play fallback search", { query });
+        results = await searchTorrents(query, imdbId);
+      }
+    } else {
+      const query = year ? `${title} ${year}` : title;
+      log("info", "Auto-play search", { query });
+      results = await searchTorrents(query, imdbId);
+    }
   }
 
   try {
