@@ -36,52 +36,37 @@ Window {
 
         onLoadingChanged: function(loadingInfo) {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
-                // Step 1: Load qwebchannel.js source into MainWorld via runJavaScript.
-                // The userScripts.collection approach may silently fail on some Qt6 versions,
-                // so we fetch the resource and eval it as a fallback-proof method.
+                // qwebchannel.js is injected into MainWorld via C++ (QWebEngineProfile::scripts).
+                // Now wire up the QWebChannel bridge so React can access mpvBridge.
                 webView.runJavaScript(
                     "(function() {" +
-                    "  if (typeof QWebChannel !== 'undefined') { return 'already loaded'; }" +
-                    "  var xhr = new XMLHttpRequest();" +
-                    "  xhr.open('GET', 'qrc:///qtwebchannel/qwebchannel.js', false);" +
-                    "  xhr.send();" +
-                    "  if (xhr.status === 200) { eval(xhr.responseText); return 'loaded'; }" +
-                    "  return 'failed: ' + xhr.status;" +
-                    "})()",
-                    function(result) {
-                        console.log("[shell] qwebchannel.js:", result);
-                        // Step 2: Create the channel and wire up the bridge
-                        webView.runJavaScript(
-                            "(function() {" +
-                            "  if (typeof QWebChannel === 'undefined') {" +
-                            "    console.error('[shell] QWebChannel still not defined');" +
-                            "    return;" +
-                            "  }" +
-                            "  new QWebChannel(qt.webChannelTransport, function(channel) {" +
-                            "    window.mpvBridge = channel.objects.bridge;" +
-                            "    window.mpvEvents = {" +
-                            "      onTimeChanged: null," +
-                            "      onDurationChanged: null," +
-                            "      onEofReached: null," +
-                            "      onPauseChanged: null" +
-                            "    };" +
-                            "    window.mpvBridge.timeChanged.connect(function(s) {" +
-                            "      if (window.mpvEvents.onTimeChanged) window.mpvEvents.onTimeChanged(s);" +
-                            "    });" +
-                            "    window.mpvBridge.durationChanged.connect(function(s) {" +
-                            "      if (window.mpvEvents.onDurationChanged) window.mpvEvents.onDurationChanged(s);" +
-                            "    });" +
-                            "    window.mpvBridge.eofReached.connect(function() {" +
-                            "      if (window.mpvEvents.onEofReached) window.mpvEvents.onEofReached();" +
-                            "    });" +
-                            "    window.mpvBridge.pauseChanged.connect(function(p) {" +
-                            "      if (window.mpvEvents.onPauseChanged) window.mpvEvents.onPauseChanged(p);" +
-                            "    });" +
-                            "    console.log('[shell] QWebChannel bridge wired up');" +
-                            "  });" +
-                            "})()"
-                        );
-                    }
+                    "  if (typeof QWebChannel === 'undefined') {" +
+                    "    console.error('[shell] QWebChannel not defined — injection failed');" +
+                    "    return;" +
+                    "  }" +
+                    "  new QWebChannel(qt.webChannelTransport, function(channel) {" +
+                    "    window.mpvBridge = channel.objects.bridge;" +
+                    "    window.mpvEvents = {" +
+                    "      onTimeChanged: null," +
+                    "      onDurationChanged: null," +
+                    "      onEofReached: null," +
+                    "      onPauseChanged: null" +
+                    "    };" +
+                    "    window.mpvBridge.timeChanged.connect(function(s) {" +
+                    "      if (window.mpvEvents.onTimeChanged) window.mpvEvents.onTimeChanged(s);" +
+                    "    });" +
+                    "    window.mpvBridge.durationChanged.connect(function(s) {" +
+                    "      if (window.mpvEvents.onDurationChanged) window.mpvEvents.onDurationChanged(s);" +
+                    "    });" +
+                    "    window.mpvBridge.eofReached.connect(function() {" +
+                    "      if (window.mpvEvents.onEofReached) window.mpvEvents.onEofReached();" +
+                    "    });" +
+                    "    window.mpvBridge.pauseChanged.connect(function(p) {" +
+                    "      if (window.mpvEvents.onPauseChanged) window.mpvEvents.onPauseChanged(p);" +
+                    "    });" +
+                    "    console.log('[shell] QWebChannel bridge wired up');" +
+                    "  });" +
+                    "})()"
                 );
             }
         }
