@@ -164,7 +164,8 @@ export default function Player() {
     if (!isNative || !infoHash || !fileIndex) return;
 
     waitForBridge().then(() => {
-      const streamUrl = `/api/stream/${infoHash}/${fileIndex}?native=1`;
+      const streamUrl = `${window.location.origin}/api/stream/${infoHash}/${fileIndex}?native=1`;
+      console.log("[native-bridge] mpvPlay:", streamUrl);
       mpvPlay(streamUrl);
     });
 
