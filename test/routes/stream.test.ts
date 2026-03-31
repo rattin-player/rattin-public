@@ -90,8 +90,8 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
     assert.equal(body.error, "File type not allowed");
   });
 
-  it("selects subtitle files instead of deselecting them", async () => {
-    const calls: Record<string, string[]> = { selected: [], deselected: [] };
+  it("prioritizes subtitle files via piece selection instead of deselecting them", async () => {
+    const calls: Record<string, string[]> = { selected: [], deselected: [], pieceSelected: [] };
     const torrent = {
       infoHash: "streamtest-subs",
       name: "Test",
@@ -147,7 +147,7 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
       pause: () => {},
       resume: () => {},
       destroy: () => {},
-      select: () => {},
+      select: (...args: unknown[]) => { calls.pieceSelected.push(JSON.stringify(args)); },
       deselect: () => {},
     };
     client.torrents.push(torrent);
@@ -156,11 +156,11 @@ describe("GET /api/stream/:infoHash/:fileIndex", () => {
     // but file selection happens before that — which is what we're testing
     await fetch(`${baseUrl}/api/stream/streamtest-subs/0`);
 
-    // Subtitle files should be selected, not deselected
-    assert.ok(calls.selected.includes("movie.srt"), "SRT subtitle should be selected");
-    assert.ok(calls.selected.includes("movie.ass"), "ASS subtitle should be selected");
-    assert.ok(!calls.deselected.includes("movie.srt"), "SRT subtitle should NOT be deselected");
-    assert.ok(!calls.deselected.includes("movie.ass"), "ASS subtitle should NOT be deselected");
+    // Subtitle files get deselected at file level, then re-selected at piece level with priority
+    // This ensures they download but don't block the video stream
+    assert.ok(calls.deselected.includes("movie.srt"), "SRT should be file-deselected first");
+    assert.ok(calls.deselected.includes("movie.ass"), "ASS should be file-deselected first");
+    assert.ok(calls.pieceSelected.length > 0, "Piece-level select should be called for subtitle files");
 
     // Non-subtitle, non-video files should still be deselected
     assert.ok(calls.deselected.includes("extras.mkv"), "Other video files should be deselected");
