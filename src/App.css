@@ -56,6 +56,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Native playback: make body transparent so mpv renders behind webview controls */
+body.native-playing {
+  background: transparent !important;
+}
+
+body.native-playing #root::after {
+  display: none;
+}
+
 /* Subtle noise texture overlay on the whole app */
 #root::after {
   content: "";
