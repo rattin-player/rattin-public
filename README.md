@@ -32,26 +32,11 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 ⚡ Optional Real-Debrid — instant streaming via HTTPS, full seeking, no swarm exposure<br>
 🛡️ Optional per-app VPN — WireGuard isolation for torrent traffic only, built-in kill switch
 
-### Two ways to watch
+### How it works
 
-| | Web Mode | Native Mode |
-|---|---|---|
-| **How it works** | Browser tab — any device on your network | Desktop app powered by libmpv |
-| **Format handling** | Non-native formats (MKV, HEVC) transcoded on the fly | Every format plays directly with GPU hardware decoding |
-| **Best for** | Multi-device, couch/TV, remote access | Main PC, best quality, 4K HDR, Dolby Atmos |
+**Player:** Runs as a browser tab (web mode) or a desktop app with libmpv (native mode). Same interface, same backend — native mode just swaps the browser's video element for a real video engine with GPU hardware decoding. Best quality (4K HDR, Dolby Atmos) on your main PC, web mode for everything else on your network.
 
-Same interface, same backend. Native mode just replaces the browser's video element with a real video engine.
-
-### Two ways to stream
-
-| | Direct (WebTorrent) | Debrid (Real-Debrid) |
-|---|---|---|
-| **How it works** | Joins the torrent swarm, streams pieces as they download | Sends magnet to debrid server, streams back over HTTPS |
-| **Seeking** | Piece prioritization + keyframe index (works, but slower on incomplete files) | Standard HTTP range requests — instant, like any streaming service |
-| **Privacy** | Your IP visible to peers (use the built-in VPN to hide it) | Your IP never touches the swarm — only the debrid server sees it |
-| **Cost** | Free | ~$3-5/month (your own Real-Debrid account) |
-
-Both modes are optional and work together. Cached content goes through debrid automatically; uncached falls back to WebTorrent.
+**Streaming:** Plays directly from the torrent swarm by default (free, works with any torrent). Optionally routes through [Real-Debrid](https://real-debrid.com) (~$3/mo) — torrents download on their servers, you stream over HTTPS with instant seeking and zero IP exposure. Both work together: cached content goes through debrid automatically, uncached falls back to direct streaming.
 
 ---
 
