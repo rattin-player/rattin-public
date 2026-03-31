@@ -33,6 +33,25 @@ export function parseSizeStr(sizeStr: string): number {
   return Math.round(num * (multipliers[unit] || 1));
 }
 
+export interface TorrentioMeta {
+  languages: string[];
+  hasSubs: boolean;
+  multiAudio: boolean;
+  foreignOnly: boolean;
+}
+
+const FLAG_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
+const ENGLISH_FLAGS = new Set(["🇬🇧", "🇺🇸", "🇦🇺", "🇨🇦"]);
+
+export function parseTorrentioMeta(title: string): TorrentioMeta {
+  const full = title;
+  const flags = [...new Set(full.match(FLAG_RE) || [])];
+  const hasSubs = /multi\s*sub|multisub|\bsub\s+[a-z]{2,}/i.test(full);
+  const multiAudio = /multi\s*audio|dual\s*audio|\bDUAL\b/i.test(full);
+  const foreignOnly = flags.length > 0 && !flags.some((f) => ENGLISH_FLAGS.has(f));
+  return { languages: flags, hasSubs, multiAudio, foreignOnly };
+}
+
 const TORRENTIO_BASE = "https://search-provider-4.example";
 const TORRENTIO_TIMEOUT = 8000;
 
