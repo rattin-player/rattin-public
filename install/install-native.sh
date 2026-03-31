@@ -66,8 +66,13 @@ done
 if [ "$UNINSTALL" = true ]; then
     log "Uninstalling Rattin..."
     # Kill any running rattin processes (shell + server)
+    # Matches both AppImage (/tmp/.mount_magnet*/usr/bin/rattin-shell)
+    # and dev installs (~/.local/share/rattin/...)
     pkill -f "rattin-shell" 2>/dev/null || true
-    pkill -f "rattin/.*server\\.ts" 2>/dev/null || true
+    pkill -f "rattin.*server\\.ts" 2>/dev/null || true
+    pkill -f "mount_magnet.*node" 2>/dev/null || true
+    # Also kill anything still holding port 9630
+    fuser -k 9630/tcp 2>/dev/null || true
     sleep 0.5
     rm -f "$BIN_DIR/rattin"
     rm -f "$DESKTOP_DIR/rattin.desktop"
