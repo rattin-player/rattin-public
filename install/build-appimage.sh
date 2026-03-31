@@ -296,9 +296,11 @@ main() {
     if [ -z "$qml_dir" ] || [ ! -d "$qml_dir/QtWebEngine" ]; then
         die "Qt6 QML modules not found. Install:
   sudo apt install qt6-base-dev qt6-webengine-dev qt6-declarative-dev qt6-webchannel-dev \\
-    libmpv-dev qml6-module-qtwebengine qml6-module-qtwebengine-controlsdelegates \\
+    libmpv-dev g++ qml6-module-qtwebengine qml6-module-qtwebengine-controlsdelegates \\
     qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \\
-    qml6-module-qtquick-controls qml6-module-qtwebchannel"
+    qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtwebchannel \\
+    qml6-module-qtqml qml6-module-qtqml-models qml6-module-qtqml-workerscript \\
+    qml6-module-qtcore"
     fi
 
     download_tools
