@@ -69,11 +69,11 @@ export async function searchStreams(title: string, year: number | undefined, typ
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function playTorrent(infoHash: string, name: string, season?: number | null, episode?: number | null): Promise<any> {
+export async function playTorrent(infoHash: string, name: string, season?: number | null, episode?: number | null, fileIdx?: number): Promise<any> {
   const res = await fetch("/api/play-torrent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ infoHash, name, season, episode }),
+    body: JSON.stringify({ infoHash, name, season, episode, fileIdx }),
   });
   if (!res.ok) throw new Error("stream_failed");
   return res.json();
