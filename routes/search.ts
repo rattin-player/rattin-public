@@ -342,7 +342,7 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
         if (aForeign !== bForeign) return aForeign - bForeign;
         return b.seeders - a.seeders || b.score - a.score;
       })
-      .slice(0, 20);
+      .slice(0, 50);
 
     res.json({ results: scored });
   } catch (err) {
