@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject, type RefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { isNative } from "./native-bridge";
+import { isNative, mpvTogglePause, mpvSetVolume } from "./native-bridge";
 
 interface ActiveStream {
   infoHash: string;
@@ -112,6 +112,10 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  const playingRef = useRef(false);
+  playingRef.current = playing;
+  const volumeRef = useRef(1);
+  volumeRef.current = volume;
   const effectiveTimeRef = useRef<EffectiveTime | null>(null);
   const subsRef = useRef<SubtitleOption[]>([]);
   const activeSubRef = useRef("");
@@ -237,6 +241,11 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   }, [active]);
 
   const togglePlay = useCallback(() => {
+    if (isNative) {
+      mpvTogglePause();
+      setPlaying((p) => !p);
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) v.play().catch(() => {});
@@ -283,7 +292,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
           else if (v) v.currentTime = Math.max(0, v.currentTime + value);
           break;
         case "volume":
-          if (v) { v.volume = value; setVolume(value); }
+          if (isNative) mpvSetVolume(value * 100);
+          else if (v) v.volume = value;
+          setVolume(value);
           break;
         case "subtitle":
           if (commandRef.current?.switchSubtitle) commandRef.current.switchSubtitle(value);
@@ -373,7 +384,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
       const state = {
         sessionId: rcSessionId,
-        playing: !v.paused,
+        playing: isNative ? playingRef.current : !v.paused,
         currentTime: ct,
         duration: dur,
         title: active?.title || "",
@@ -384,7 +395,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         activeSub: activeSubRef.current,
         audioTracks: audioTracksRef.current,
         activeAudio: activeAudioRef.current,
-        volume: v.volume,
+        volume: isNative ? volumeRef.current : v.volume,
         dlProgress: dlProgressRef.current,
         dlSpeed: dlSpeedRef.current,
         dlPeers: dlPeersRef.current,

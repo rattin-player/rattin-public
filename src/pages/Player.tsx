@@ -179,17 +179,18 @@ export default function Player() {
     }).catch((e) => console.error("[native-bridge] waitForBridge error:", e));
 
     onMpvTimeChanged((t) => {
-      if (effectiveTimeRef.current) {
-        effectiveTimeRef.current = { time: t, duration: effectiveTimeRef.current.duration, ts: Date.now() };
-      }
+      const prev = effectiveTimeRef.current;
+      effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
     });
     onMpvDurationChanged((d) => {
-      if (effectiveTimeRef.current) {
-        effectiveTimeRef.current = { ...effectiveTimeRef.current, duration: d, ts: Date.now() };
-      }
+      const prev = effectiveTimeRef.current;
+      effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
     });
     onMpvEofReached(() => {
       navigate(-1);
+    });
+    onMpvPauseChanged((paused) => {
+      setPlaying(!paused);
     });
 
     return () => { mpvStop(); };
