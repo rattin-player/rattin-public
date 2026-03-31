@@ -51,10 +51,12 @@ if (isNative) {
  * Uses the bundled QWebChannel class + qt.webChannelTransport (injected
  * by Qt into MainWorld when webChannel is set on WebEngineView). */
 let _bridgeReady = false;
+let _connectingPromise: Promise<void> | null = null;
 export function waitForBridge(): Promise<void> {
   if (_bridgeReady && window.mpvBridge) return Promise.resolve();
+  if (_connectingPromise) return _connectingPromise;
 
-  return new Promise((resolve) => {
+  _connectingPromise = new Promise((resolve) => {
     const tryConnect = () => {
       const transport = (window as any).qt?.webChannelTransport;
       if (!transport) return false;

@@ -1,9 +1,0 @@
-FROM fedora:40
-
-COPY install/install.sh /tmp/install.sh
-RUN chmod +x /tmp/install.sh
-
-COPY . /tmp/build/player-main/
-RUN cd /tmp/build && tar -czf /tmp/app.tar.gz player-main/
-
-CMD ["bash", "-c", "APP_TARBALL=/tmp/app.tar.gz bash /tmp/install.sh --non-interactive --no-service --tmdb-key test_dummy_key_12345"]

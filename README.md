@@ -68,8 +68,6 @@
 - **Multi-Language Detection** — Extracts language tags from embedded streams (English, Spanish, French, German, Japanese, Korean, and more).
 - **Subtitle Offset** — Compensates for time misalignment between video and subtitle tracks.
 - **Audio Track Selection** — Switch between multiple audio tracks. Surround sound detection (shows "5.1" badge).
-- **Pre-Play Track Selection** — Modal to choose audio and subtitle tracks before playback starts.
-
 ### 🖥️ Player UI
 
 - **Keyboard Shortcuts** — `Space` play/pause, `←`/`→` seek ±10s, `F` fullscreen, `Esc` exit fullscreen.
@@ -94,28 +92,18 @@
 
 One command. Fresh machine. Everything handled.
 
-**Linux** (Ubuntu 22.04+, Debian 12+, Fedora 39+):
+**Linux** (Arch/CachyOS, Ubuntu 22.04+, Debian 12+, Fedora 39+):
 
 ```bash
-(curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.sh || wget -qO- https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.sh) | sudo bash
+curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash
 ```
 
-**Windows** (10/11, as Administrator):
-
-```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.ps1 | iex"
-```
-
-The installer downloads Node, ffmpeg, and the app — all bundled locally in `/opt/rattin` (Linux) or `C:\Program Files\rattin` (Windows). You'll be prompted for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
+Installs Qt6 deps, builds the native shell with mpv, and creates a desktop entry. You'll be prompted for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
 
 **Uninstall:**
 
 ```bash
-# Linux
-(curl -fsSL https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.sh || wget -qO- https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.sh) | sudo bash -s -- --uninstall
-
-# Windows
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rattin-player/rattin-public/main/install.ps1 | iex" -Uninstall
+curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash -s -- --uninstall
 ```
 
 **Update:** Rerun the install command. It detects the existing installation and updates in place.
