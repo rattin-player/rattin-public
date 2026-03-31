@@ -27,6 +27,8 @@ gh repo clone rattin-player/rattin-public "$INSTALL_REPO" -- --depth 1
 cp "$REPO_ROOT/install/install-native.sh" "$INSTALL_REPO/install-native.sh"
 cd "$INSTALL_REPO"
 if ! git diff --quiet; then
+    git config user.email "rattin@noreply.github.com"
+    git config user.name "Rattin"
     git add install-native.sh
     git commit -m "sync install script from rattin-player/player"
     git push
