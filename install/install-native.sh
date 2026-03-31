@@ -11,7 +11,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/share/rattin}"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-REPO_URL="https://github.com/user/rattin"  # TODO: update with real URL
+REPO_URL="https://github.com/rattin-player/player"
 BRANCH="native-desktop-pivot"
 
 # ---------------------------------------------------------------------------
