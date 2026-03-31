@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
         auto *engine = new QQmlApplicationEngine(&app);
         engine->rootContext()->setContextProperty("serverPort", port);
         engine->rootContext()->setContextProperty("initialUrl",
-            QString("http://localhost:%1").arg(port));
+            QString("http://localhost:%1?native=1").arg(port));
         engine->rootContext()->setContextProperty("bridge", bridge);
 
         engine->load(QUrl("qrc:/main.qml"));

@@ -29,23 +29,8 @@ Window {
 
         webChannel: channel
 
-        // Mark window.__NATIVE__ early so React can detect native mode at module load.
-        // Also inject qwebchannel.js into MainWorld (belt-and-suspenders with runJavaScript).
-        Component.onCompleted: {
-            webView.userScripts.collection = [
-                {
-                    "sourceUrl": "qrc:///qtwebchannel/qwebchannel.js",
-                    "injectionPoint": WebEngineScript.DocumentCreation,
-                    "worldId": WebEngineScript.MainWorld
-                },
-                {
-                    "name": "native-marker",
-                    "sourceCode": "window.__NATIVE__ = true; console.log('[shell] __NATIVE__ marker set');",
-                    "injectionPoint": WebEngineScript.DocumentCreation,
-                    "worldId": WebEngineScript.MainWorld
-                }
-            ]
-        }
+        // Native detection is via ?native=1 URL param (set in main.cpp).
+        // qwebchannel.js is loaded via runJavaScript in onLoadingChanged below.
 
         onLoadingChanged: function(loadingInfo) {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {

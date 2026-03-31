@@ -30,13 +30,15 @@ declare global {
 }
 
 /** True when running inside the Qt shell.
- * Detection: `window.__NATIVE__` is set by a userScript injected at DocumentCreation,
- * `window.qt` is the webChannelTransport (may not exist in MainWorld on all Qt versions). */
+ * Detection via URL param `?native=1` set by the Qt shell in main.cpp.
+ * This is evaluated at module load time and is reliable because the URL
+ * is set before the page even starts loading. */
 export const isNative: boolean =
-  typeof window !== "undefined" && ((window as any).__NATIVE__ === true || "qt" in window);
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("native") === "1";
 
-if (typeof window !== "undefined") {
-  console.log("[native-bridge] isNative:", isNative, "__NATIVE__:", (window as any).__NATIVE__, "window.qt:", "qt" in window);
+if (isNative) {
+  console.log("[native-bridge] native mode detected via URL param");
 }
 
 /** Wait for the QWebChannel bridge to become available (async setup). */
