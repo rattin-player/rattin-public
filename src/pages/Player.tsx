@@ -9,7 +9,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp } from "../lib/api";
 import { encode } from "uqr";
-import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged } from "../lib/native-bridge";
+import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
@@ -213,11 +213,17 @@ export default function Player() {
       onNativeAudioChanged((mpvId) => {
         switchAudio(mpvId);
       });
+      onNativeVolumeChanged((percent) => {
+        const v = videoRef.current;
+        if (v) v.volume = percent / 100;
+      });
+      onNativeSubSizeChanged((size) => {
+        adjustSubSize(size - subSize);
+      });
     }).catch((e) => console.error("[native-bridge] waitForBridge error:", e));
 
     return () => {
       cancelled = true;
-      // Clear event handlers before stopping to prevent stale navigate calls
       if (window.mpvEvents) {
         window.mpvEvents.onEofReached = null;
         window.mpvEvents.onTimeChanged = null;
@@ -225,6 +231,8 @@ export default function Player() {
         window.mpvEvents.onPauseChanged = null;
         window.mpvEvents.onNativeSubChanged = null;
         window.mpvEvents.onNativeAudioChanged = null;
+        window.mpvEvents.onNativeVolumeChanged = null;
+        window.mpvEvents.onNativeSubSizeChanged = null;
       }
       mpvStop();
     };

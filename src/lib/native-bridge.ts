@@ -30,6 +30,8 @@ interface MpvEvents {
   onPauseChanged: ((paused: boolean) => void) | null;
   onNativeSubChanged: ((mpvId: number) => void) | null;
   onNativeAudioChanged: ((mpvId: number) => void) | null;
+  onNativeVolumeChanged: ((percent: number) => void) | null;
+  onNativeSubSizeChanged: ((size: number) => void) | null;
 }
 
 declare global {
@@ -81,6 +83,8 @@ export function waitForBridge(): Promise<void> {
           onPauseChanged: null,
           onNativeSubChanged: null,
           onNativeAudioChanged: null,
+          onNativeVolumeChanged: null,
+          onNativeSubSizeChanged: null,
         };
         bridge.timeChanged.connect((s: number) => {
           if (window.mpvEvents?.onTimeChanged) window.mpvEvents.onTimeChanged(s);
@@ -100,6 +104,12 @@ export function waitForBridge(): Promise<void> {
         });
         bridge.nativeAudioChanged.connect((mpvId: number) => {
           if (window.mpvEvents?.onNativeAudioChanged) window.mpvEvents.onNativeAudioChanged(mpvId);
+        });
+        bridge.nativeVolumeChanged.connect((percent: number) => {
+          if (window.mpvEvents?.onNativeVolumeChanged) window.mpvEvents.onNativeVolumeChanged(percent);
+        });
+        bridge.nativeSubSizeChanged.connect((size: number) => {
+          if (window.mpvEvents?.onNativeSubSizeChanged) window.mpvEvents.onNativeSubSizeChanged(size);
         });
         _bridgeReady = true;
         console.log("[native-bridge] bridge connected!");
@@ -201,4 +211,12 @@ export function onNativeSubChanged(cb: (mpvId: number) => void): void {
 
 export function onNativeAudioChanged(cb: (mpvId: number) => void): void {
   if (window.mpvEvents) window.mpvEvents.onNativeAudioChanged = cb;
+}
+
+export function onNativeVolumeChanged(cb: (percent: number) => void): void {
+  if (window.mpvEvents) window.mpvEvents.onNativeVolumeChanged = cb;
+}
+
+export function onNativeSubSizeChanged(cb: (size: number) => void): void {
+  if (window.mpvEvents) window.mpvEvents.onNativeSubSizeChanged = cb;
 }

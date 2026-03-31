@@ -71,19 +71,21 @@ Window {
         signal eofReached()
         signal pauseChanged(bool paused)
         signal isPlayingChanged(bool playing)
-        // Signals for JS↔QML track sync
-        signal subtitleTrackChanged(int mpvId)
-        signal audioTrackChanged(int mpvId)
-        // QML→JS: native overlay changed tracks, JS should update its state
-        signal nativeSubChanged(int mpvId)
-        signal nativeAudioChanged(int mpvId)
+        // JS↔QML state sync signals
+        signal subtitleTrackChanged(int mpvId)  // JS→QML: JS changed sub
+        signal audioTrackChanged(int mpvId)     // JS→QML: JS changed audio
+        signal nativeSubChanged(int mpvId)      // QML→JS: native overlay changed sub
+        signal nativeAudioChanged(int mpvId)    // QML→JS: native overlay changed audio
+        signal nativeVolumeChanged(int percent)  // QML→JS: native overlay changed volume
+        signal volumeChanged(int percent)        // JS→QML: JS changed volume
+        signal nativeSubSizeChanged(int size)    // QML→JS: native overlay changed sub size
 
         function play(url) { bridge.play(url) }
         function pause() { bridge.pause() }
         function resume() { bridge.resume() }
         function seek(seconds) { bridge.seek(seconds) }
-        function setVolume(percent) { bridge.setVolume(percent) }
-        function setAudioTrack(index) { bridge.setAudioTrack(index) }
+        function setVolume(percent) { bridge.setVolume(percent); transport.volumeChanged(percent) }
+        function setAudioTrack(index) { bridge.setAudioTrack(index); transport.audioTrackChanged(index + 1) }
         function setSubtitleTrack(index) {
             bridge.setSubtitleTrack(index)
             // Notify QML so it updates its active track indicator
@@ -120,11 +122,12 @@ Window {
         }
     }
 
-    // Sync QML state when JS changes tracks (phone remote → QML overlay)
+    // Sync QML state when JS changes state (phone remote → QML overlay)
     Connections {
         target: transport
         function onSubtitleTrackChanged(mpvId) { root.activeSub = mpvId }
         function onAudioTrackChanged(mpvId) { root.activeAudio = mpvId }
+        function onVolumeChanged(percent) { root.volume = percent }
     }
 
     MpvObject {
@@ -225,11 +228,11 @@ Window {
                 event.accepted = true; break
             case Qt.Key_Up:
                 root.volume = Math.min(100, root.volume + 10)
-                bridge.setVolume(root.volume)
+                bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                 event.accepted = true; break
             case Qt.Key_Down:
                 root.volume = Math.max(0, root.volume - 10)
-                bridge.setVolume(root.volume)
+                bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                 event.accepted = true; break
             case Qt.Key_M:
                 if (root.volume > 0) {
@@ -238,7 +241,7 @@ Window {
                 } else {
                     root.volume = controlsOverlay._savedVolume || 100
                 }
-                bridge.setVolume(root.volume)
+                bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                 event.accepted = true; break
             case Qt.Key_Escape:
                 if (root.visibility === Window.FullScreen)
@@ -398,7 +401,7 @@ Window {
                         text: "A\u2212"; color: "#ccc"; font.pixelSize: 14
                         MouseArea {
                             anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize) }
+                            onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
                         }
                     }
                     Text { text: root.subSize.toString(); color: "#888"; font.pixelSize: 12; width: 24; horizontalAlignment: Text.AlignHCenter }
@@ -406,7 +409,7 @@ Window {
                         text: "A+"; color: "#ccc"; font.pixelSize: 14
                         MouseArea {
                             anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize) }
+                            onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
                         }
                     }
                 }
@@ -506,7 +509,7 @@ Window {
                             onClicked: {
                                 if (root.volume > 0) { controlsOverlay._savedVolume = root.volume; root.volume = 0 }
                                 else { root.volume = controlsOverlay._savedVolume || 100 }
-                                bridge.setVolume(root.volume)
+                                bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                             }
                         }
                     }
@@ -517,8 +520,8 @@ Window {
                         Rectangle { x: parent.width * (root.volume / 100) - 6; y: -4.5; width: 12; height: 12; radius: 6; color: "white" }
                         MouseArea {
                             anchors.fill: parent; anchors.topMargin: -10; anchors.bottomMargin: -10; cursorShape: Qt.PointingHandCursor
-                            onClicked: function(mouse) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v) }
-                            onPositionChanged: function(mouse) { if (pressed) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v) } }
+                            onClicked: function(mouse) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v); transport.nativeVolumeChanged(v) }
+                            onPositionChanged: function(mouse) { if (pressed) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v); transport.nativeVolumeChanged(v) } }
                         }
                     }
                 }
