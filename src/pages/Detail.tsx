@@ -157,7 +157,7 @@ export default function Detail() {
     setPlayState("loading");
     setPlayError("");
     try {
-      const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode);
+      const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode, stream.fileIdx);
       if (isRemote) {
         sendRemoteStart(result, result.tags || stream.tags);
         return;
