@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { parseTorrentioTitle, parseSizeStr, searchTorrentio } from "../lib/torrentio.js";
+import { parseTorrentioTitle, parseSizeStr, searchTorrentio, parseTorrentioMeta } from "../lib/torrentio.js";
 
 // ---------------------------------------------------------------------------
 // parseTorrentioTitle tests
@@ -72,6 +72,91 @@ describe("parseTorrentioTitle", () => {
     const result = parseTorrentioTitle(title);
     assert.equal(result.torrentName, "Just.A.Torrent.Name.1080p");
     assert.equal(result.seeders, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseTorrentioMeta tests
+// ---------------------------------------------------------------------------
+
+describe("parseTorrentioMeta", () => {
+  it("extracts flag emojis from line 4", () => {
+    const title = "Torrent.Name\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\nMulti Subs / 🇬🇧 / 🇮🇹";
+    const meta = parseTorrentioMeta(title);
+    assert.deepEqual(meta.languages, ["🇬🇧", "🇮🇹"]);
+  });
+
+  it("detects Multi Subs", () => {
+    const title = "Torrent.Name\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\nMulti Subs / 🇬🇧";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.hasSubs, true);
+  });
+
+  it("detects MultiSub in torrent name", () => {
+    const title = "Movie.2024.1080p.MultiSub.BluRay\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.hasSubs, true);
+  });
+
+  it("detects SUB language codes in torrent name", () => {
+    const title = "Movie [SUB ITA ENG]\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.hasSubs, true);
+  });
+
+  it("detects Multi Audio from line 4", () => {
+    const title = "Torrent.Name\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\nMulti Audio / Multi Subs";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.multiAudio, true);
+    assert.equal(meta.hasSubs, true);
+  });
+
+  it("detects Dual Audio from line 4", () => {
+    const title = "Torrent.Name\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\nDual Audio / 🇵🇹";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.multiAudio, true);
+    assert.deepEqual(meta.languages, ["🇵🇹"]);
+  });
+
+  it("detects DUAL in torrent name", () => {
+    const title = "Movie.2024.DUAL.1080p.WEB-DL\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.multiAudio, true);
+  });
+
+  it("returns defaults when no metadata present", () => {
+    const title = "Movie.2024.1080p.BluRay\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB";
+    const meta = parseTorrentioMeta(title);
+    assert.deepEqual(meta.languages, []);
+    assert.equal(meta.hasSubs, false);
+    assert.equal(meta.multiAudio, false);
+  });
+
+  it("handles single-line title", () => {
+    const title = "Movie.2024.1080p";
+    const meta = parseTorrentioMeta(title);
+    assert.deepEqual(meta.languages, []);
+    assert.equal(meta.hasSubs, false);
+    assert.equal(meta.multiAudio, false);
+  });
+
+  it("detects foreign-only (flags but no English)", () => {
+    const title = "Movie\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\n🇷🇺";
+    const meta = parseTorrentioMeta(title);
+    assert.deepEqual(meta.languages, ["🇷🇺"]);
+    assert.equal(meta.foreignOnly, true);
+  });
+
+  it("not foreign-only when English flag present", () => {
+    const title = "Movie\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB\n🇬🇧 / 🇮🇹";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.foreignOnly, false);
+  });
+
+  it("not foreign-only when no flags at all", () => {
+    const title = "Movie\nfile.mkv\n👤 10 💾 500 MB ⚙️ TPB";
+    const meta = parseTorrentioMeta(title);
+    assert.equal(meta.foreignOnly, false);
   });
 });
 
