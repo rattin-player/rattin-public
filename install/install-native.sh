@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
+# =============================================================================
+# Rattin — Linux Desktop Installer
+# Downloads a pre-built AppImage, creates desktop entry + config.
+#
+# Install:    curl -fsSL <url>/install-native.sh | bash
+# Uninstall:  curl -fsSL <url>/install-native.sh | bash -s -- --uninstall
+# =============================================================================
+
+main() {
 set -euo pipefail
 
-# ==============================================================================
-# Rattin Native — Linux Desktop Installer
-# Installs Qt6 deps, builds the Qt shell + mpv player, creates desktop entry
-# ==============================================================================
-
-INSTALLER_VERSION="1.0.0"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/share/rattin}"
+INSTALLER_VERSION="2.0.0"
+APP_DIR="$HOME/.local/share/rattin"
 BIN_DIR="$HOME/.local/bin"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
 DESKTOP_DIR="$HOME/.local/share/applications"
-ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-APP_TARBALL_URL="https://github.com/rattin-player/rattin-public/releases/latest/download/native-app.tar.gz"
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+APPIMAGE_URL="https://github.com/rattin-player/rattin-public/releases/latest/download/Rattin-x86_64.AppImage"
+APPIMAGE_NAME="Rattin.AppImage"
 
 # ---------------------------------------------------------------------------
 # Color helpers
@@ -42,10 +48,10 @@ while [ $# -gt 0 ]; do
         --help|-h)
             echo "Usage: install-native.sh [OPTIONS]"
             echo ""
-            echo "Installs Rattin as a native desktop app with Qt6 + mpv."
+            echo "Installs Rattin as a native desktop app (AppImage)."
             echo ""
             echo "Options:"
-            echo "  --uninstall        Remove Rattin native"
+            echo "  --uninstall        Remove Rattin"
             echo "  --tmdb-key KEY     Provide TMDB API key"
             echo "  --help, -h         Show this help message"
             exit 0
@@ -57,215 +63,97 @@ done
 # ---------------------------------------------------------------------------
 # Uninstall
 # ---------------------------------------------------------------------------
-if [ "$UNINSTALL" = "true" ]; then
-    log "Uninstalling Rattin native..."
+if [ "$UNINSTALL" = true ]; then
+    log "Uninstalling Rattin..."
     rm -f "$BIN_DIR/rattin"
     rm -f "$DESKTOP_DIR/rattin.desktop"
-    rm -rf "$INSTALL_DIR"
+    rm -f "$ICON_DIR/rattin.svg" "$ICON_DIR/rattin.png"
+    rm -rf "$APP_DIR"
+    # Also clean up old installs that used 256x256 icon path
+    rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.png"
+    rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.svg"
     log "Updating desktop database..."
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
-    log "Rattin native uninstalled."
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    echo ""
+    log "Rattin uninstalled."
+    echo "  Config preserved at: $CONFIG_DIR"
+    echo "  To remove config too: rm -rf $CONFIG_DIR"
     exit 0
 fi
 
 # ---------------------------------------------------------------------------
-# Distro detection
+# Download AppImage
 # ---------------------------------------------------------------------------
-detect_distro() {
-    DISTRO_ID="unknown"
-    DISTRO_ID_LIKE=""
-    PKG_MANAGER="unknown"
+log "Downloading Rattin AppImage..."
 
-    if [ -f /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        DISTRO_ID="${ID:-unknown}"
-        DISTRO_ID_LIKE="${ID_LIKE:-}"
-    fi
+mkdir -p "$APP_DIR"
+local tmpfile="$APP_DIR/${APPIMAGE_NAME}.tmp"
 
-    local match="${DISTRO_ID} ${DISTRO_ID_LIKE}"
-    if echo "$match" | grep -qiE 'arch|cachyos|manjaro|endeavour'; then
-        PKG_MANAGER="pacman"
-    elif echo "$match" | grep -qiE 'debian|ubuntu|linuxmint|pop'; then
-        PKG_MANAGER="apt"
-    elif echo "$match" | grep -qiE 'fedora|rhel|centos|rocky'; then
-        PKG_MANAGER="dnf"
-    elif echo "$match" | grep -qiE 'opensuse|suse'; then
-        PKG_MANAGER="zypper"
-    fi
-    log "Detected: ${DISTRO_ID} (pkg: ${PKG_MANAGER})"
-}
+if command -v curl >/dev/null 2>&1; then
+    curl -fSL "$APPIMAGE_URL" -o "$tmpfile"
+elif command -v wget >/dev/null 2>&1; then
+    wget -q "$APPIMAGE_URL" -O "$tmpfile"
+else
+    die "Neither curl nor wget found."
+fi
 
-# ---------------------------------------------------------------------------
-# Install system dependencies
-# ---------------------------------------------------------------------------
-install_deps() {
-    log "Checking system dependencies..."
-
-    local missing=()
-
-    # Check for each required tool/lib
-    command -v cmake   >/dev/null 2>&1 || missing+=("cmake")
-    command -v make    >/dev/null 2>&1 || missing+=("make")
-    command -v pkg-config >/dev/null 2>&1 || missing+=("pkg-config")
-    command -v node    >/dev/null 2>&1 || missing+=("nodejs")
-    command -v npm     >/dev/null 2>&1 || missing+=("npm")
-    command -v ffmpeg  >/dev/null 2>&1 || missing+=("ffmpeg")
-    command -v ffprobe >/dev/null 2>&1 || missing+=("ffprobe")
-
-    # Check for mpv/libmpv
-    if ! pkg-config --exists mpv 2>/dev/null; then
-        missing+=("libmpv")
-    fi
-
-    # Check for Qt6 WebEngine (the heaviest dep — if this exists, the rest likely do)
-    if ! pkg-config --exists Qt6WebEngineCore 2>/dev/null; then
-        missing+=("qt6-webengine")
-    fi
-
-    if [ ${#missing[@]} -eq 0 ]; then
-        log "All dependencies already installed"
-        return 0
-    fi
-
-    warn "Missing: ${missing[*]}"
-    log "Installing dependencies via ${PKG_MANAGER}..."
-
-    case "$PKG_MANAGER" in
-        pacman)
-            sudo pacman -Syu --needed --noconfirm \
-                qt6-base qt6-webengine qt6-declarative qt6-webchannel \
-                mpv cmake pkgconf nodejs npm ffmpeg chromaprint
-            ;;
-        apt)
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq \
-                qt6-base-dev qt6-webengine-dev qt6-webengine-dev-tools \
-                qt6-declarative-dev qt6-webchannel-dev \
-                libmpv-dev cmake pkg-config nodejs npm ffmpeg libchromaprint-tools
-            ;;
-        dnf)
-            sudo dnf install -y \
-                qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtdeclarative-devel \
-                qt6-qtwebchannel-devel \
-                mpv-libs-devel cmake pkg-config nodejs npm ffmpeg chromaprint-tools
-            ;;
-        zypper)
-            sudo zypper install -y \
-                qt6-base-devel qt6-webengine-devel qt6-declarative-devel \
-                qt6-webchannel-devel \
-                mpv-devel cmake pkg-config nodejs20 npm20 ffmpeg chromaprint-fpcalc
-            ;;
-        *)
-            die "Cannot auto-install on ${DISTRO_ID}. Please install manually:
-  Qt6 (base, webengine, declarative, webchannel), libmpv, cmake, pkg-config,
-  nodejs, npm, ffmpeg, chromaprint (fpcalc)
-Then re-run this installer."
-            ;;
-    esac
-
-    log "Dependencies installed"
-}
-
-# ---------------------------------------------------------------------------
-# Download / update app source
-# ---------------------------------------------------------------------------
-get_source() {
-    log "Downloading application..."
-
-    local tmpfile="/tmp/rattin-native-download.tar.gz"
-
-    if command -v curl >/dev/null 2>&1; then
-        curl -fSL "$APP_TARBALL_URL" -o "$tmpfile"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$APP_TARBALL_URL" -O "$tmpfile"
-    else
-        die "Neither curl nor wget found."
-    fi
-
-    # Verify download
-    local filesize
-    filesize="$(stat -c%s "$tmpfile" 2>/dev/null || stat -f%z "$tmpfile" 2>/dev/null || echo 0)"
-    if [ "$filesize" -lt 100000 ]; then
-        rm -f "$tmpfile"
-        die "Download too small (${filesize} bytes). Check the release URL."
-    fi
-
-    # Extract (wipe old source on update, preserve .env)
-    local saved_env=""
-    if [ -f "$INSTALL_DIR/source/.env" ]; then
-        saved_env="$(cat "$INSTALL_DIR/source/.env")"
-    fi
-
-    rm -rf "$INSTALL_DIR/source"
-    mkdir -p "$INSTALL_DIR/source"
-    tar -xzf "$tmpfile" -C "$INSTALL_DIR/source/"
+# Verify download (AppImage should be >1 MB)
+local filesize
+filesize="$(stat -c%s "$tmpfile" 2>/dev/null || stat -f%z "$tmpfile" 2>/dev/null || echo 0)"
+if [ "$filesize" -lt 1000000 ]; then
     rm -f "$tmpfile"
+    die "Download too small (${filesize} bytes). Check the release URL."
+fi
 
-    # Restore .env if it existed
-    if [ -n "$saved_env" ]; then
-        echo "$saved_env" > "$INSTALL_DIR/source/.env"
-    fi
+mv "$tmpfile" "$APP_DIR/$APPIMAGE_NAME"
+chmod +x "$APP_DIR/$APPIMAGE_NAME"
 
-    cd "$INSTALL_DIR/source"
-    log "Source ready at $INSTALL_DIR/source"
-}
+log "AppImage saved to $APP_DIR/$APPIMAGE_NAME"
 
 # ---------------------------------------------------------------------------
-# Build
+# Create symlink
 # ---------------------------------------------------------------------------
-build_app() {
-    cd "$INSTALL_DIR/source"
-
-    log "Installing Node.js dependencies..."
-    npm install --production=false 2>&1 | tail -3
-
-    log "Building frontend..."
-    npm run build 2>&1 | tail -3
-
-    log "Building Qt6 shell..."
-    cd shell
-    mkdir -p build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5
-    make -j"$(nproc)" 2>&1 | tail -5
-    cd "$INSTALL_DIR/source"
-
-    log "Build complete"
-}
+mkdir -p "$BIN_DIR"
+ln -sf "$APP_DIR/$APPIMAGE_NAME" "$BIN_DIR/rattin"
+log "Symlinked: $BIN_DIR/rattin"
 
 # ---------------------------------------------------------------------------
-# Install
+# Config (.env)
 # ---------------------------------------------------------------------------
-install_app() {
-    log "Installing..."
+mkdir -p "$CONFIG_DIR"
 
-    # Symlink the binary
-    mkdir -p "$BIN_DIR"
-    ln -sf "$INSTALL_DIR/source/shell/build/rattin-shell" "$BIN_DIR/rattin"
-
-    # .env file
-    if [ ! -f "$INSTALL_DIR/source/.env" ]; then
-        if [ -n "$TMDB_KEY" ]; then
-            echo "TMDB_API_KEY=$TMDB_KEY" > "$INSTALL_DIR/source/.env"
-            log "Created .env with provided TMDB key"
-        else
+if [ ! -f "$CONFIG_DIR/.env" ]; then
+    if [ -n "$TMDB_KEY" ]; then
+        echo "TMDB_API_KEY=$TMDB_KEY" > "$CONFIG_DIR/.env"
+        log "Created config with provided TMDB key"
+    else
+        # Try to prompt interactively
+        if [ -t 0 ]; then
             printf "${CYAN}Enter your TMDB API key (get one at https://www.themoviedb.org/settings/api):${NC} "
             read -r key < /dev/tty || key=""
             if [ -n "$key" ]; then
-                echo "TMDB_API_KEY=$key" > "$INSTALL_DIR/source/.env"
-                log "Created .env"
+                echo "TMDB_API_KEY=$key" > "$CONFIG_DIR/.env"
+                log "Created config"
             else
-                echo "TMDB_API_KEY=" > "$INSTALL_DIR/source/.env"
-                warn "No TMDB key provided — browsing won't work until you add one to $INSTALL_DIR/source/.env"
+                echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
+                warn "No TMDB key provided — browsing won't work until you add one to $CONFIG_DIR/.env"
             fi
+        else
+            echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
+            warn "No TMDB key provided — add one to $CONFIG_DIR/.env"
         fi
-    else
-        log ".env already exists, keeping it"
     fi
+else
+    log "Config already exists, keeping it"
+fi
 
-    # Desktop entry
-    mkdir -p "$DESKTOP_DIR"
-    cat > "$DESKTOP_DIR/rattin.desktop" << EOF
+# ---------------------------------------------------------------------------
+# Desktop entry + icon
+# ---------------------------------------------------------------------------
+mkdir -p "$DESKTOP_DIR" "$ICON_DIR"
+
+cat > "$DESKTOP_DIR/rattin.desktop" << EOF
 [Desktop Entry]
 Name=Rattin
 Comment=Stream torrents instantly with native video playback
@@ -278,60 +166,37 @@ Terminal=false
 StartupWMClass=MagnetPlayer
 EOF
 
-    # Icon (generate a simple one if none exists)
-    mkdir -p "$ICON_DIR"
-    if [ ! -f "$ICON_DIR/rattin.png" ]; then
-        # Create a simple SVG icon and convert if possible, otherwise skip
-        if command -v convert >/dev/null 2>&1; then
-            convert -size 256x256 xc:'#1a1a2e' \
-                -fill '#e94560' -draw "circle 128,128 128,40" \
-                -fill white -gravity center -pointsize 80 -annotate +0+0 "M" \
-                "$ICON_DIR/rattin.png" 2>/dev/null || true
-        fi
-    fi
+# Extract the icon from the AppImage
+# AppImages support --appimage-extract to get contents without FUSE
+cd /tmp
+"$APP_DIR/$APPIMAGE_NAME" --appimage-extract rattin.svg >/dev/null 2>&1 || true
+if [ -f "squashfs-root/rattin.svg" ]; then
+    cp "squashfs-root/rattin.svg" "$ICON_DIR/rattin.svg"
+fi
+rm -rf squashfs-root
 
-    # Update desktop database
-    update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
-    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-
-    log "Installed"
-}
+update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Print summary
+# Summary
 # ---------------------------------------------------------------------------
-print_summary() {
-    echo ""
-    printf "${BOLD}========================================${NC}\n"
-    printf "${GREEN}  Rattin Native installed!${NC}\n"
-    printf "${BOLD}========================================${NC}\n"
-    echo ""
-    echo "  Launch:  rattin"
-    echo "  Or find 'Rattin' in your application menu"
-    echo ""
-    echo "  Install dir:  $INSTALL_DIR"
-    echo "  Binary:       $BIN_DIR/rattin"
-    echo "  Config:       $INSTALL_DIR/source/.env"
-    echo ""
-    echo "  To update:    re-run this installer"
-    echo "  To uninstall: $0 --uninstall"
-    echo ""
-}
+echo ""
+printf "${BOLD}========================================${NC}\n"
+printf "${GREEN}  Rattin installed!${NC}\n"
+printf "${BOLD}========================================${NC}\n"
+echo ""
+echo "  Launch:  rattin"
+echo "  Or find 'Rattin' in your application menu"
+echo ""
+echo "  AppImage: $APP_DIR/$APPIMAGE_NAME"
+echo "  Binary:   $BIN_DIR/rattin"
+echo "  Config:   $CONFIG_DIR/.env"
+echo ""
+echo "  To update:    re-run this installer"
+echo "  To uninstall: bash <(curl -fsSL <url>/install-native.sh) --uninstall"
+echo ""
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-main() {
-    echo ""
-    printf "${BOLD}Rattin Native — Desktop Installer v${INSTALLER_VERSION}${NC}\n"
-    echo ""
+} # end main()
 
-    detect_distro
-    install_deps
-    get_source
-    build_app
-    install_app
-    print_summary
-}
-
-main
+main "$@"

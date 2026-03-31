@@ -86,11 +86,23 @@ int main(int argc, char *argv[])
     serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
 
     // Find the app directory (where server.ts and node_modules live).
-    // Binary lives at <root>/shell/build/rattin-shell, so go up 2 levels.
-    // Also handle symlinks by resolving the real path first.
+    // When RATTIN_APP_DIR is set (AppImage mode), use that directly.
+    // Otherwise, binary lives at <root>/shell/build/rattin-shell — go up 2 levels.
     QString binDir = QCoreApplication::applicationDirPath();
-    QString appDir = QDir(binDir + "/../../").canonicalPath() + "/";
+    QString appDir;
+    if (qEnvironmentVariableIsSet("RATTIN_APP_DIR"))
+        appDir = qEnvironmentVariable("RATTIN_APP_DIR");
+    else
+        appDir = QDir(binDir + "/../../").canonicalPath() + "/";
     serverProcess->setWorkingDirectory(appDir);
+
+    // Config directory for .env file (writable — outside AppImage mount).
+    // Falls back to appDir for non-AppImage installs.
+    QString configDir;
+    if (qEnvironmentVariableIsSet("RATTIN_CONFIG_DIR"))
+        configDir = qEnvironmentVariable("RATTIN_CONFIG_DIR");
+    else
+        configDir = appDir;
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("PORT", QString::number(port));
@@ -99,26 +111,44 @@ int main(int argc, char *argv[])
 
     // Determine how to start the server:
     // 1. If server.js exists (pre-compiled), use node
-    // 2. Otherwise use local node_modules/.bin/tsx (not global tsx which may not exist)
+    // 2. Otherwise use node + tsx loader for server.ts
+    //
+    // RATTIN_NODE_PATH overrides the node binary (for bundled node in AppImage).
+    QString nodeRunner;
+    if (qEnvironmentVariableIsSet("RATTIN_NODE_PATH"))
+        nodeRunner = qEnvironmentVariable("RATTIN_NODE_PATH");
+    else
+        nodeRunner = "node";
+
     QString serverScript;
     QString runner;
     QStringList args;
 
+    // Build --env-file arg with absolute path (Node 20 errors on missing file)
+    QString envFilePath = configDir + "/.env";
+    bool hasEnvFile = QFile::exists(envFilePath);
+
     if (QFile::exists(appDir + "/server.js")) {
         serverScript = "server.js";
-        runner = "node";
-        args = {"--env-file=.env", serverScript};
+        runner = nodeRunner;
+        if (hasEnvFile)
+            args = {"--env-file=" + envFilePath, serverScript};
+        else
+            args = {serverScript};
     } else {
         serverScript = "server.ts";
-        // Use local tsx from node_modules — global tsx may not be installed
+        runner = nodeRunner;
+        // Use local tsx from node_modules, invoked via node for reliable path resolution
         QString localTsx = appDir + "/node_modules/.bin/tsx";
-        if (QFile::exists(localTsx)) {
-            runner = localTsx;
-        } else {
+        if (!QFile::exists(localTsx)) {
             // Fall back to global tsx (might work if user installed it)
-            runner = "tsx";
+            localTsx = "tsx";
         }
-        args = {"--env-file=.env", serverScript};
+        // --env-file is a node flag, must come before the tsx script path
+        if (hasEnvFile)
+            args = {"--env-file=" + envFilePath, localTsx, serverScript};
+        else
+            args = {localTsx, serverScript};
     }
 
     fprintf(stderr, "[shell] appDir: %s\n", appDir.toUtf8().constData());

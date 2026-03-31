@@ -1,0 +1,42 @@
+#!/bin/bash
+# =============================================================================
+# Rattin — AppImage Entry Point
+# Sets up the bundled runtime environment and launches the Qt shell.
+# =============================================================================
+
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# ── Library paths (Qt6, libmpv, codecs) ──────────────────────────────────────
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# ── Qt runtime paths ────────────────────────────────────────────────────────
+export QT_PLUGIN_PATH="$HERE/usr/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/plugins/platforms"
+export QML_IMPORT_PATH="$HERE/usr/qml"
+export QTWEBENGINEPROCESS_PATH="$HERE/usr/libexec/QtWebEngineProcess"
+
+# AppImage cannot use the Chromium setuid sandbox — disable it.
+export QTWEBENGINE_CHROMIUM_FLAGS="${QTWEBENGINE_CHROMIUM_FLAGS:+$QTWEBENGINE_CHROMIUM_FLAGS }--no-sandbox"
+
+# ── PATH — bundled node, ffmpeg, ffprobe ─────────────────────────────────────
+export PATH="$HERE/usr/share/rattin/node/bin:$HERE/usr/bin:$PATH"
+
+# ── App directories ─────────────────────────────────────────────────────────
+export RATTIN_APP_DIR="$HERE/usr/share/rattin/app/"
+export RATTIN_NODE_PATH="$HERE/usr/share/rattin/node/bin/node"
+
+# Writable config directory (outside the read-only AppImage mount)
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
+export RATTIN_CONFIG_DIR="$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR"
+
+# First-run: create .env from bundled example
+if [ ! -f "$CONFIG_DIR/.env" ]; then
+    if [ -f "$RATTIN_APP_DIR/.env.example" ]; then
+        cp "$RATTIN_APP_DIR/.env.example" "$CONFIG_DIR/.env"
+    else
+        echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
+    fi
+fi
+
+exec "$HERE/usr/bin/rattin-shell" "$@"

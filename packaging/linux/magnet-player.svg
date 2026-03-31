@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Horseshoe magnet shape -->
+  <path d="M 80 170 L 80 110 A 48 48 0 0 1 176 110 L 176 170"
+        fill="none" stroke="#e94560" stroke-width="28" stroke-linecap="round"/>
+  <!-- Magnet poles (silver caps) -->
+  <rect x="66" y="158" width="28" height="24" rx="4" fill="#c0c0c0"/>
+  <rect x="162" y="158" width="28" height="24" rx="4" fill="#c0c0c0"/>
+  <!-- Play triangle in the center of the magnet -->
+  <polygon points="118,95 118,140 150,117.5" fill="white"/>
+</svg>

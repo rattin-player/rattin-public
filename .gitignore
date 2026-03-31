@@ -13,3 +13,5 @@ PRE-MORTEM.md
 docs/superpowers/
 native-app.tar.gz
 shell/build/
+build-appimage/
+*.AppImage
