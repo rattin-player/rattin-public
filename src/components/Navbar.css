@@ -168,6 +168,12 @@
   pointer-events: none;
 }
 
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .navbar-pair-btn {
   display: flex;
   align-items: center;
