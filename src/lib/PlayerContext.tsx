@@ -332,10 +332,10 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         }
         case "start-stream":
           if (value) {
-            startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags);
+            startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
             if (navigateRef.current) {
               navigateRef.current(`/play/${value.infoHash}/${value.fileIndex}`, {
-                state: { tags: value.tags, title: value.title },
+                state: { tags: value.tags, title: value.title, debridUrl: value.debridUrl },
               });
             }
           }

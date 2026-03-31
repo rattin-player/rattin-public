@@ -81,7 +81,7 @@ export default function Detail() {
       body: JSON.stringify({
         sessionId,
         action: "start-stream",
-        value: { infoHash: result.infoHash, fileIndex: result.fileIndex, title: data.title || data.name, tags },
+        value: { infoHash: result.infoHash, fileIndex: result.fileIndex, title: data.title || data.name, tags, debridUrl: result.debridUrl },
       }),
     }).catch(() => {});
     navigate(`/remote?session=${sessionId}`, {
