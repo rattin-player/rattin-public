@@ -82,7 +82,7 @@ if [ "$UNINSTALL" = true ]; then
     rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.png"
     rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/rattin.svg"
     # Close firewall port
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "9630"; then
+    if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "9630"; then
         sudo ufw delete allow 9630/tcp >/dev/null 2>&1 || true
     elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --list-ports 2>/dev/null | grep -q "9630/tcp"; then
         sudo firewall-cmd --permanent --remove-port=9630/tcp >/dev/null 2>&1 && sudo firewall-cmd --reload >/dev/null 2>&1 || true
