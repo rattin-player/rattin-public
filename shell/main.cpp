@@ -14,6 +14,7 @@
 #include <QWebEngineProfile>
 #include <QWebEngineScript>
 #include <QWebEngineScriptCollection>
+#include <QWebChannel>
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
@@ -159,14 +160,21 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Create bridge BEFORE loading QML so it's available for bindings
+        // Create bridge and register it on a QWebChannel from C++.
+        // QML's registeredObjects requires WebChannel.id attached property
+        // which can't be set on C++ context properties. So we create the
+        // channel here and pass it to QML.
         auto *bridge = new MpvBridge(&app);
+        auto *webChannel = new QWebChannel(&app);
+        webChannel->registerObject("bridge", bridge);
+        fprintf(stderr, "[shell] bridge registered on QWebChannel\n");
 
         auto *engine = new QQmlApplicationEngine(&app);
         engine->rootContext()->setContextProperty("serverPort", port);
         engine->rootContext()->setContextProperty("initialUrl",
             QString("http://localhost:%1?native=1").arg(port));
         engine->rootContext()->setContextProperty("bridge", bridge);
+        engine->rootContext()->setContextProperty("cppWebChannel", webChannel);
 
         engine->load(QUrl("qrc:/main.qml"));
 
