@@ -212,13 +212,12 @@ assemble_appdir() {
     cp "$REPO_ROOT/packaging/linux/rattin.desktop" "$APPDIR/usr/share/applications/"
     cp "$REPO_ROOT/packaging/linux/rattin.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/"
 
-    # AppImage also wants these at the root of AppDir
+    # Desktop file + icon at AppDir root (linuxdeploy expects them here)
     cp "$REPO_ROOT/packaging/linux/rattin.desktop" "$APPDIR/"
     cp "$REPO_ROOT/packaging/linux/rattin.svg" "$APPDIR/"
 
-    # Custom AppRun
-    cp "$REPO_ROOT/install/AppRun" "$APPDIR/AppRun"
-    chmod +x "$APPDIR/AppRun"
+    # NOTE: AppRun is NOT placed here — linuxdeploy handles it via --custom-apprun
+    # to avoid a self-copy conflict during its deploy step.
 
     log "AppDir assembled"
 }
@@ -250,7 +249,7 @@ build_appimage() {
         --executable "$APPDIR/usr/bin/rattin-shell" \
         --desktop-file "$APPDIR/rattin.desktop" \
         --icon-file "$APPDIR/rattin.svg" \
-        --custom-apprun "$APPDIR/AppRun" \
+        --custom-apprun "$REPO_ROOT/install/AppRun" \
         --plugin qt \
         --output appimage
 
