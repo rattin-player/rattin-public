@@ -253,6 +253,30 @@ build_appimage() {
         --custom-apprun "$REPO_ROOT/install/AppRun" \
         --plugin qt
 
+    # Bundle Wayland platform plugins — linuxdeploy only bundles xcb by default.
+    # Without these, Qt falls back to X11/XWayland on Wayland sessions, causing
+    # coordinate mismatches between rendered UI and click targets.
+    log "Bundling Wayland platform plugins..."
+    local qt_plugin_dir
+    qt_plugin_dir="$($QMAKE -query QT_INSTALL_PLUGINS 2>/dev/null || echo "")"
+    if [ -n "$qt_plugin_dir" ]; then
+        for wl_plugin in "$qt_plugin_dir"/platforms/libqwayland*.so; do
+            [ -f "$wl_plugin" ] && cp "$wl_plugin" "$APPDIR/usr/plugins/platforms/" 2>/dev/null || true
+        done
+        # Wayland shell integration plugins
+        if [ -d "$qt_plugin_dir/wayland-shell-integration" ]; then
+            cp -r "$qt_plugin_dir/wayland-shell-integration" "$APPDIR/usr/plugins/"
+        fi
+        # Wayland graphics integration
+        if [ -d "$qt_plugin_dir/wayland-graphics-integration-client" ]; then
+            cp -r "$qt_plugin_dir/wayland-graphics-integration-client" "$APPDIR/usr/plugins/"
+        fi
+        # Wayland decoration plugins
+        if [ -d "$qt_plugin_dir/wayland-decoration-client" ]; then
+            cp -r "$qt_plugin_dir/wayland-decoration-client" "$APPDIR/usr/plugins/"
+        fi
+    fi
+
     # Remove NSS/NSPR libs — they MUST come from the host system.
     # Bundling them causes version mismatches with the system's crypto stack
     # (e.g. libnssutil3.so vs libsoftokn3.so) which crashes QtWebEngine.

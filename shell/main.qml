@@ -164,6 +164,7 @@ Window {
 
         MouseArea {
             anchors.fill: parent
+            anchors.bottomMargin: bottomBar.height
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton
             onPositionChanged: {
@@ -172,6 +173,20 @@ Window {
             }
             onClicked: root.togglePause()
             onDoubleClicked: root.toggleFullscreen()
+        }
+
+        // Separate hover tracker for the bottom bar area (no pause on click)
+        MouseArea {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: bottomBar.height
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onPositionChanged: {
+                controlsOverlay.showControls = true
+                hideTimer.restart()
+            }
         }
 
         Keys.onPressed: function(event) {
