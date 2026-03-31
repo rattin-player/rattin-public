@@ -8,6 +8,10 @@
   cursor: none;
 }
 
+.player-page.native {
+  background: transparent;
+}
+
 .player-page:hover {
   cursor: default;
 }

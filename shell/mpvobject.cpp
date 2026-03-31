@@ -149,7 +149,7 @@ public:
             fbo->height(),
             0
         };
-        int flipY = 1;
+        int flipY = 0;
         mpv_render_param params[]{
             {MPV_RENDER_PARAM_OPENGL_FBO, &mpvFbo},
             {MPV_RENDER_PARAM_FLIP_Y, &flipY},
