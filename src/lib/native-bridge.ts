@@ -28,6 +28,8 @@ interface MpvEvents {
   onDurationChanged: ((seconds: number) => void) | null;
   onEofReached: (() => void) | null;
   onPauseChanged: ((paused: boolean) => void) | null;
+  onNativeSubChanged: ((mpvId: number) => void) | null;
+  onNativeAudioChanged: ((mpvId: number) => void) | null;
 }
 
 declare global {
@@ -77,6 +79,8 @@ export function waitForBridge(): Promise<void> {
           onDurationChanged: null,
           onEofReached: null,
           onPauseChanged: null,
+          onNativeSubChanged: null,
+          onNativeAudioChanged: null,
         };
         bridge.timeChanged.connect((s: number) => {
           if (window.mpvEvents?.onTimeChanged) window.mpvEvents.onTimeChanged(s);
@@ -90,6 +94,12 @@ export function waitForBridge(): Promise<void> {
         bridge.pauseChanged.connect((p: boolean) => {
           mpvPaused = p;
           if (window.mpvEvents?.onPauseChanged) window.mpvEvents.onPauseChanged(p);
+        });
+        bridge.nativeSubChanged.connect((mpvId: number) => {
+          if (window.mpvEvents?.onNativeSubChanged) window.mpvEvents.onNativeSubChanged(mpvId);
+        });
+        bridge.nativeAudioChanged.connect((mpvId: number) => {
+          if (window.mpvEvents?.onNativeAudioChanged) window.mpvEvents.onNativeAudioChanged(mpvId);
         });
         _bridgeReady = true;
         console.log("[native-bridge] bridge connected!");
@@ -183,4 +193,12 @@ export function onMpvEofReached(cb: () => void): void {
 
 export function onMpvPauseChanged(cb: (paused: boolean) => void): void {
   if (window.mpvEvents) window.mpvEvents.onPauseChanged = cb;
+}
+
+export function onNativeSubChanged(cb: (mpvId: number) => void): void {
+  if (window.mpvEvents) window.mpvEvents.onNativeSubChanged = cb;
+}
+
+export function onNativeAudioChanged(cb: (mpvId: number) => void): void {
+  if (window.mpvEvents) window.mpvEvents.onNativeAudioChanged = cb;
 }

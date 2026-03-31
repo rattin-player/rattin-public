@@ -9,7 +9,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp } from "../lib/api";
 import { encode } from "uqr";
-import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged } from "../lib/native-bridge";
+import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
@@ -164,8 +164,10 @@ export default function Player() {
   // Native mode: tell mpv to play instead of using <video> element
   useEffect(() => {
     if (!isNative || !infoHash || !fileIndex) return;
+    let cancelled = false;
 
     waitForBridge().then(() => {
+      if (cancelled) return;
       // Use 127.0.0.1 instead of localhost — mpv is a separate process and
       // localhost may resolve to ::1 (IPv6) while the server binds to 127.0.0.1
       const port = window.location.port;
@@ -181,24 +183,51 @@ export default function Player() {
       } catch (e) {
         console.error("[native-bridge] mpvPlay error:", e);
       }
+
+      // Register event handlers AFTER bridge is ready (window.mpvEvents
+      // doesn't exist until waitForBridge resolves)
+      onMpvTimeChanged((t) => {
+        const prev = effectiveTimeRef.current;
+        effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
+      });
+      onMpvDurationChanged((d) => {
+        const prev = effectiveTimeRef.current;
+        effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
+      });
+      onMpvEofReached(() => {
+        navigate(-1);
+      });
+      onMpvPauseChanged((paused) => {
+        setPlaying(!paused);
+      });
+      // Sync React subtitle/audio state when QML native overlay changes tracks
+      onNativeSubChanged((mpvId) => {
+        if (mpvId === 0) {
+          switchSubtitle("");
+        } else {
+          // mpv IDs are 1-based, find the matching sub by index in the subs array
+          const match = subs[mpvId - 1];
+          if (match) switchSubtitle(match.value);
+        }
+      });
+      onNativeAudioChanged((mpvId) => {
+        switchAudio(mpvId);
+      });
     }).catch((e) => console.error("[native-bridge] waitForBridge error:", e));
 
-    onMpvTimeChanged((t) => {
-      const prev = effectiveTimeRef.current;
-      effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
-    });
-    onMpvDurationChanged((d) => {
-      const prev = effectiveTimeRef.current;
-      effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
-    });
-    onMpvEofReached(() => {
-      navigate(-1);
-    });
-    onMpvPauseChanged((paused) => {
-      setPlaying(!paused);
-    });
-
-    return () => { mpvStop(); };
+    return () => {
+      cancelled = true;
+      // Clear event handlers before stopping to prevent stale navigate calls
+      if (window.mpvEvents) {
+        window.mpvEvents.onEofReached = null;
+        window.mpvEvents.onTimeChanged = null;
+        window.mpvEvents.onDurationChanged = null;
+        window.mpvEvents.onPauseChanged = null;
+        window.mpvEvents.onNativeSubChanged = null;
+        window.mpvEvents.onNativeAudioChanged = null;
+      }
+      mpvStop();
+    };
   }, [infoHash, fileIndex]);
 
   // Register command handlers for remote control (assigned every render to avoid stale closures)

@@ -71,6 +71,12 @@ Window {
         signal eofReached()
         signal pauseChanged(bool paused)
         signal isPlayingChanged(bool playing)
+        // Signals for JS↔QML track sync
+        signal subtitleTrackChanged(int mpvId)
+        signal audioTrackChanged(int mpvId)
+        // QML→JS: native overlay changed tracks, JS should update its state
+        signal nativeSubChanged(int mpvId)
+        signal nativeAudioChanged(int mpvId)
 
         function play(url) { bridge.play(url) }
         function pause() { bridge.pause() }
@@ -78,7 +84,12 @@ Window {
         function seek(seconds) { bridge.seek(seconds) }
         function setVolume(percent) { bridge.setVolume(percent) }
         function setAudioTrack(index) { bridge.setAudioTrack(index) }
-        function setSubtitleTrack(index) { bridge.setSubtitleTrack(index) }
+        function setSubtitleTrack(index) {
+            bridge.setSubtitleTrack(index)
+            // Notify QML so it updates its active track indicator
+            // mpv uses 1-based IDs, index < 0 means off (sid=0 in QML)
+            transport.subtitleTrackChanged(index < 0 ? 0 : index + 1)
+        }
         function stop() { bridge.stop() }
         function setTitle(title) { root.mediaTitle = title }
         function setProperty(name, value) { bridge.setProperty(name, value) }
@@ -107,6 +118,13 @@ Window {
             controlsOverlay.visible = p
             if (p) trackRefreshTimer.start()
         }
+    }
+
+    // Sync QML state when JS changes tracks (phone remote → QML overlay)
+    Connections {
+        target: transport
+        function onSubtitleTrackChanged(mpvId) { root.activeSub = mpvId }
+        function onAudioTrackChanged(mpvId) { root.activeAudio = mpvId }
     }
 
     MpvObject {
@@ -321,7 +339,7 @@ Window {
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: { bridge.setProperty("sid", 0); root.activeSub = 0 }
+                        onClicked: { bridge.setProperty("sid", 0); root.activeSub = 0; transport.nativeSubChanged(0) }
                     }
                 }
 
@@ -340,7 +358,7 @@ Window {
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { bridge.setProperty("sid", modelData.id); root.activeSub = modelData.id }
+                            onClicked: { bridge.setProperty("sid", modelData.id); root.activeSub = modelData.id; transport.nativeSubChanged(modelData.id) }
                         }
                     }
                 }
@@ -365,7 +383,7 @@ Window {
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { bridge.setProperty("aid", modelData.id); root.activeAudio = modelData.id }
+                            onClicked: { bridge.setProperty("aid", modelData.id); root.activeAudio = modelData.id; transport.nativeAudioChanged(modelData.id) }
                         }
                     }
                 }
