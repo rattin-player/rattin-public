@@ -11,10 +11,6 @@
 #include <QDir>
 #include <QFile>
 #include <QtWebEngineQuick>
-#include <QWebEngineProfile>
-#include <QWebEngineScript>
-#include <QWebEngineScriptCollection>
-#include <QWebChannel>
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
@@ -142,24 +138,6 @@ int main(int argc, char *argv[])
     waitForServer(port, &app, [&app, port]() {
         fprintf(stderr, "[shell] server ready, loading QML\n");
 
-        // Inject qwebchannel.js into MainWorld via the default profile.
-        // Must happen before any WebEngineView loads a page.
-        {
-            QFile f(":/qtwebchannel/qwebchannel.js");
-            if (f.open(QIODevice::ReadOnly)) {
-                QWebEngineScript script;
-                script.setName("qwebchannel");
-                script.setSourceCode(QString::fromUtf8(f.readAll()));
-                script.setInjectionPoint(QWebEngineScript::DocumentCreation);
-                script.setWorldId(QWebEngineScript::MainWorld);
-                script.setRunsOnSubFrames(false);
-                QWebEngineProfile::defaultProfile()->scripts()->insert(script);
-                fprintf(stderr, "[shell] injected qwebchannel.js into MainWorld (%lld bytes)\n", f.size());
-            } else {
-                fprintf(stderr, "[shell] ERROR: could not open qrc:///qtwebchannel/qwebchannel.js\n");
-            }
-        }
-
         auto *bridge = new MpvBridge(&app);
 
         auto *engine = new QQmlApplicationEngine(&app);
@@ -170,19 +148,9 @@ int main(int argc, char *argv[])
 
         engine->load(QUrl("qrc:/main.qml"));
 
-        // After QML loads, find the WebChannel and MpvObject
+        // After QML loads, find MpvObject and attach it to the bridge
         QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [bridge](QObject *obj) {
             if (!obj) return;
-
-            // Register bridge on the QML WebChannel (QQmlWebChannel inherits QWebChannel)
-            auto *channel = obj->findChild<QWebChannel *>();
-            if (channel) {
-                channel->registerObject("bridge", bridge);
-                fprintf(stderr, "[shell] bridge registered on WebChannel\n");
-            } else {
-                fprintf(stderr, "[shell] WARNING: WebChannel not found in QML\n");
-            }
-
             auto *mpvObj = obj->findChild<MpvObject *>();
             if (mpvObj) {
                 bridge->attachMpv(mpvObj);
