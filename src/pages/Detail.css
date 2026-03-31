@@ -461,43 +461,6 @@
 }
 
 /* ── Pre-play Track Selection ── */
-.preplay-modal {
-  max-width: 360px;
-}
-.preplay-content {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.preplay-loading {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-.preplay-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.preplay-field span {
-  min-width: 70px;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-.preplay-field select {
-  flex: 1;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 0.9rem;
-}
-.preplay-go {
-  margin-top: 4px;
-  align-self: stretch;
-}
-
 /* Reviews & Discussions */
 .reviews-section {
   margin-top: 48px;

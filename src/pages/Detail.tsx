@@ -1,26 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface PrePlayState {
-  infoHash: string;
-  fileIndex: string;
-  tags: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  audioTracks: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  subtitleTracks: any[];
-  selectedAudio: number | null;
-  selectedSub: string;
-  loading: boolean;
-  season?: number | null;
-  episode?: number | null;
-}
+
 
 export default function Detail() {
   const { id } = useParams();
@@ -41,7 +28,6 @@ export default function Detail() {
   const [pickerSeason, setPickerSeason] = useState<number | undefined>(undefined);
   const [pickerEpisode, setPickerEpisode] = useState<number | undefined>(undefined);
   const [expandedEps, setExpandedEps] = useState(new Set<number>());
-  const [prePlay, setPrePlay] = useState<PrePlayState | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reviews, setReviews] = useState<any>(null);
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
@@ -118,84 +104,18 @@ export default function Detail() {
         return;
       }
       setPlayState(null);
-      setPrePlay({
-        infoHash: result.infoHash,
-        fileIndex: result.fileIndex,
-        tags: result.tags || stream.tags,
-        audioTracks: [],
-        subtitleTracks: [],
-        selectedAudio: null,
-        selectedSub: "",
-        loading: true,
-        season: pickerSeason,
-        episode: pickerEpisode,
-      });
-      probeTracksForPrePlay(result.infoHash, result.fileIndex);
+      // Go straight to player — audio/subtitle selection available in-player
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const navState: any = { tags: result.tags || stream.tags, title: data.title || data.name, tmdbId: id };
+      if (pickerSeason != null) {
+        navState.season = pickerSeason;
+        navState.episode = pickerEpisode;
+      }
+      navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
       setPlayState("error");
       setPlayError((err as Error).message);
     }
-  }
-
-  async function probeTracksForPrePlay(infoHash: string, fileIndex: string) {
-    let retries = 10;
-    while (retries > 0) {
-      try {
-        const [audioData, subData] = await Promise.all([
-          fetchAudioTracks(infoHash, fileIndex),
-          fetchSubtitleTracks(infoHash, fileIndex),
-        ]);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const audioTracks = (audioData.tracks || []).map((t: any) => ({
-          value: t.streamIndex,
-          label: (t.title || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
-        }));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const subtitleTracks = (subData.tracks || []).map((t: any) => ({
-          value: `embedded:${t.streamIndex}`,
-          label: t.title || t.lang || `Track ${t.streamIndex}`,
-        }));
-        if (audioTracks.length > 0 || subData.complete) {
-          setPrePlay((prev) => prev ? {
-            ...prev,
-            audioTracks,
-            subtitleTracks,
-            selectedAudio: prev.selectedAudio ?? (audioTracks[0]?.value ?? null),
-            loading: false,
-          } : null);
-          return;
-        }
-      } catch {}
-      retries--;
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    setPrePlay((prev) => prev ? { ...prev, loading: false } : null);
-  }
-
-  function launchPrePlay() {
-    if (!prePlay) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const navState: any = {
-      tags: prePlay.tags,
-      title: data.title || data.name,
-      tmdbId: id,
-    };
-    if (prePlay.season != null) {
-      navState.season = prePlay.season;
-      navState.episode = prePlay.episode;
-    }
-    if (prePlay.selectedAudio !== null) navState.audioTrack = prePlay.selectedAudio;
-    if (prePlay.selectedSub) navState.subtitle = prePlay.selectedSub;
-    if (streams) navState.sources = streams;
-    if (pickerSeason != null) navState.pickerSeason = pickerSeason;
-    if (pickerEpisode != null) navState.pickerEpisode = pickerEpisode;
-    navigate(`/play/${prePlay.infoHash}/${prePlay.fileIndex}`, { state: navState });
-    setPrePlay(null);
-  }
-
-  function cancelPrePlay() {
-    setPrePlay(null);
-    setPlayState(null);
   }
 
   async function handlePlay(season?: number, episode?: number) {
@@ -514,55 +434,6 @@ export default function Detail() {
           </div>
         )}
       </div>
-
-      {prePlay && (
-        <div className="picker-overlay" onClick={cancelPrePlay}>
-          <div className="picker-modal preplay-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="picker-header">
-              <h3>Track Selection</h3>
-              <button className="picker-close" onClick={cancelPrePlay}>&#10005;</button>
-            </div>
-            <div className="preplay-content">
-              {prePlay.loading && <p className="preplay-loading">Detecting tracks...</p>}
-              {prePlay.audioTracks.length > 1 && (
-                <label className="preplay-field">
-                  <span>Audio</span>
-                  <select
-                    value={prePlay.selectedAudio ?? ""}
-                    onChange={(e) => setPrePlay((p) => p ? { ...p, selectedAudio: parseInt(e.target.value, 10) } : null)}
-                  >
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {prePlay.audioTracks.map((t: any) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {prePlay.subtitleTracks.length > 0 && (
-                <label className="preplay-field">
-                  <span>Subtitles</span>
-                  <select
-                    value={prePlay.selectedSub}
-                    onChange={(e) => setPrePlay((p) => p ? { ...p, selectedSub: e.target.value } : null)}
-                  >
-                    <option value="">Off</option>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {prePlay.subtitleTracks.map((t: any) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <button className="detail-play-btn preplay-go" onClick={launchPrePlay}>
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                Play
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showPicker && (
         <SourcePicker
