@@ -137,22 +137,28 @@ int main(int argc, char *argv[])
     // once the event loop is running.
     waitForServer(port, &app, [&app, port]() {
         fprintf(stderr, "[shell] server ready, loading QML\n");
+
+        // Create bridge BEFORE loading QML so it's available for bindings
+        auto *bridge = new MpvBridge(&app);
+
         auto *engine = new QQmlApplicationEngine(&app);
         engine->rootContext()->setContextProperty("serverPort", port);
         engine->rootContext()->setContextProperty("initialUrl",
             QString("http://localhost:%1").arg(port));
+        engine->rootContext()->setContextProperty("bridge", bridge);
 
         engine->load(QUrl("qrc:/main.qml"));
 
-        // After QML loads, find the MpvObject and create the bridge
-        QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [engine](QObject *obj) {
+        // After QML loads, find the MpvObject and attach it to the bridge
+        QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [bridge](QObject *obj) {
             if (!obj) return;
             auto *mpvObj = obj->findChild<MpvObject *>();
-            if (!mpvObj) return;
-
-            auto *bridge = new MpvBridge(mpvObj, obj);
-            engine->rootContext()->setContextProperty("mpvBridgeObj", bridge);
-            fprintf(stderr, "[shell] bridge registered\n");
+            if (!mpvObj) {
+                fprintf(stderr, "[shell] WARNING: MpvObject not found in QML\n");
+                return;
+            }
+            bridge->attachMpv(mpvObj);
+            fprintf(stderr, "[shell] bridge attached to mpv\n");
         });
     });
 

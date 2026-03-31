@@ -10,7 +10,8 @@ class MpvBridge : public QObject
     Q_OBJECT
 
 public:
-    explicit MpvBridge(MpvObject *mpv, QObject *parent = nullptr);
+    explicit MpvBridge(QObject *parent = nullptr);
+    void attachMpv(MpvObject *mpv);
 
     // These slots are callable from JavaScript via QWebChannel
 public slots:

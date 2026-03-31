@@ -16,7 +16,7 @@ Window {
     MpvObject {
         id: mpvPlayer
         anchors.fill: parent
-        visible: bridge.isPlaying
+        visible: false
         z: 1
     }
 
@@ -25,19 +25,26 @@ Window {
         id: webView
         anchors.fill: parent
         url: initialUrl
-        z: bridge.isPlaying ? 0 : 2
+        z: 2
 
-        // Inject the bridge into the page's JS context.
-        // Setting webChannel auto-injects qwebchannel.js (no manual userScripts needed).
         webChannel: channel
+
+        // Inject qwebchannel.js into MainWorld so React code can use QWebChannel.
+        // Qt auto-injects it into IsolatedWorld only; MainWorld needs explicit injection.
+        Component.onCompleted: {
+            webView.userScripts.collection = [{
+                "sourceUrl": "qrc:///qtwebchannel/qwebchannel.js",
+                "injectionPoint": WebEngineScript.DocumentCreation,
+                "worldId": WebEngineScript.MainWorld
+            }]
+        }
 
         onLoadingChanged: function(loadingInfo) {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
-                // Wire up window.mpvBridge + window.mpvEvents via QWebChannel.
-                // qwebchannel.js was already loaded by userScripts above.
                 webView.runJavaScript(
                     "new QWebChannel(qt.webChannelTransport, function(channel) {" +
-                    "  window.mpvBridge = channel.objects.mpvBridge;" +
+                    "  window.qt = window.qt || {};" +
+                    "  window.mpvBridge = channel.objects.bridge;" +
                     "  window.mpvEvents = {" +
                     "    onTimeChanged: null," +
                     "    onDurationChanged: null," +
@@ -56,25 +63,22 @@ Window {
                     "  window.mpvBridge.pauseChanged.connect(function(p) {" +
                     "    if (window.mpvEvents.onPauseChanged) window.mpvEvents.onPauseChanged(p);" +
                     "  });" +
+                    "  console.log('[shell] QWebChannel bridge wired up');" +
                     "});"
                 );
             }
         }
     }
 
-    // QWebChannel exposes the bridge to JS
+    // QWebChannel exposes the bridge to JS — "bridge" is set as context property from C++
     WebChannel {
         id: channel
         registeredObjects: [bridge]
     }
 
-    property bool isPlaying: false
-
     Connections {
-        target: typeof mpvBridgeObj !== "undefined" ? mpvBridgeObj : null
+        target: bridge
         function onIsPlayingChanged(playing) {
-            root.isPlaying = playing;
-            // When playback starts, hide webview; when it stops, show it
             webView.z = playing ? 0 : 2;
             mpvPlayer.visible = playing;
         }
