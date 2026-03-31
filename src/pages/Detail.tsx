@@ -108,6 +108,7 @@ export default function Detail() {
         navState.season = pickerSeason;
         navState.episode = pickerEpisode;
       }
+      if (result.debridUrl) navState.debridUrl = result.debridUrl;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
       setPlayState("error");
@@ -133,6 +134,7 @@ export default function Detail() {
           navState.season = season;
           navState.episode = episode;
         }
+        if (result.debridUrl) navState.debridUrl = result.debridUrl;
         navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err: unknown) {

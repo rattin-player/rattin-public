@@ -16,13 +16,14 @@ interface UseSeekDeps {
   dlSpeedRef: MutableRefObject<number>;
   dlPeersRef: MutableRefObject<number>;
   activeAudioRef: MutableRefObject<number | null>;
-  startStream: (infoHash: string, fileIndex: string, title: string, tags: string[]) => void;
+  startStream: (infoHash: string, fileIndex: string, title: string, tags: string[], debridUrl?: string) => void;
   mediaTitle: string;
   tags: string[];
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingReason: React.Dispatch<React.SetStateAction<string>>;
   pendingSubReload: MutableRefObject<number | null>;
   seekRef: RefObject<HTMLDivElement | null>;
+  debridUrl?: string;
 }
 
 interface UseSeekReturn {
@@ -50,6 +51,7 @@ interface UseSeekReturn {
   handleSeekHover: (e: React.MouseEvent) => void;
   switchToTranscoded: () => void;
   togglePlay: () => void;
+  setPlaying: React.Dispatch<React.SetStateAction<boolean>>;
   setTooltipTime: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
@@ -59,7 +61,7 @@ export function useSeek(videoRef: RefObject<HTMLVideoElement | null>, deps: UseS
     effectiveTimeRef, dlProgressRef, dlSpeedRef, dlPeersRef,
     activeAudioRef, startStream, mediaTitle, tags,
     setLoading, setLoadingReason, pendingSubReload,
-    seekRef,
+    seekRef, debridUrl,
   } = deps;
 
   const [seekOffset, setSeekOffset] = useState(() => {
@@ -192,7 +194,7 @@ export function useSeek(videoRef: RefObject<HTMLVideoElement | null>, deps: UseS
 
   // Start or resume stream
   useEffect(() => {
-    startStream(infoHash, fileIndex, mediaTitle, tags);
+    startStream(infoHash, fileIndex, mediaTitle, tags, debridUrl);
     fetchDurationRetry(infoHash, fileIndex);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -271,6 +273,6 @@ export function useSeek(videoRef: RefObject<HTMLVideoElement | null>, deps: UseS
     seekOffsetRef, isLiveRef, transcodeReadyRef, knownDurRef,
     getEffectiveTime, getEffectiveDuration,
     seekTo, handleSeekClick, handleSeekHover, switchToTranscoded,
-    togglePlay, setTooltipTime,
+    togglePlay, setPlaying, setTooltipTime,
   };
 }

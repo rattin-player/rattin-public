@@ -73,6 +73,45 @@
   color: var(--text-muted);
 }
 
+.navbar-vpn-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.navbar-vpn-pill:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+.navbar-vpn-pill.active {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--green);
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.navbar-vpn-pill.active:hover {
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.navbar-vpn-pill.toggling {
+  border-color: rgba(250, 204, 21, 0.4);
+  color: var(--accent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .navbar-pair-btn {
   display: flex;
   align-items: center;

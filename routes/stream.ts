@@ -226,4 +226,81 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
     log("info", "Streaming via WebTorrent", { file: file.name });
     serveFromTorrent(file, req, res);
   });
+
+  // ── Debrid stream proxy ──────────────────────────────────────────
+  // Proxies a debrid direct download URL with range request support.
+  // For non-native formats, pipes through ffmpeg transcode.
+  app.get("/api/debrid-stream", async (req: Request, res: Response) => {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: "url required" });
+
+    const seekTo = parseFloat(req.query.t as string) || 0;
+    const audioStreamIdx = req.query.audio ? parseInt(req.query.audio as string, 10) : null;
+    const nativeMode = req.query.native === "1";
+
+    // Determine if we need to transcode based on the file extension
+    let ext: string;
+    try {
+      ext = path.extname(new URL(url).pathname).toLowerCase() || ".mkv";
+    } catch {
+      return res.status(400).json({ error: "Invalid URL" });
+    }
+    const mustTranscode = !nativeMode && needsTranscode(ext);
+
+    if (mustTranscode || seekTo > 0 || audioStreamIdx !== null) {
+      // Transcode path — ffmpeg accepts HTTPS URLs as input natively
+      log("info", "Debrid stream via transcode", { ext, seekTo });
+      return _serveLiveTranscode({
+        inputPath: url,
+        useStdin: false,
+        seekTo,
+        audioStreamIdx,
+        streamKey: null,
+      }, req, res, ctx);
+    }
+
+    // Direct proxy with range support
+    try {
+      const headers: Record<string, string> = {};
+      if (req.headers.range) headers["Range"] = req.headers.range;
+
+      const upstream = await fetch(url, { headers });
+      if (!upstream.ok && upstream.status !== 206) {
+        return res.status(upstream.status).json({ error: "debrid_stream_failed" });
+      }
+
+      res.status(upstream.status);
+
+      // Forward relevant headers
+      const fwd = ["content-type", "content-length", "content-range", "accept-ranges"];
+      for (const h of fwd) {
+        const v = upstream.headers.get(h);
+        if (v) res.setHeader(h, v);
+      }
+      if (!upstream.headers.get("content-type")) {
+        res.setHeader("Content-Type", ext === ".webm" ? "video/webm" : "video/mp4");
+      }
+
+      // Pipe the body
+      if (upstream.body) {
+        const reader = upstream.body.getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { res.end(); return; }
+            if (!res.write(value)) {
+              await new Promise<void>((r) => res.once("drain", r));
+            }
+          }
+        };
+        res.on("close", () => reader.cancel());
+        pump().catch(() => res.end());
+      } else {
+        res.end();
+      }
+    } catch (err) {
+      log("err", "Debrid stream proxy failed", { error: (err as Error).message });
+      if (!res.headersSent) res.status(502).json({ error: "debrid_proxy_failed" });
+    }
+  });
 }

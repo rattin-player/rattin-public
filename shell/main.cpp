@@ -107,6 +107,34 @@ int main(int argc, char *argv[])
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("PORT", QString::number(port));
     env.insert("HOST", "0.0.0.0");
+
+    // Load .env file and inject vars into process environment directly.
+    // Node's --env-file flag doesn't propagate through tsx's child fork,
+    // so we parse it ourselves and set them on the QProcess environment.
+    QString envFilePath = configDir + "/.env";
+    if (QFile::exists(envFilePath)) {
+        QFile envFile(envFilePath);
+        if (envFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&envFile);
+            while (!in.atEnd()) {
+                QString line = in.readLine().trimmed();
+                if (line.isEmpty() || line.startsWith('#')) continue;
+                int eq = line.indexOf('=');
+                if (eq <= 0) continue;
+                QString key = line.left(eq).trimmed();
+                QString val = line.mid(eq + 1).trimmed();
+                // Strip surrounding quotes if present
+                if ((val.startsWith('"') && val.endsWith('"')) ||
+                    (val.startsWith('\'') && val.endsWith('\'')))
+                    val = val.mid(1, val.length() - 2);
+                if (!key.isEmpty())
+                    env.insert(key, val);
+            }
+            envFile.close();
+            fprintf(stderr, "[shell] Loaded env from %s\n", envFilePath.toUtf8().constData());
+        }
+    }
+
     serverProcess->setProcessEnvironment(env);
 
     // Determine how to start the server:
@@ -124,17 +152,12 @@ int main(int argc, char *argv[])
     QString runner;
     QStringList args;
 
-    // Build --env-file arg with absolute path (Node 20 errors on missing file)
-    QString envFilePath = configDir + "/.env";
-    bool hasEnvFile = QFile::exists(envFilePath);
-
+    // Env vars are injected via setProcessEnvironment above (parsed from .env).
+    // No need for --env-file flag (it doesn't propagate through tsx's child fork).
     if (QFile::exists(appDir + "/server.js")) {
         serverScript = "server.js";
         runner = nodeRunner;
-        if (hasEnvFile)
-            args = {"--env-file=" + envFilePath, serverScript};
-        else
-            args = {serverScript};
+        args = {serverScript};
     } else {
         serverScript = "server.ts";
         runner = nodeRunner;
@@ -144,11 +167,7 @@ int main(int argc, char *argv[])
             // Fall back to global tsx (might work if user installed it)
             localTsx = "tsx";
         }
-        // --env-file is a node flag, must come before the tsx script path
-        if (hasEnvFile)
-            args = {"--env-file=" + envFilePath, localTsx, serverScript};
-        else
-            args = {localTsx, serverScript};
+        args = {localTsx, serverScript};
     }
 
     fprintf(stderr, "[shell] appDir: %s\n", appDir.toUtf8().constData());

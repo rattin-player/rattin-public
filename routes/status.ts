@@ -6,6 +6,7 @@ import {
   needsTranscode, isAllowedFile,
 } from "../lib/media-utils.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
+import { getActiveDebridFiles } from "../lib/debrid.js";
 
 export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {
@@ -59,6 +60,33 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
           downloadSpeed: 0, uploadSpeed: 0, progress: 1,
           downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
           files: diskFiles,
+        });
+      }
+      // Debrid fallback: return file list from RD torrent info
+      const debridFiles = getActiveDebridFiles(infoHash);
+      if (debridFiles.length > 0) {
+        const files = debridFiles.map((f, i) => {
+          const ext = path.extname(f.path).toLowerCase();
+          return {
+            index: f.id - 1, // RD uses 1-based, we use 0-based
+            name: f.path.replace(/^\//, ""),
+            path: f.path.replace(/^\//, ""),
+            length: f.bytes,
+            downloaded: f.bytes,
+            progress: 1,
+            isVideo: VIDEO_EXTENSIONS.includes(ext),
+            isAudio: AUDIO_EXTENSIONS.includes(ext),
+            isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
+            isAllowed: isAllowedFile(f.path),
+            transcodeStatus: null,
+            duration: null,
+          };
+        });
+        return res.json({
+          infoHash, name: "(debrid)",
+          downloadSpeed: 0, uploadSpeed: 0, progress: 1,
+          downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
+          files,
         });
       }
       return res.status(404).json({ error: "Torrent not found" });

@@ -215,6 +215,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                   <div className="picker-item-main">
                     <span className="picker-item-name">{s.name}</span>
                     <div className="picker-item-tags">
+                      {s.cached && <span className="picker-tag cached">Cached</span>}
                       {s.seasonPack && <span className="picker-tag season-pack">Season Pack</span>}
                       {s.tags.map((t: string) => (
                         <span key={t} className={`picker-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>

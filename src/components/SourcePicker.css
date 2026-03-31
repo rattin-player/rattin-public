@@ -227,6 +227,11 @@
   color: var(--green);
 }
 
+.picker-tag.cached {
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--accent-bright);
+}
+
 .picker-tag.multi-audio {
   background: rgba(59, 130, 246, 0.15);
   color: #93bbfd;
