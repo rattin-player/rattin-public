@@ -16,7 +16,7 @@ BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-APPIMAGE_URL="https://github.com/rattin-player/rattin-public/releases/latest/download/Rattin-x86_64.AppImage"
+APPIMAGE_URL="https://github.com/rattin-player/rattin-install/releases/latest/download/Rattin-x86_64.AppImage"
 APPIMAGE_NAME="Rattin.AppImage"
 
 # ---------------------------------------------------------------------------
