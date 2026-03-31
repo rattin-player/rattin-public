@@ -136,3 +136,45 @@ export function findLargestVideoFile(files: FileEntry[] | null | undefined): Fil
   });
   return best;
 }
+
+/**
+ * Returns true if the torrent name contains a specific episode marker
+ * for a DIFFERENT episode than what we want. Season packs, multi-season
+ * packs, and complete series torrents (no episode marker) pass through.
+ */
+export function hasWrongEpisode(name: string, season: number, episode: number): boolean {
+  const episodeMarkers = [...name.matchAll(/S(\d{1,2})E(\d{1,2})(?!\d)/gi)];
+  if (episodeMarkers.length === 0) return false;
+
+  for (const m of episodeMarkers) {
+    const mSeason = parseInt(m[1], 10);
+    const mEpisode = parseInt(m[2], 10);
+    if (mSeason === season && mEpisode === episode) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Returns true if a torrent name looks like it contains the target season.
+ * Matches multi-season ranges (S01-S31, S01-S15, Seasons 1-31) and
+ * complete series indicators.
+ */
+export function coversTargetSeason(name: string, season: number): boolean {
+  if (/complete|all.seasons/i.test(name)) return true;
+
+  const rangePatterns = [
+    /S(\d{1,2})\s*[-–.]\s*S(\d{1,2})/i,
+    /Seasons?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})/i,
+  ];
+  for (const pat of rangePatterns) {
+    const m = name.match(pat);
+    if (m) {
+      const start = parseInt(m[1], 10);
+      const end = parseInt(m[2], 10);
+      if (season >= start && season <= end) return true;
+    }
+  }
+
+  return false;
+}

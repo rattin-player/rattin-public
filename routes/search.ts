@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile } from "../lib/torrent-scoring.js";
+import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
 import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
 import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
@@ -217,23 +217,35 @@ async function searchTV(title: string, season: number, episode: number, imdbId?:
   const e = String(episode).padStart(2, "0");
   const episodeQuery = `${title} S${s}E${e}`;
   const seasonQuery = `${title} S${s}`;
+  const titleQuery = title; // catches multi-season packs like "S01-S31", "Complete Series"
 
-  const [episodeResults, seasonResults] = await Promise.all([
+  const [episodeResults, seasonResults, titleResults] = await Promise.all([
     searchTorrents(episodeQuery, imdbId),
     searchTorrents(seasonQuery, imdbId),
+    searchTorrents(titleQuery, imdbId),
   ]);
 
-  // Dedupe
+  // Filter title-only results: keep only multi-season packs or complete series
+  // that plausibly contain our target season
+  const filteredTitleResults = titleResults.filter((r) => coversTargetSeason(r.name, season));
+
+  // Dedupe and filter
   const seen = new Map<string, SearchResult>();
-  for (const r of [...episodeResults, ...seasonResults]) {
+  for (const r of [...episodeResults, ...seasonResults, ...filteredTitleResults]) {
     if (!r.infoHash) continue;
+
+    // Filter out torrents for the WRONG episode: if the name contains a specific
+    // episode marker (S01E03) that doesn't match our target, skip it entirely.
+    // This prevents e.g. S01E01 showing up when searching for S01E05.
+    if (hasWrongEpisode(r.name, season, episode)) continue;
+
     const existing = seen.get(r.infoHash);
     if (!existing || r.seeders > existing.seeders) {
-      // Mark season packs (name contains S01 but not S01E01)
       const hasEpisode = new RegExp(`S${s}E${e}(?!\\d)`, "i").test(r.name)
         || new RegExp(`S${season}E${episode}(?!\\d)`, "i").test(r.name);
       const hasSeason = new RegExp(`S${s}(?!\\d)`, "i").test(r.name)
-        || /complete|full.season|season.\d/i.test(r.name);
+        || /complete|full.season|season.\d|all.seasons/i.test(r.name)
+        || coversTargetSeason(r.name, season);
       const isSeasonPack = !hasEpisode && hasSeason;
       seen.set(r.infoHash, { ...r, seasonPack: isSeasonPack });
     }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   scoreTorrent, parseTags, matchEpisodePattern,
   findEpisodeFile, findLargestVideoFile,
+  hasWrongEpisode, coversTargetSeason,
 } from "../lib/torrent-scoring.js";
 
 describe("parseTags", () => {
@@ -250,5 +251,75 @@ describe("findEpisodeFile", () => {
 
   it("returns null for null files", () => {
     assert.equal(findEpisodeFile(null as unknown as [], 1, 5), null);
+  });
+});
+
+describe("hasWrongEpisode", () => {
+  it("rejects torrents with a different episode", () => {
+    assert.ok(hasWrongEpisode("Andor.S01E01.1080p.WEB-DL", 1, 5));
+    assert.ok(hasWrongEpisode("Show.S01E03.720p.mkv", 1, 5));
+    assert.ok(hasWrongEpisode("Show.S02E05.720p.mkv", 1, 5)); // wrong season
+  });
+
+  it("accepts torrents with matching episode", () => {
+    assert.ok(!hasWrongEpisode("Andor.S01E05.1080p.WEB-DL", 1, 5));
+    assert.ok(!hasWrongEpisode("Show.S15E01.720p.mkv", 15, 1));
+  });
+
+  it("accepts season packs (no episode marker)", () => {
+    assert.ok(!hasWrongEpisode("Andor.S01.1080p.WEB-DL", 1, 5));
+    assert.ok(!hasWrongEpisode("The Simpsons S15 Complete", 15, 1));
+  });
+
+  it("accepts multi-season packs (no episode marker)", () => {
+    assert.ok(!hasWrongEpisode("The Simpsons S01-S31 Complete", 15, 1));
+    assert.ok(!hasWrongEpisode("Breaking Bad Complete Series", 3, 7));
+  });
+
+  it("accepts torrents with no season/episode markers at all", () => {
+    assert.ok(!hasWrongEpisode("The Simpsons Complete Series 1080p", 15, 1));
+  });
+
+  it("handles multiple episode markers (e.g. multi-episode files)", () => {
+    // S01E05E06 — has our episode, should pass
+    assert.ok(!hasWrongEpisode("Show.S01E05E06.720p.mkv", 1, 5));
+    // But not if none match
+    assert.ok(hasWrongEpisode("Show.S01E03E04.720p.mkv", 1, 5));
+  });
+});
+
+describe("coversTargetSeason", () => {
+  it("matches S01-S31 range containing target season", () => {
+    assert.ok(coversTargetSeason("The Simpsons S01-S31 1080p", 15));
+    assert.ok(coversTargetSeason("The Simpsons S01-S31 1080p", 1));
+    assert.ok(coversTargetSeason("The Simpsons S01-S31 1080p", 31));
+  });
+
+  it("rejects range not containing target season", () => {
+    assert.ok(!coversTargetSeason("The Simpsons S01-S10 1080p", 15));
+    assert.ok(!coversTargetSeason("Show S05-S08", 3));
+  });
+
+  it("matches Seasons 1-31 format", () => {
+    assert.ok(coversTargetSeason("The Simpsons Seasons 1-31 Complete", 15));
+    assert.ok(coversTargetSeason("Show Season 1-5", 3));
+  });
+
+  it("matches 'complete' keyword", () => {
+    assert.ok(coversTargetSeason("The Simpsons Complete Series 1080p", 15));
+    assert.ok(coversTargetSeason("Breaking Bad COMPLETE", 3));
+  });
+
+  it("matches 'all seasons' keyword", () => {
+    assert.ok(coversTargetSeason("The Simpsons All Seasons 1080p", 15));
+  });
+
+  it("matches en-dash in range", () => {
+    assert.ok(coversTargetSeason("The Simpsons S01\u2013S31 1080p", 15));
+  });
+
+  it("rejects unrelated title-only results", () => {
+    assert.ok(!coversTargetSeason("The Simpsons Movie 2007 1080p", 15));
+    assert.ok(!coversTargetSeason("The Simpsons S15E01 720p", 15)); // single episode, no range
   });
 });
