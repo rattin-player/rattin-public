@@ -7,4 +7,4 @@ Type=Application
 Categories=AudioVideo;Video;Player;
 MimeType=x-scheme-handler/magnet;application/x-bittorrent;
 Terminal=false
-StartupWMClass=MagnetPlayer
+StartupWMClass=Rattin

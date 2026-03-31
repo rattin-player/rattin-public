@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="https://img.shields.io/badge/%F0%9F%A7%B2-Magnet%20Player-000?style=for-the-badge&labelColor=000" alt="Rattin" height="40"/>
+  <img src="https://img.shields.io/badge/%F0%9F%A7%B2-Rattin-000?style=for-the-badge&labelColor=000" alt="Rattin" height="40"/>
   <br>
 </h1>
 

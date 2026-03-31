@@ -132,7 +132,7 @@ export async function searchTorrentio(
       : `${TORRENTIO_BASE}/stream/movie/${imdbId}.json`;
   try {
     const resp = await fetch(url, {
-      headers: { "User-Agent": "MagnetPlayer/2.0" },
+      headers: { "User-Agent": "Rattin/2.0" },
       signal: AbortSignal.timeout(TORRENTIO_TIMEOUT),
     });
     if (!resp.ok) return [];

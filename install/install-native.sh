@@ -66,7 +66,7 @@ done
 if [ "$UNINSTALL" = true ]; then
     log "Uninstalling Rattin..."
     # Kill any running rattin processes (shell + server)
-    # Matches both AppImage (/tmp/.mount_magnet*/usr/bin/rattin-shell)
+    # Matches both AppImage (/tmp/.mount_rattin*/usr/bin/rattin-shell)
     # and dev installs (~/.local/share/rattin/...)
     pkill -f "rattin-shell" 2>/dev/null || true
     pkill -f "rattin.*server\\.ts" 2>/dev/null || true
@@ -246,7 +246,7 @@ Type=Application
 Categories=AudioVideo;Video;Player;
 MimeType=x-scheme-handler/magnet;application/x-bittorrent;
 Terminal=false
-StartupWMClass=MagnetPlayer
+StartupWMClass=Rattin
 EOF
 
 # Extract the icon from the AppImage

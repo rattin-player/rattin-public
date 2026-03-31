@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtWebEngine
 import QtWebChannel
-import com.magnetplayer.mpv 1.0
+import com.rattin.mpv 1.0
 
 Window {
     id: root

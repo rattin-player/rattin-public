@@ -70,12 +70,12 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("Rattin");
-    app.setOrganizationName("MagnetPlayer");
+    app.setOrganizationName("Rattin");
     app.setApplicationVersion("1.0.0");
 
     fprintf(stderr, "[shell] registering MpvObject type\n");
     // Register MpvObject QML type
-    qmlRegisterType<MpvObject>("com.magnetplayer.mpv", 1, 0, "MpvObject");
+    qmlRegisterType<MpvObject>("com.rattin.mpv", 1, 0, "MpvObject");
 
     // Fixed port so firewall rules & phone bookmarks survive restarts
     int port = 9630;

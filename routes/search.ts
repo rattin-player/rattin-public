@@ -38,7 +38,7 @@ const TRACKERS = [
 async function searchTPB(query: string): Promise<SearchResult[]> {
   const url = `https://search-provider-1.example/q.php?q=${encodeURIComponent(query)}`;
   const resp = await fetch(url, {
-    headers: { "User-Agent": "MagnetPlayer/2.0" },
+    headers: { "User-Agent": "Rattin/2.0" },
     signal: AbortSignal.timeout(10000),
   });
   if (!resp.ok) return [];
@@ -68,7 +68,7 @@ async function searchEZTV(query: string, imdbId: string | undefined): Promise<Se
     for (let page = 1; page <= 3; page++) {
       const url = `https://search-provider-2.example/api/get-torrents?imdb_id=${numericId}&limit=100&page=${page}`;
       const resp = await fetch(url, {
-        headers: { "User-Agent": "MagnetPlayer/2.0" },
+        headers: { "User-Agent": "Rattin/2.0" },
         signal: AbortSignal.timeout(10000),
       });
       if (!resp.ok) break;
@@ -103,7 +103,7 @@ async function searchYTS(query: string): Promise<SearchResult[]> {
   try {
     const url = `https://search-provider-3.example/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=20&sort_by=seeds`;
     const resp = await fetch(url, {
-      headers: { "User-Agent": "MagnetPlayer/2.0" },
+      headers: { "User-Agent": "Rattin/2.0" },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return [];

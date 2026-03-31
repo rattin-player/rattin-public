@@ -165,7 +165,7 @@ async function fetchRedditThreads(title: string, type: string): Promise<RedditTh
     try {
       const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(q)}&restrict_sr=on&sort=relevance&t=all&limit=10`;
       const resp = await fetch(url, {
-        headers: { "User-Agent": "MagnetPlayer/2.0" },
+        headers: { "User-Agent": "Rattin/2.0" },
         signal: AbortSignal.timeout(8000),
       });
       if (!resp.ok) continue;

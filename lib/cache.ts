@@ -100,7 +100,7 @@ export async function fetchTMDB(path: string): Promise<unknown> {
   if (!key) throw new Error("TMDB_API_KEY not set");
   const url = `https://api.themoviedb.org/3${path}${path.includes("?") ? "&" : "?"}api_key=${key}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "MagnetPlayer/2.0" },
+    headers: { "User-Agent": "Rattin/2.0" },
     signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`TMDB API error: ${res.status}`);
