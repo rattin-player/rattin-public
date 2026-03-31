@@ -164,7 +164,10 @@ export default function Player() {
     if (!isNative || !infoHash || !fileIndex) return;
 
     waitForBridge().then(() => {
-      const streamUrl = `${window.location.origin}/api/stream/${infoHash}/${fileIndex}?native=1`;
+      // Use 127.0.0.1 instead of localhost — mpv is a separate process and
+      // localhost may resolve to ::1 (IPv6) while the server binds to 127.0.0.1
+      const port = window.location.port;
+      const streamUrl = `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}?native=1`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
       try {
         mpvPlay(streamUrl);
