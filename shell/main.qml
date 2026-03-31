@@ -27,19 +27,9 @@ Window {
         url: initialUrl
         z: bridge.isPlaying ? 0 : 2
 
-        // Inject the bridge into the page's JS context
+        // Inject the bridge into the page's JS context.
+        // Setting webChannel auto-injects qwebchannel.js (no manual userScripts needed).
         webChannel: channel
-
-        // CRITICAL: Load qwebchannel.js before page scripts run.
-        // Without this, `QWebChannel` class is undefined in JS.
-        // Injection into MainWorld so React code can see window.mpvBridge.
-        userScripts: [
-            WebEngineScript {
-                sourceUrl: "qrc:///qtwebchannel/qwebchannel.js"
-                injectionPoint: WebEngineScript.DocumentCreation
-                worldId: WebEngineScript.MainWorld
-            }
-        ]
 
         onLoadingChanged: function(loadingInfo) {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
