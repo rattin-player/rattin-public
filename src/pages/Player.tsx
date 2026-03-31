@@ -9,6 +9,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers } from "../lib/api";
 import { encode } from "uqr";
+import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
@@ -158,13 +159,55 @@ export default function Player() {
     };
   }, []);
 
+  // Native mode: tell mpv to play instead of using <video> element
+  useEffect(() => {
+    if (!isNative || !infoHash || !fileIndex) return;
+
+    waitForBridge().then(() => {
+      const streamUrl = `/api/stream/${infoHash}/${fileIndex}?native=1`;
+      mpvPlay(streamUrl);
+    });
+
+    onMpvTimeChanged((t) => {
+      if (effectiveTimeRef.current) {
+        effectiveTimeRef.current = { time: t, duration: effectiveTimeRef.current.duration, ts: Date.now() };
+      }
+    });
+    onMpvDurationChanged((d) => {
+      if (effectiveTimeRef.current) {
+        effectiveTimeRef.current = { ...effectiveTimeRef.current, duration: d, ts: Date.now() };
+      }
+    });
+    onMpvEofReached(() => {
+      navigate(-1);
+    });
+
+    return () => { mpvStop(); };
+  }, [infoHash, fileIndex]);
+
   // Register command handlers for remote control (assigned every render to avoid stale closures)
   if (commandRef) {
     commandRef.current = {
-      seek: seekTo,
-      seekRelative: (delta: number) => seekTo(Math.max(0, getEffectiveTime() + delta)),
-      switchSubtitle,
-      switchAudio,
+      seek: (seconds: number) => {
+        if (isNative) mpvSeek(seconds);
+        else seekTo(seconds);
+      },
+      seekRelative: (delta: number) => {
+        const t = getEffectiveTime();
+        if (isNative) mpvSeek(Math.max(0, t + delta));
+        else seekTo(Math.max(0, t + delta));
+      },
+      switchSubtitle: (val: string) => {
+        if (isNative) {
+          const idx = subs.findIndex(s => s.value === val);
+          mpvSetSubtitleTrack(idx);
+        }
+        switchSubtitle(val);
+      },
+      switchAudio: (streamIndex: string | number) => {
+        if (isNative) mpvSetAudioTrack(typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex);
+        switchAudio(streamIndex);
+      },
       switchSource: handleSwitchSource,
     };
   }
@@ -201,9 +244,22 @@ export default function Player() {
       const v = videoRef.current;
       if (!v) return;
       switch (e.key) {
-        case " ": e.preventDefault(); togglePlay(); break;
-        case "ArrowLeft": seekTo(Math.max(0, getEffectiveTime() - 10)); break;
-        case "ArrowRight": seekTo(getEffectiveTime() + 10); break;
+        case " ": e.preventDefault();
+          if (isNative) {
+            const paused = window.mpvBridge?.getProperty("pause");
+            if (paused) mpvResume(); else mpvPause();
+          } else {
+            togglePlay();
+          }
+          break;
+        case "ArrowLeft":
+          if (isNative) mpvSeek(Math.max(0, getEffectiveTime() - 10));
+          else seekTo(Math.max(0, getEffectiveTime() - 10));
+          break;
+        case "ArrowRight":
+          if (isNative) mpvSeek(getEffectiveTime() + 10);
+          else seekTo(getEffectiveTime() + 10);
+          break;
         case "f": case "F":
           if (document.fullscreenElement) document.exitFullscreen();
           else pageRef.current?.requestFullscreen?.();
@@ -295,7 +351,7 @@ export default function Player() {
 
   return (
     <div className="player-page" ref={pageRef} onClick={handlePageClick}>
-      <div className="player-video-container" ref={videoContainerRef} />
+      {!isNative && <div className="player-video-container" ref={videoContainerRef} />}
 
       {remoteToast && (
         <div className={`player-remote-toast ${remoteToast}`} key={remoteToast}>
@@ -411,7 +467,15 @@ export default function Player() {
                 className="player-volume-slider"
                 min="0" max="1" step="0.05"
                 value={videoRef.current?.muted ? 0 : volume}
-                onChange={(e) => { const v = videoRef.current; if (v) { v.muted = false; v.volume = parseFloat(e.target.value); } }}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (isNative) {
+                    mpvSetVolume(Math.round(val * 100));
+                  } else {
+                    const v = videoRef.current;
+                    if (v) { v.muted = false; v.volume = val; }
+                  }
+                }}
               />
             </div>
             {subs.length > 0 && (

@@ -166,6 +166,33 @@ The dev server proxies `/api` requests to the backend at `localhost:3000`, so ru
 
 ---
 
+## Native Desktop App
+
+The native desktop app provides hardware-accelerated video playback for all formats (MKV, HEVC, AV1, HDR) without transcoding, plus instant seeking to any position.
+
+### Building from source
+
+Requirements: Qt6 (Quick, WebEngine, WebChannel), libmpv-dev, CMake 3.16+, Node.js 20+
+
+```bash
+# Build the frontend
+npm run build
+
+# Build the Qt shell
+cd shell && mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Run
+./rattin-shell
+```
+
+### Pre-built downloads
+
+See [Releases](../../releases) for AppImage (Linux), MSI (Windows), and DMG (macOS) builds.
+
+---
+
 ## 🏗️ Architecture
 
 ```
