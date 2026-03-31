@@ -41,83 +41,29 @@ if (isNative) {
   console.log("[native-bridge] native mode detected via URL param");
 }
 
-/** Wait for the QWebChannel bridge to become available, creating it if needed. */
+/** Wait for the QWebChannel bridge to become available.
+ * The bridge is set up by QML's onLoadingChanged handler via runJavaScript. */
 let _bridgeReady = false;
 export function waitForBridge(): Promise<void> {
   if (_bridgeReady && window.mpvBridge) return Promise.resolve();
-  console.log("[native-bridge] waitForBridge: setting up QWebChannel...");
-
+  console.log("[native-bridge] waiting for bridge...");
   return new Promise((resolve) => {
-    // Try to create the bridge ourselves
-    const tryConnect = () => {
-      // Already set by someone else?
+    const check = setInterval(() => {
       if (window.mpvBridge) {
         _bridgeReady = true;
-        console.log("[native-bridge] bridge already available");
+        clearInterval(check);
+        console.log("[native-bridge] bridge ready!");
         resolve();
-        return;
       }
-
-      const QWC = (window as any).QWebChannel;
-      const transport = (window as any).qt?.webChannelTransport;
-
-      console.log("[native-bridge] diag: QWebChannel=" + typeof QWC +
-        " qt=" + typeof (window as any).qt +
-        " transport=" + typeof transport);
-
-      if (QWC && transport) {
-        try {
-          new QWC(transport, (channel: any) => {
-            window.mpvBridge = channel.objects.bridge;
-            console.log("[native-bridge] channel objects:", Object.keys(channel.objects));
-            if (window.mpvBridge) {
-              window.mpvEvents = {
-                onTimeChanged: null,
-                onDurationChanged: null,
-                onEofReached: null,
-                onPauseChanged: null,
-              };
-              window.mpvBridge.timeChanged.connect((s: number) => {
-                if (window.mpvEvents?.onTimeChanged) window.mpvEvents.onTimeChanged(s);
-              });
-              window.mpvBridge.durationChanged.connect((s: number) => {
-                if (window.mpvEvents?.onDurationChanged) window.mpvEvents.onDurationChanged(s);
-              });
-              window.mpvBridge.eofReached.connect(() => {
-                if (window.mpvEvents?.onEofReached) window.mpvEvents.onEofReached();
-              });
-              window.mpvBridge.pauseChanged.connect((p: boolean) => {
-                if (window.mpvEvents?.onPauseChanged) window.mpvEvents.onPauseChanged(p);
-              });
-              _bridgeReady = true;
-              console.log("[native-bridge] bridge wired up successfully");
-            }
-            resolve();
-          });
-        } catch (e) {
-          console.error("[native-bridge] QWebChannel error:", e);
-          resolve();
-        }
-      } else {
-        // Not ready yet, retry
-        return false;
+    }, 50);
+    setTimeout(() => {
+      clearInterval(check);
+      if (!window.mpvBridge) {
+        console.error("[native-bridge] bridge timeout. QWebChannel:",
+          typeof (window as any).QWebChannel, "qt:", typeof (window as any).qt);
       }
-      return true;
-    };
-
-    if (!tryConnect()) {
-      let attempts = 0;
-      const poll = setInterval(() => {
-        attempts++;
-        if (tryConnect() || attempts > 100) {
-          clearInterval(poll);
-          if (attempts > 100) {
-            console.error("[native-bridge] gave up after 100 attempts");
-            resolve();
-          }
-        }
-      }, 50);
-    }
+      resolve();
+    }, 10000);
   });
 }
 
