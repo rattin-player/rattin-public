@@ -244,31 +244,39 @@ build_appimage() {
 
     # Run linuxdeploy — bundles shared libs (Qt6, libmpv, codecs),
     # Qt plugins, QML imports, and WebEngine resources.
+    # Don't produce AppImage yet — we need to strip problematic libs first.
     "$TOOLS_DIR/linuxdeploy" \
         --appdir "$APPDIR" \
         --executable "$APPDIR/usr/bin/rattin-shell" \
         --desktop-file "$APPDIR/rattin.desktop" \
         --icon-file "$APPDIR/rattin.svg" \
         --custom-apprun "$REPO_ROOT/install/AppRun" \
-        --plugin qt \
-        --output appimage
+        --plugin qt
 
-    # linuxdeploy names the output based on the desktop file
-    # Move it to our expected location
-    local generated
-    generated="$(ls -1 Rattin*.AppImage 2>/dev/null | head -1)"
-    if [ -z "$generated" ]; then
-        # Try alternative naming
-        generated="$(ls -1 *.AppImage 2>/dev/null | head -1)"
+    # Remove NSS/NSPR libs — they MUST come from the host system.
+    # Bundling them causes version mismatches with the system's crypto stack
+    # (e.g. libnssutil3.so vs libsoftokn3.so) which crashes QtWebEngine.
+    log "Removing system-coupled libraries..."
+    rm -f "$APPDIR"/usr/lib/libnss3.so*
+    rm -f "$APPDIR"/usr/lib/libnssutil3.so*
+    rm -f "$APPDIR"/usr/lib/libnspr4.so*
+    rm -f "$APPDIR"/usr/lib/libplc4.so*
+    rm -f "$APPDIR"/usr/lib/libplds4.so*
+    rm -f "$APPDIR"/usr/lib/libsmime3.so*
+    rm -f "$APPDIR"/usr/lib/libssl3.so*
+
+    # Now produce the AppImage
+    log "Packaging AppImage..."
+
+    # Download appimagetool if needed
+    if [ ! -x "$TOOLS_DIR/appimagetool" ]; then
+        log "Downloading appimagetool..."
+        curl -fSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
+            -o "$TOOLS_DIR/appimagetool"
+        chmod +x "$TOOLS_DIR/appimagetool"
     fi
 
-    if [ -n "$generated" ] && [ "$generated" != "$(basename "$OUTPUT")" ]; then
-        mv "$generated" "$OUTPUT"
-    elif [ -n "$generated" ]; then
-        mv "$generated" "$OUTPUT"
-    else
-        die "AppImage was not generated. Check linuxdeploy output above."
-    fi
+    "$TOOLS_DIR/appimagetool" "$APPDIR" "$OUTPUT"
 
     local size
     size="$(du -h "$OUTPUT" | cut -f1)"
