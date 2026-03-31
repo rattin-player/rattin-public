@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, fetchAudioTracks, fetchSubtitleTracks, backdrop, poster, still } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
+import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -564,54 +565,11 @@ export default function Detail() {
       )}
 
       {showPicker && (
-        <div className="picker-overlay" onClick={() => setShowPicker(false)}>
-          <div className="picker-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="picker-header">
-              <h3>Select Source</h3>
-              <button className="picker-close" onClick={() => setShowPicker(false)}>&#10005;</button>
-            </div>
-            <div className="picker-list">
-              {streams === null ? (
-                <div className="picker-loading">Searching providers...</div>
-              ) : streams.length === 0 ? (
-                <div className="picker-empty">No streams found</div>
-              ) : (
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                streams.map((s: any) => (
-                  <button
-                    key={s.infoHash}
-                    className="picker-item"
-                    onClick={() => handlePickStream(s)}
-                  >
-                    <div className="picker-item-main">
-                      <span className="picker-item-name">{s.name}</span>
-                      <div className="picker-item-tags">
-                        {s.seasonPack && <span className="picker-tag season-pack">Season Pack</span>}
-                        {s.tags.map((t: string) => (
-                          <span key={t} className={`picker-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
-                        ))}
-                        {s.multiAudio && <span className="picker-tag multi-audio">Multi Audio</span>}
-                        {s.hasSubs && <span className="picker-tag has-subs">Subs</span>}
-                        {s.foreignOnly && <span className="picker-tag foreign">Foreign</span>}
-                        {s.languages?.length > 0 && (
-                          <span className="picker-tag languages">{s.languages.join(" ")}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="picker-item-meta">
-                      <span className="picker-source">{s.source.toUpperCase()}</span>
-                      <span className="picker-seeds">
-                        <span className="picker-seed-dot" />
-                        {s.seeders}
-                      </span>
-                      <span className="picker-size">{formatBytes(s.size)}</span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        <SourcePicker
+          streams={streams}
+          onPick={handlePickStream}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );
