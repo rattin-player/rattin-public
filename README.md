@@ -92,17 +92,30 @@ Both modes share the same interface and backend. The native version just swaps t
 
 ### :desktop_computer: Desktop App (Linux)
 
-One command:
+**Option A: One-line installer** (builds from source, installs dependencies automatically)
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash
 ```
 
-Handles everything: Qt6, libmpv, Node.js, ffmpeg. Creates a desktop entry so it shows up in your app launcher. You'll be asked for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
+Installs Qt6, libmpv, Node.js, ffmpeg, and builds the native shell. Creates a desktop entry so it shows up in your app launcher. You'll be asked for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
 
 To update, rerun the same command. To uninstall: add `--uninstall`.
 
-### :globe_with_meridians: Web Only (any OS)
+**Option B: AppImage** (single file, no install required)
+
+Download `Rattin-x86_64.AppImage` from the [latest release](https://github.com/rattin-player/rattin-public/releases/latest), make it executable, and run:
+
+```bash
+chmod +x Rattin-x86_64.AppImage
+./Rattin-x86_64.AppImage
+```
+
+The AppImage bundles Node.js, the server, and the Qt shell. System dependencies required: libmpv, Qt6 WebEngine, ffmpeg, and fpcalc (chromaprint). On first run, set your TMDB API key in `~/.config/rattin/.env`.
+
+### :globe_with_meridians: Web Mode (self-hosted server)
+
+For running as a web server accessible from any browser on your network:
 
 ```bash
 git clone https://github.com/rattin-player/player.git && cd player
@@ -111,7 +124,7 @@ echo "TMDB_API_KEY=your_key" > .env
 npm start
 ```
 
-Open http://localhost:3000.
+Open `http://<your-ip>:3000` from any device. Requires Node.js 20+ and ffmpeg.
 
 ---
 
@@ -120,7 +133,7 @@ Open http://localhost:3000.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TMDB_API_KEY` | Yes | Free API key from [themoviedb.org](https://www.themoviedb.org/settings/api) |
-| `PORT` | No | Server port (default: 3000) |
+| `PORT` | No | Server port (default: 3000, native mode uses 9630) |
 
 ---
 
@@ -172,25 +185,21 @@ In native mode, the React app runs inside Qt's WebEngineView. When a video plays
 
 | File | What it does |
 |------|-------------|
-| `shell/main.cpp` | Spawns Express server, creates QML engine, wires up the mpv bridge |
+| `shell/main.cpp` | Spawns Express server on port 9630, creates QML engine, wires up the mpv bridge |
 | `shell/main.qml` | Layout: WebEngineView (z:2) + MpvObject (z:3) + QML controls (z:4) + QWebChannel |
 | `shell/mpvobject.cpp` | QQuickFramebufferObject wrapping libmpv with OpenGL rendering |
 | `shell/mpvbridge.cpp` | C++ slots callable from JS: play, pause, seek, volume, subtitle/audio track, stop |
 
-Key patterns from the implementation:
-- `resetOpenGLState()` before/after mpv render (from standard approach) - required for subtitle rendering
-- `sid`/`aid` properties forced to int64 (JS sends doubles, mpv rejects them)
-- Track list queried via `bridge.getProperty("track-list")` returning QVariantList
-- Server polled at `127.0.0.1` (not `localhost`) to avoid IPv6 resolution issues
+### Phone Remote
 
-Build from source:
+The phone remote uses Server-Sent Events (SSE) for real-time communication:
 
-```bash
-cd shell && mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
-```
+1. PC creates an RC session and generates a QR code containing `http://<lan-ip>:9630/api/rc/auth?session=X&token=Y`
+2. Phone scans QR, authenticates, and connects to the SSE stream
+3. PC reports playback state every second; phone sends commands via POST
+4. In native mode, commands route through the mpv bridge (play/pause/seek/volume/subtitles)
 
-Requires: Qt6 (Quick, WebEngineQuick, WebChannel), libmpv, CMake 3.16+
+The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Firewall port 9630 is opened automatically on start and closed on exit.
 
 ### Tech Stack
 
@@ -211,10 +220,6 @@ Requires: Qt6 (Quick, WebEngineQuick, WebChannel), libmpv, CMake 3.16+
 npm run dev     # Vite dev server with hot reload (port 5173)
 npm start       # Backend (port 3000, proxied by Vite)
 ```
-
-### Deployment
-
-An Ansible playbook is included in `deploy/` for server deployment with nginx and systemd.
 
 </details>
 
