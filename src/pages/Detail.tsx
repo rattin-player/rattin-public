@@ -6,9 +6,6 @@ import { useRemoteMode } from "../lib/PlayerContext";
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-
-
 export default function Detail() {
   const { id } = useParams();
   const location = useLocation();

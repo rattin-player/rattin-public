@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
         auto *engine = new QQmlApplicationEngine(&app);
         engine->rootContext()->setContextProperty("serverPort", port);
         engine->rootContext()->setContextProperty("initialUrl",
-            QString("http://localhost:%1?native=1").arg(port));
+            QString("http://127.0.0.1:%1?native=1").arg(port));
         engine->rootContext()->setContextProperty("bridge", bridge);
 
         // Connect BEFORE load — load() is synchronous for qrc: URLs,

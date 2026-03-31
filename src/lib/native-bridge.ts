@@ -86,6 +86,7 @@ export function waitForBridge(): Promise<void> {
           if (window.mpvEvents?.onEofReached) window.mpvEvents.onEofReached();
         });
         bridge.pauseChanged.connect((p: boolean) => {
+          mpvPaused = p;
           if (window.mpvEvents?.onPauseChanged) window.mpvEvents.onPauseChanged(p);
         });
         _bridgeReady = true;
@@ -112,7 +113,16 @@ export function waitForBridge(): Promise<void> {
   });
 }
 
+// ── State (tracked via QWebChannel signals) ────────────────────────
+
+export let mpvPaused = false;
+
 // ── Commands (send to mpv) ──────────────────────────────────────────
+
+export function mpvTogglePause(): void {
+  if (mpvPaused) window.mpvBridge?.resume();
+  else window.mpvBridge?.pause();
+}
 
 export function mpvPlay(url: string): void {
   window.mpvBridge?.play(url);

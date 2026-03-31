@@ -9,7 +9,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers } from "../lib/api";
 import { encode } from "uqr";
-import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged } from "../lib/native-bridge";
+import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
@@ -255,8 +255,7 @@ export default function Player() {
       switch (e.key) {
         case " ": e.preventDefault();
           if (isNative) {
-            const paused = window.mpvBridge?.getProperty("pause");
-            if (paused) mpvResume(); else mpvPause();
+            mpvTogglePause();
           } else {
             togglePlay();
           }

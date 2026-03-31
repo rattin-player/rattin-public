@@ -16,6 +16,25 @@ Window {
     property double duration: 0
     property bool paused: false
     property bool playing: false
+    property int volume: 100
+
+    function togglePause() {
+        if (root.paused) bridge.resume()
+        else bridge.pause()
+    }
+
+    function toggleFullscreen() {
+        if (root.visibility === Window.FullScreen) root.showNormal()
+        else root.showFullScreen()
+    }
+
+    function formatTime(s) {
+        var h = Math.floor(s / 3600)
+        var m = Math.floor((s % 3600) / 60)
+        var sec = Math.floor(s % 60)
+        if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + (sec < 10 ? "0" : "") + sec
+        return m + ":" + (sec < 10 ? "0" : "") + sec
+    }
 
     // Transport object exposed to JS via QWebChannel
     QtObject {
@@ -113,23 +132,15 @@ Window {
                 controlsOverlay.showControls = true
                 hideTimer.restart()
             }
-            onClicked: {
-                if (root.paused) bridge.resume()
-                else bridge.pause()
-            }
-            onDoubleClicked: {
-                if (root.visibility === Window.FullScreen)
-                    root.showNormal()
-                else
-                    root.showFullScreen()
-            }
+            onClicked: root.togglePause()
+            onDoubleClicked: root.toggleFullscreen()
         }
 
         // Keyboard handling
         Keys.onPressed: function(event) {
             switch (event.key) {
             case Qt.Key_Space:
-                if (root.paused) bridge.resume(); else bridge.pause()
+                root.togglePause()
                 event.accepted = true; break
             case Qt.Key_Left:
                 bridge.seek(Math.max(0, root.currentTime - 10))
@@ -138,19 +149,18 @@ Window {
                 bridge.seek(root.currentTime + 10)
                 event.accepted = true; break
             case Qt.Key_Up:
-                bridge.setVolume(Math.min(100, 50 + 10)) // TODO: track volume
+                root.volume = Math.min(100, root.volume + 10)
+                bridge.setVolume(root.volume)
                 event.accepted = true; break
             case Qt.Key_Down:
-                bridge.setVolume(Math.max(0, 50 - 10))
+                root.volume = Math.max(0, root.volume - 10)
+                bridge.setVolume(root.volume)
                 event.accepted = true; break
             case Qt.Key_Escape:
                 bridge.stop()
                 event.accepted = true; break
             case Qt.Key_F:
-                if (root.visibility === Window.FullScreen)
-                    root.showNormal()
-                else
-                    root.showFullScreen()
+                root.toggleFullscreen()
                 event.accepted = true; break
             }
         }
@@ -251,20 +261,12 @@ Window {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (root.paused) bridge.resume()
-                            else bridge.pause()
-                        }
+                        onClicked: root.togglePause()
                     }
                 }
 
                 Text {
-                    function fmt(s) {
-                        var m = Math.floor(s / 60)
-                        var sec = Math.floor(s % 60)
-                        return m + ":" + (sec < 10 ? "0" : "") + sec
-                    }
-                    text: fmt(root.currentTime) + " / " + fmt(root.duration)
+                    text: root.formatTime(root.currentTime) + " / " + root.formatTime(root.duration)
                     color: "#cccccc"
                     font.pixelSize: 14
                     anchors.verticalCenter: parent.verticalCenter
