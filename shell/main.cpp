@@ -49,6 +49,7 @@ static void waitForServer(int port, QObject *parent, std::function<void()> onRea
 int main(int argc, char *argv[])
 {
     std::setlocale(LC_NUMERIC, "C");
+    fprintf(stderr, "[shell] starting\n");
 
     // Force OpenGL — required for QQuickFramebufferObject + libmpv.
     // Verified working: known working pattern on Qt6.
@@ -62,11 +63,14 @@ int main(int argc, char *argv[])
     app.setOrganizationName("MagnetPlayer");
     app.setApplicationVersion("1.0.0");
 
+    fprintf(stderr, "[shell] registering MpvObject type\n");
     // Register MpvObject QML type
     qmlRegisterType<MpvObject>("com.magnetplayer.mpv", 1, 0, "MpvObject");
 
+    fprintf(stderr, "[shell] finding free port\n");
     // Determine server port
     int port = findFreePort();
+    fprintf(stderr, "[shell] got port %d\n", port);
 
     // Spawn Express server as child process
     auto *serverProcess = new QProcess(&app);
