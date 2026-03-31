@@ -77,10 +77,9 @@ int main(int argc, char *argv[])
     // Register MpvObject QML type
     qmlRegisterType<MpvObject>("com.magnetplayer.mpv", 1, 0, "MpvObject");
 
-    fprintf(stderr, "[shell] finding free port\n");
-    // Determine server port
-    int port = findFreePort();
-    fprintf(stderr, "[shell] got port %d\n", port);
+    // Fixed port so firewall rules & phone bookmarks survive restarts
+    int port = 9630;
+    fprintf(stderr, "[shell] using port %d\n", port);
 
     // Spawn Express server as child process
     auto *serverProcess = new QProcess(&app);

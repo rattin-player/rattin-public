@@ -135,7 +135,10 @@ const _cacheJanitor = setInterval(() => {
 if (_cacheJanitor.unref) _cacheJanitor.unref();
 
 app.get("/{*splat}", (req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  const index = path.join(__dirname, "public", "index.html");
+  res.sendFile(index, (err) => {
+    if (err) res.status(404).send("Not found");
+  });
 });
 
   return {
