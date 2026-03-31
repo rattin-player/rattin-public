@@ -590,6 +590,27 @@ export default function Remote() {
         </div>
       )}
 
+      {state?.sources?.length > 1 && (
+        <div className="remote-sub-row">
+          <select
+            className="remote-sub-select"
+            value={state.infoHash || ""}
+            onChange={(e) => {
+              const source = state.sources.find((s: { infoHash: string }) => s.infoHash === e.target.value);
+              if (source) sendCommand("switch-source", source);
+            }}
+            disabled={isReconnecting}
+          >
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {state.sources.map((s: any) => (
+              <option key={s.infoHash} value={s.infoHash}>
+                {s.name?.slice(0, 50)}{s.name?.length > 50 ? "..." : ""} ({s.seeders ?? "?"} seeds)
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="remote-bottom-row">
         <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isReconnecting}>
           Browse

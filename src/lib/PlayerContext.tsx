@@ -25,6 +25,8 @@ interface CommandHandlers {
   seekRelative: (delta: number) => void;
   switchSubtitle: (val: string) => void;
   switchAudio: (streamIndex: string | number) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  switchSource?: (source: any) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,6 +59,8 @@ interface PlayerContextValue {
   rcRemoteConnected: boolean;
   rcQrRequested: boolean;
   introRangeRef: MutableRefObject<IntroRange | null>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sourcesRef: MutableRefObject<any[]>;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -117,6 +121,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const dlSpeedRef = useRef(0);
   const dlPeersRef = useRef(0);
   const introRangeRef = useRef<IntroRange | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sourcesRef = useRef<any[]>([]);
 
   // Remote control session (TV mode — not remote mode)
   // Persist in sessionStorage so PC page reload preserves the session
@@ -298,6 +304,11 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
             }
           }
           break;
+        case "switch-source":
+          if (value && commandRef.current?.switchSource) {
+            commandRef.current.switchSource(value);
+          }
+          break;
         case "stop-stream":
           stopStreamRef.current?.();
           if (navigateRef.current) navigateRef.current("/");
@@ -373,6 +384,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         dlPeers: dlPeersRef.current,
         introActive: !!(introRangeRef.current && ct >= introRangeRef.current.start && ct < introRangeRef.current.end),
         introEnd: introRangeRef.current?.end ?? null,
+        sources: sourcesRef.current,
         connected: true,
       };
 
@@ -417,7 +429,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
-      introRangeRef,
+      introRangeRef, sourcesRef,
     }}>
       <video ref={videoRef} style={{ display: "none" }} />
       {children}

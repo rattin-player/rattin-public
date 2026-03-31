@@ -15,7 +15,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume } = usePlayer();
+  const { videoRef, startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef } = usePlayer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = location.state as any;
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
@@ -32,6 +32,7 @@ export default function Player() {
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [sources, setSources] = useState<any[]>(state?.sources || []);
+  sourcesRef.current = sources;
   const [showSources, setShowSources] = useState(false);
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
@@ -165,6 +166,7 @@ export default function Player() {
       seekRelative: (delta: number) => seekTo(Math.max(0, getEffectiveTime() + delta)),
       switchSubtitle,
       switchAudio,
+      switchSource: handleSwitchSource,
     };
   }
   useEffect(() => {
