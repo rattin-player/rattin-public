@@ -2,336 +2,196 @@
   <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D20-green?style=flat-square&logo=node.js" alt="Node" />
   <img src="https://img.shields.io/badge/license-ISC-yellow?style=flat-square" alt="License" />
-  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey?style=flat-square" alt="Platform" />
 </p>
 
-<h1 align="center">🧲 Rattin</h1>
+<h1 align="center">Rattin</h1>
 
 <p align="center">
-  <strong>Stream torrents instantly in your browser. No waiting. No desktop app.</strong>
-</p>
-
-<p align="center">
-  Browse movies & TV → Pick a torrent → Watch immediately.<br/>
-  Powered by WebTorrent, React, and ffmpeg.
+  <strong>Stream torrents instantly. Two modes: browser or native desktop.</strong>
 </p>
 
 ---
 
-## ✨ Features
+## What is it
 
-### 🎬 Streaming & Playback
+Rattin is a self-hosted torrent streaming app. Browse movies and TV via TMDB, search for torrents across multiple providers, and start watching immediately while the file downloads. No waiting for full downloads.
 
-- **Instant Streaming** — Start watching while it downloads. No waiting for full files.
-- **Universal Format Support** — Play anything: MKV, AVI, MP4, WebM, MOV, FLV, WMV, and more. Non-native formats are transcoded on-the-fly via ffmpeg.
-- **Smart Seeking** — Builds a keyframe index in the background so you can seek anywhere, even in incomplete downloads. Auto-prioritizes the right torrent pieces.
-- **Background Transcoding** — Completed files are transcoded to MP4 with faststart for instant seeking. Tries remux first (fast), falls back to full re-encode if needed.
-- **Download Overlay** — Real-time download progress in the seek bar, plus speed and peer count in the controls.
-- **Resume Playback** — Automatically saves your position and resumes where you left off.
+It comes in two flavors:
 
-### ⏭️ Skip Intro
+| | Web Mode | Native Mode |
+|---|---|---|
+| **How it runs** | Browser tab (any OS) | Desktop app (Linux) |
+| **Video engine** | HTML5 `<video>` + ffmpeg transcode | libmpv with hardware decoding |
+| **Format support** | MP4/WebM native, everything else transcoded | All formats natively (MKV, HEVC, AV1, HDR) |
+| **Seeking** | Keyframe index + piece prioritization | Instant, handled by mpv |
+| **Subtitles** | WebVTT conversion, offset compensation | mpv native rendering (ASS/SRT from container) |
+| **Controls** | React player UI | QML overlay (play/pause, seek, volume, subtitle/audio picker) |
+| **Remote control** | Phone remote via QR pairing | Same (React runs in embedded WebView) |
+| **Best for** | Remote access, multi-device | Local desktop, best quality, HDR content |
 
-- **Automatic Intro Detection** — Detects TV show intros by fingerprinting audio across episodes using Chromaprint (`fpcalc`). Compares the first few minutes of 2+ episodes to find matching segments.
-- **AniSkip Fallback** — For anime, falls back to the AniSkip API (via Jikan/MAL) to look up known intro timestamps.
-- **One-Click Skip Button** — A "Skip Intro" button appears on-screen when playback enters the intro range. Auto-hides after 10 seconds. Click it and you're past the opening.
-
-### 📺 Movie & TV Browser
-
-- **TMDB Integration** — Full movie and TV metadata: posters, backdrops, synopses, ratings, runtime, genres, cast photos, and trailers.
-- **Trending & Discovery** — Homepage sections for Trending This Week, New Releases, Popular Movies, Popular TV, Top Rated Movies, Top Rated TV, plus genre rows (Action, Comedy, Sci-Fi, Horror).
-- **Hero Banner** — Featured trending content displayed as a full-width hero at the top of the homepage.
-- **Availability Filtering** — Content rows only show titles that actually have available torrents.
-- **TV Season & Episode Browser** — Season selector dropdown, episode grid with thumbnails, runtimes, and expandable synopses. Play or pick a source per episode.
-- **Reviews** — Reddit discussions and IMDB user reviews displayed on detail pages with scores, comment counts, and expandable text.
-- **Trailers** — YouTube trailer links auto-detected and shown when available.
-- **Rating Color Coding** — Ratings are green (7+), yellow (5–7), or red (<5) at a glance.
-
-### 🔍 Torrent Search & Ranking
-
-- **Multi-Provider Search** — Searches **TPB**, **EZTV**, and **YTS** simultaneously.
-- **Smart Scoring** — Ranks results by title match, resolution (1080p > 720p > 480p), source quality (BluRay > WEB-DL > HDTV), codec (x264 > HEVC), seeder count. Penalizes CAM/telesync.
-- **Quality Tags** — Each result shows parsed tags: resolution, codec, source, audio format, container, HDR, Atmos, Season Pack, etc.
-- **Auto-Play** — One click picks the best torrent and starts streaming.
-- **Manual Picker** — Or browse the full ranked list and choose yourself.
-
-### 📱 Phone Remote Control
-
-- **QR Code Pairing** — Scan a QR code from the player to connect your phone as a remote.
-- **Full Playback Control** — Play/pause, seek ±10s, volume slider, subtitle/audio track selection, fullscreen toggle, stop.
-- **Real-Time Sync** — Server-Sent Events keep the remote and player in lockstep. Shows current position, duration, download speed, and peers.
-- **Browse from Phone** — Browse and start content directly from the remote, with a Now Playing bar showing what's on.
-- **Persistent Sessions** — Auth cookies last 30 days with automatic reconnection. Visual connection-status feedback throughout.
-
-### 🔤 Subtitles & Audio
-
-- **Embedded & External Subtitles** — Auto-detects both. Supports SRT, ASS, SSA, VTT, SUB — all converted to WebVTT on the fly.
-- **Multi-Language Detection** — Extracts language tags from embedded streams (English, Spanish, French, German, Japanese, Korean, and more).
-- **Subtitle Offset** — Compensates for time misalignment between video and subtitle tracks.
-- **Audio Track Selection** — Switch between multiple audio tracks. Surround sound detection (shows "5.1" badge).
-### 🖥️ Player UI
-
-- **Keyboard Shortcuts** — `Space` play/pause, `←`/`→` seek ±10s, `F` fullscreen, `Esc` exit fullscreen.
-- **Mini Player** — Keep watching in a corner widget while browsing other content. Shows play/pause, expand, close, time, and progress bar.
-- **Polished Controls** — Auto-hide after inactivity, seek preview tooltip on hover, remote connection toasts.
-
-### 📦 Torrent Management
-
-- **Multi-File Torrents** — Select which files to download, skip what you don't need.
-- **Season Pack Support** — Detects and tags season packs, lets you pick individual episodes.
-- **Bandwidth Prioritization** — Deselects other files when streaming one to focus bandwidth.
-- **Media Validation** — Files verified with ffprobe before streaming to catch fakes and corruption.
-- **Auto-Cleanup** — Idle torrents are automatically removed after 2 minutes of inactivity. Background transcodes are killed when streams close.
-
-### 🎨 UI/UX
-
-- Dark-themed SPA with skeleton loading, lazy images, smooth horizontal-scroll content rows, and deep linking via React Router.
+Both modes share the same Express backend and React frontend. The native mode wraps the web app in a Qt6 shell and routes video through libmpv instead of the browser's `<video>` element.
 
 ---
 
-## 🚀 Quick Install
+## Features
 
-One command. Fresh machine. Everything handled.
+### Streaming
+- **Instant playback** while downloading via WebTorrent
+- **Smart seeking** in incomplete files (keyframe index + piece prioritization)
+- **Live transcoding** via ffmpeg for non-native browser formats
+- **Download progress** in the seek bar with speed and peer count
 
-**Linux** (Arch/CachyOS, Ubuntu 22.04+, Debian 12+, Fedora 39+):
+### Discovery
+- **TMDB integration** with trending, new releases, genres, ratings, cast, trailers
+- **Multi-provider torrent search** (TPB, EZTV, YTS) with smart ranking
+- **Auto-play** picks the best torrent, or browse the full ranked list
+- **Quality tags** parsed from torrent names (resolution, codec, source, HDR, Atmos)
+
+### Player
+- **Skip intro** detection via Chromaprint audio fingerprinting + AniSkip fallback
+- **Subtitle support** with language detection, multi-format (SRT, ASS, SSA, VTT)
+- **Audio track selection** with surround sound detection
+- **Phone remote** via QR code pairing with real-time sync (Server-Sent Events)
+- **Mini player** for browsing while watching
+- **Source switching** between torrents mid-playback
+
+### Native Desktop (Linux)
+- **Hardware decoding** for all codecs via libmpv (VAAPI, NVDEC)
+- **No transcoding** needed, ever
+- **QML controls overlay** with subtitle/audio track picker, volume slider, seek bar
+- **Subtitle size adjustment** (A-/A+ controls)
+- **Fullscreen** with auto-hiding controls
+
+---
+
+## Install
+
+### Native Desktop (recommended for Linux)
+
+One command:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash
 ```
 
-Installs Qt6 deps, builds the native shell with mpv, and creates a desktop entry. You'll be prompted for a free [TMDB API key](https://www.themoviedb.org/settings/api) during setup.
+Installs Qt6, libmpv, Node.js, ffmpeg, builds the shell, creates a desktop entry. You'll be prompted for a free [TMDB API key](https://www.themoviedb.org/settings/api).
 
-**Uninstall:**
+Update by rerunning the same command. Uninstall with `--uninstall`.
 
-```bash
-curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-public/main/install-native.sh" | bash -s -- --uninstall
-```
-
-**Update:** Rerun the install command. It detects the existing installation and updates in place.
-
----
-
-## 🛠️ Manual Setup
-
-If you prefer to set things up yourself:
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) v20+
-- [ffmpeg](https://ffmpeg.org/) installed and on PATH
-- [fpcalc](https://acoustid.org/chromaprint) (Chromaprint) on PATH — for intro detection
-- A [TMDB API key](https://www.themoviedb.org/settings/api) (free, for movie/TV browsing)
-
-### Install & Run
+### Web Only (any OS)
 
 ```bash
 git clone https://github.com/rattin-player/player.git
 cd player
 npm install
 npm run build
-```
-
-Create a `.env` file:
-
-```env
-TMDB_API_KEY=your_tmdb_api_key_here
-```
-
-Start the server:
-
-```bash
+echo "TMDB_API_KEY=your_key_here" > .env
 npm start
 ```
 
-Open **http://localhost:3000** and you're in.
+Open http://localhost:3000.
 
 ### Development
 
 ```bash
-npm run dev    # Vite dev server with hot reload
+npm run dev     # Vite dev server with hot reload (port 5173)
+npm start       # Backend (port 3000, proxied by Vite)
 ```
-
-The dev server proxies `/api` requests to the backend at `localhost:3000`, so run `node --env-file=.env server.js` in a separate terminal.
 
 ---
 
-## Native Desktop App
+## Architecture
 
-The native desktop app provides hardware-accelerated video playback for all formats (MKV, HEVC, AV1, HDR) without transcoding, plus instant seeking to any position.
+```
+                    Native Mode                          Web Mode
+               ┌─────────────────┐              ┌─────────────────┐
+               │   Qt6 Window    │              │     Browser     │
+               │  ┌───────────┐  │              │                 │
+               │  │  libmpv   │  │              │   React App     │
+               │  │  (video)  │  │              │  + HTML5 video  │
+               │  ├───────────┤  │              │                 │
+               │  │ QML Ctrl  │  │              └────────┬────────┘
+               │  ├───────────┤  │                       │
+               │  │ WebEngine │  │                       │
+               │  │(React App)│  │                       │
+               │  └─────┬─────┘  │                       │
+               └────────┼────────┘                       │
+                        │                                │
+           ─────────────┴────────────────────────────────┘
+                              Express API
+           ──────────────────────────────────────────────
+                    │           │           │
+              ┌─────┴─────┐ ┌──┴───┐ ┌─────┴──────┐
+              │ WebTorrent│ │ffmpeg│ │TMDB + Search│
+              └───────────┘ └──────┘ └────────────┘
+```
 
-### Building from source
+In native mode, the React app runs inside Qt's WebEngineView. When you play a video, instead of setting `<video>.src`, the React code sends the stream URL to mpv via QWebChannel. mpv renders at z:3 (on top), QML controls at z:4, WebView at z:2 (hidden behind mpv during playback).
 
-Requirements: Qt6 (Quick, WebEngine, WebChannel), libmpv-dev, CMake 3.16+, Node.js 20+
+---
+
+## Native Shell Details
+
+The shell is ~500 lines of C++/QML:
+
+| File | Purpose |
+|------|---------|
+| `shell/main.cpp` | App init, server spawn, QML engine, bridge creation |
+| `shell/main.qml` | WebEngineView + MpvObject + controls overlay + QWebChannel |
+| `shell/mpvobject.cpp` | QQuickFramebufferObject wrapping libmpv (OpenGL FBO) |
+| `shell/mpvbridge.cpp` | C++ bridge: play/pause/seek/volume/subtitle/audio/stop |
+
+Build from source:
 
 ```bash
-# Build the frontend
-npm run build
-
-# Build the Qt shell
 cd shell && mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-
-# Run
-./rattin-shell
 ```
 
-### Pre-built downloads
-
-See [Releases](../../releases) for AppImage (Linux), MSI (Windows), and DMG (macOS) builds.
+Requires: Qt6 (Quick, WebEngineQuick, WebChannel), libmpv, CMake 3.16+
 
 ---
 
-## 🏗️ Architecture
+## How Streaming Works
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Browser (React)                   │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐ │
-│  │  Browse   │ │  Search  │ │ Player │ │  Remote  │ │
-│  │  (TMDB)  │ │ Torrents │ │  Video │ │  (Phone) │ │
-│  └────┬─────┘ └────┬─────┘ └───┬────┘ └────┬─────┘ │
-└───────┼────────────┼───────────┼───────────┼────────┘
-        │            │           │           │
-   ─────┴────────────┴───────────┴───────────┴─────────
-                     Express API
-   ────────────────────────────────────────────────────
-        │            │           │           │
-   ┌────┴────┐  ┌────┴────┐ ┌───┴────┐ ┌───┴──────┐
-   │  TMDB   │  │ Torrent │ │ ffmpeg │ │   SSE    │
-   │  Proxy  │  │ Search  │ │ Trans- │ │  Remote  │
-   │ + Cache │  │  (3x)   │ │  code  │ │ Control  │
-   └─────────┘  └────┬────┘ └───┬────┘ └──────────┘
-                     │           │
-                ┌────┴────┐ ┌───┴────────┐
-                │WebTorrent│ │ Seek Index │
-                │  Client  │ │+ Intro Det.│
-                └─────────┘ └────────────┘
-```
+| File State | Browser Format? | Strategy |
+|-----------|----------------|----------|
+| Complete | Yes (MP4/WebM) | Direct HTTP range requests |
+| Complete | No (MKV/AVI) | Live ffmpeg transcode to fMP4 |
+| Incomplete | Yes | WebTorrent stream + piece prioritization |
+| Incomplete | No | ffmpeg from torrent stream |
+| Seeking incomplete | Any | Keyframe index, prioritize pieces at target |
+| **Native mode** | **Any** | **Raw bytes to mpv, no transcode** |
 
 ---
 
-## 📂 Project Structure
-
-```
-rattin/
-├── server.js              # Express backend — streaming, transcoding, search, remote
-├── index.html             # HTML entry point
-├── vite.config.js         # Frontend build config
-├── lib/
-│   ├── cache.js           # TMDB cache with TTL + stale-while-revalidate
-│   ├── seek-index.js      # Keyframe index for smart seeking
-│   ├── intro-detect.js    # Intro detection orchestrator
-│   ├── fingerprint.js     # Chromaprint audio fingerprinting & cross-correlation
-│   ├── torrent-scoring.js # Multi-provider torrent ranking
-│   ├── torrent-caches.js  # Bounded caches for torrent state
-│   ├── media-utils.js     # ffprobe helpers & format detection
-│   ├── idle-tracker.js    # Stream idle timeout tracking
-│   ├── torrent-compat.js  # WebTorrent compatibility helpers
-│   └── bounded-map.js     # Size-limited Map implementation
-├── src/
-│   ├── App.jsx            # Router & layout
-│   ├── components/
-│   │   ├── Navbar.jsx     # Search bar, navigation
-│   │   ├── MiniPlayer.jsx # Persistent mini player widget
-│   │   ├── MovieCard.jsx  # Content thumbnails with ratings
-│   │   ├── ContentRow.jsx # Horizontal scrollable content row
-│   │   ├── HeroSection.jsx          # Featured content banner
-│   │   ├── PairRemoteModal.jsx      # QR code pairing modal
-│   │   ├── QrScanner.jsx            # Phone QR scanner
-│   │   └── RemoteNowPlaying.jsx     # Now playing bar for remote
-│   ├── pages/
-│   │   ├── Home.jsx       # Trending, genres, discovery
-│   │   ├── Detail.jsx     # Movie/TV detail, episodes, reviews
-│   │   ├── Player.jsx     # Full video player with skip intro
-│   │   ├── Search.jsx     # Search results grid
-│   │   └── Remote.jsx     # Phone remote UI
-│   └── lib/
-│       ├── PlayerContext.jsx  # Playback state context
-│       ├── api.js         # API client
-│       └── utils.js       # Formatting helpers
-├── public/                # Built frontend assets
-├── deploy/                # Ansible playbook for server deployment
-└── .env                   # TMDB_API_KEY (create this)
-```
-
----
-
-## 🔧 Configuration
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TMDB_API_KEY` | — | Required for movie/TV browsing |
+| `TMDB_API_KEY` | required | Free key from themoviedb.org |
 | `PORT` | `3000` | Server port |
 
-Download and transcode paths default to `/tmp/rattin` and `/tmp/rattin-transcoded`.
+Downloads go to `/tmp/rattin`, transcodes to `/tmp/rattin-transcoded`.
 
 ---
 
-## 🎯 How Streaming Works
-
-Rattin adapts its strategy based on file state:
-
-| Scenario | Strategy |
-|----------|----------|
-| Complete file, browser-native (MP4/WebM) | Direct stream with HTTP range requests |
-| Complete file, non-native (MKV/AVI/etc.) | Live ffmpeg transcode → fragmented MP4 |
-| Incomplete file, browser-native | WebTorrent stream with piece prioritization |
-| Incomplete file, non-native | ffmpeg transcode from torrent stream |
-| Seeking in incomplete file | Build keyframe index → prioritize pieces at target → serve |
-
----
-
-## 🎬 Supported Formats
-
-| Type | Formats |
-|------|---------|
-| **Video** | MP4, MKV, WebM, AVI, MOV, M4V, TS, FLV, WMV |
-| **Audio** | MP3, FLAC, OGG, Opus, M4A, AAC, WAV, WMA |
-| **Subtitles** | SRT, ASS, SSA, VTT, SUB |
-
----
-
----
-
-## 🚢 Deployment
-
-### Systemd (Linux)
-
-```bash
-npm install
-npm run build
-# Configure your .env
-sudo systemctl restart rattin
-```
-
-### Ansible
-
-An Ansible playbook is included in `deploy/` for automated server setup with nginx, basic auth, and systemd.
-
-### Standalone Windows EXE
-
-```bash
-npm run build:exe
-# Output: dist/rattin.exe
-```
-
----
-
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 19, React Router 7, Vite 6 |
-| **Backend** | Express 5, Node.js 20+ |
-| **Torrents** | WebTorrent |
-| **Transcoding** | ffmpeg / ffprobe |
-| **Intro Detection** | Chromaprint (fpcalc) + AniSkip API |
-| **Metadata** | TMDB API |
-| **Reviews** | Reddit + IMDB |
-| **Remote** | Server-Sent Events + QR pairing (uqr) |
+| Frontend | React 19, React Router 7, Vite 6 |
+| Backend | Express 5, Node.js 20+ |
+| Torrents | WebTorrent |
+| Native Shell | Qt6 (Quick, WebEngine, WebChannel), libmpv, CMake |
+| Transcoding | ffmpeg / ffprobe |
+| Intro Detection | Chromaprint + AniSkip API |
+| Metadata | TMDB API, Reddit, IMDB |
+| Remote Control | Server-Sent Events + QR (uqr) |
 
 ---
 
-## 📄 License
+## License
 
 ISC
