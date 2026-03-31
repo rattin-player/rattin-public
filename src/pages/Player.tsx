@@ -78,10 +78,11 @@ export default function Player() {
           ...state,
           tags: newTags,
           sources,
+          debridUrl: result.debridUrl,
         },
       });
       // Start the new stream
-      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags);
+      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridUrl);
       setShowSources(false);
     } catch {
       // If switch fails, stay on current
@@ -103,13 +104,14 @@ export default function Player() {
     seekOffsetRef, isLiveRef, transcodeReadyRef: _transcodeReadyRef, knownDurRef: _knownDurRef,
     getEffectiveTime, getEffectiveDuration: _getEffectiveDuration,
     seekTo, handleSeekClick, handleSeekHover, switchToTranscoded: _switchToTranscoded,
-    togglePlay, setTooltipTime,
+    togglePlay, setPlaying, setTooltipTime,
   } = useSeek(videoRef, {
     infoHash: infoHash!, fileIndex: fileIndex!,
     effectiveTimeRef, dlProgressRef, dlSpeedRef, dlPeersRef,
     activeAudioRef, startStream, mediaTitle, tags,
     setLoading, setLoadingReason, pendingSubReload,
     seekRef,
+    debridUrl: state?.debridUrl,
   });
 
   const {
@@ -167,7 +169,10 @@ export default function Player() {
       // Use 127.0.0.1 instead of localhost — mpv is a separate process and
       // localhost may resolve to ::1 (IPv6) while the server binds to 127.0.0.1
       const port = window.location.port;
-      const streamUrl = `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}?native=1`;
+      const debridUrl = state?.debridUrl;
+      const streamUrl = debridUrl
+        ? debridUrl
+        : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}?native=1`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
       try {
         mpvSetTitle(mediaTitle || "");

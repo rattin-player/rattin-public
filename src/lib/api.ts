@@ -145,3 +145,59 @@ export function fetchIntroTimestamps(infoHash: string, fileIndex: string | numbe
   const qs = params.toString();
   return get(`/api/intro/${infoHash}/${fileIndex}${qs ? `?${qs}` : ""}`);
 }
+
+// ── Debrid ─────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getDebridStatus(): Promise<any> {
+  return get("/api/debrid/status");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function verifyDebridKey(): Promise<any> {
+  return get("/api/debrid/verify");
+}
+
+export async function setDebridConfig(apiKey: string, provider = "realdebrid"): Promise<void> {
+  const res = await fetch("/api/debrid/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey, provider }),
+  });
+  if (!res.ok) throw new Error("config_failed");
+}
+
+export async function deleteDebridConfig(): Promise<void> {
+  const res = await fetch("/api/debrid/config", { method: "DELETE" });
+  if (!res.ok) throw new Error("delete_failed");
+}
+
+export async function checkDebridCached(infoHashes: string[]): Promise<Record<string, boolean>> {
+  const res = await fetch("/api/debrid/cached", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ infoHashes }),
+  });
+  const data = await res.json();
+  return data.cached || {};
+}
+
+// ── VPN ────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getVpnStatus(): Promise<any> {
+  return get("/api/vpn/status");
+}
+
+export async function toggleVpn(action: "on" | "off"): Promise<void> {
+  await fetch("/api/vpn/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function verifyVpn(): Promise<any> {
+  return get("/api/vpn/verify");
+}

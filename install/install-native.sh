@@ -177,6 +177,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# VPN directory setup (for optional WireGuard per-app isolation)
+# ---------------------------------------------------------------------------
+mkdir -p "$CONFIG_DIR/wg"
+chmod 700 "$CONFIG_DIR/wg"
+
+# Optional: prompt for WireGuard config
+if [ ! -f "$CONFIG_DIR/wg/wg0.conf" ] && [ -e /dev/tty ]; then
+    echo ""
+    printf "${CYAN}Rattin supports optional per-app VPN isolation (WireGuard).${NC}\n"
+    printf "${CYAN}This routes only Rattin's torrent traffic through a VPN tunnel.${NC}\n"
+    printf "${CYAN}Path to a WireGuard .conf file (or press Enter to skip):${NC} "
+    read -r wg_path < /dev/tty || wg_path=""
+    echo ""
+    if [ -n "$wg_path" ] && [ -f "$wg_path" ]; then
+        cp "$wg_path" "$CONFIG_DIR/wg/wg0.conf"
+        chmod 600 "$CONFIG_DIR/wg/wg0.conf"
+        log "WireGuard config installed — VPN toggle available in the app"
+    elif [ -n "$wg_path" ]; then
+        warn "File not found: $wg_path — skipping VPN setup"
+    else
+        log "Skipping VPN setup — you can add a WireGuard config later at $CONFIG_DIR/wg/wg0.conf"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Firewall — optionally open port 9630 for phone remote control
 # ---------------------------------------------------------------------------
 APP_PORT=9630
@@ -277,6 +302,8 @@ echo ""
 echo "  AppImage: $APP_DIR/$APPIMAGE_NAME"
 echo "  Binary:   $BIN_DIR/rattin"
 echo "  Config:   $CONFIG_DIR/.env"
+echo "  Debrid:   Configure in Settings (gear icon) inside the app"
+echo "  VPN:      Place a WireGuard .conf at $CONFIG_DIR/wg/wg0.conf"
 echo ""
 echo "  To update:    re-run this installer"
 echo "  To uninstall: bash <(curl -fsSL <url>/install-native.sh) --uninstall"

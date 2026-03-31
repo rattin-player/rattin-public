@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
 import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
 import { searchTorrentio } from "../lib/torrentio.js";
+import { getDebridProvider, setActiveDebridStream } from "../lib/debrid.js";
 import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
 
@@ -346,6 +347,22 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
       })
       .slice(0, 50);
 
+    // Check debrid cache availability if configured
+    const debrid = getDebridProvider();
+    if (debrid && scored.length > 0) {
+      try {
+        const hashes = scored.map((r) => r.infoHash);
+        const cached = await debrid.checkCached(hashes);
+        for (const r of scored) {
+          if (cached.get(r.infoHash.toLowerCase())) {
+            (r as typeof r & { cached?: boolean }).cached = true;
+          }
+        }
+      } catch (err) {
+        log("warn", "Debrid cache check failed", { error: (err as Error).message });
+      }
+    }
+
     res.json({ results: scored });
   } catch (err) {
     log("err", "Search streams failed", { error: (err as Error).message });
@@ -430,6 +447,7 @@ interface TorrentPlayResult {
   torrentName: string;
   totalSize: number;
   tags: string[];
+  debridUrl?: string;
 }
 
 function respondWithTorrent(torrent: Torrent, season: number | undefined, episode: number | undefined, tags: string[], preferredFileIdx?: number): TorrentPlayResult | null {
@@ -513,6 +531,27 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     const tags = parseTags(best.name);
     const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
     const magnet = `magnet:?xt=urn:btih:${best.infoHash}&dn=${encodeURIComponent(best.name)}${trackerParams}`;
+
+    // Try debrid — always attempt, fall back to WebTorrent on failure/timeout
+    const debrid = getDebridProvider();
+    if (debrid) {
+      try {
+        const stream = await debrid.unrestrict(magnet, best.fileIdx);
+        log("info", "Auto-play via debrid", { name: best.name, filename: stream.filename });
+        setActiveDebridStream(best.infoHash, stream.url, stream.files);
+        return res.json({
+          infoHash: best.infoHash,
+          fileIndex: stream.fileIndex,
+          fileName: stream.filename,
+          torrentName: best.name,
+          totalSize: stream.filesize,
+          tags,
+          debridUrl: stream.url,
+        } satisfies TorrentPlayResult);
+      } catch (err) {
+        log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
+      }
+    }
 
     // Reuse existing torrent if already in client
     const existing = client.torrents.find(
@@ -611,6 +650,27 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
   const tags = parseTags(name || "");
   const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
   const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}${trackerParams}`;
+
+  // Try debrid — always attempt, fall back to WebTorrent on failure/timeout
+  const debrid = getDebridProvider();
+  if (debrid) {
+    try {
+      const stream = await debrid.unrestrict(magnet, fileIdx);
+      log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
+      setActiveDebridStream(infoHash, stream.url, stream.files);
+      return res.json({
+        infoHash,
+        fileIndex: stream.fileIndex,
+        fileName: stream.filename,
+        torrentName: name || stream.filename,
+        totalSize: stream.filesize,
+        tags,
+        debridUrl: stream.url,
+      } satisfies TorrentPlayResult);
+    } catch (err) {
+      log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
+    }
+  }
 
   const existing = client.torrents.find(
     (t) => t.infoHash === infoHash || t.infoHash === infoHash.toLowerCase()

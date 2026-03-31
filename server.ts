@@ -1,7 +1,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import path from "path";
-import { statSync, readFileSync } from "fs";
+import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
+import os from "os";
 import { tmdbCache } from "./lib/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
@@ -12,6 +13,8 @@ import mediaRoutes from "./routes/media.js";
 import statusRoutes from "./routes/status.js";
 import searchRoutes from "./routes/search.js";
 import streamRoutes from "./routes/stream.js";
+import debridRoutes from "./routes/debrid.js";
+import vpnRoutes from "./routes/vpn.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 
 interface CreateAppOverrides {
@@ -120,6 +123,8 @@ mediaRoutes(app, ctx);
 statusRoutes(app, ctx);
 searchRoutes(app, ctx);
 streamRoutes(app, ctx);
+debridRoutes(app, ctx);
+vpnRoutes(app, ctx);
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {
@@ -152,11 +157,46 @@ const isMain = process.argv[1] && (
   process.argv[1].endsWith("/server.js") ||
   process.argv[1].endsWith("/server.ts")
 );
+// ── Session persistence (for VPN toggle restarts) ─────────────────
+const SESSIONS_PATH = path.join(os.homedir(), ".config", "rattin", "sessions.json");
+
+interface SessionEntry { infoHash: string; magnetURI: string; fileIndex: number }
+
+function dumpSessions(client: ServerContext["client"]): void {
+  try {
+    const sessions: SessionEntry[] = client.torrents.map((t) => ({
+      infoHash: t.infoHash,
+      magnetURI: t.magnetURI,
+      fileIndex: 0,
+    }));
+    mkdirSync(path.dirname(SESSIONS_PATH), { recursive: true });
+    writeFileSync(SESSIONS_PATH, JSON.stringify(sessions));
+  } catch {}
+}
+
+function restoreSessions(client: ServerContext["client"], downloadPath: string): void {
+  try {
+    const raw = readFileSync(SESSIONS_PATH, "utf8");
+    const sessions = JSON.parse(raw) as SessionEntry[];
+    for (const s of sessions) {
+      if (s.magnetURI && !client.torrents.find((t) => t.infoHash === s.infoHash)) {
+        client.add(s.magnetURI, { path: downloadPath, deselect: true });
+      }
+    }
+    // Clear after restore — single use
+    writeFileSync(SESSIONS_PATH, "[]");
+  } catch {}
+}
+
 if (isMain) {
   const { app, client, transcodeJobs } = createApp();
 
+  // Restore sessions from a previous VPN toggle restart
+  restoreSessions(client, process.env.DOWNLOAD_PATH || "/tmp/rattin");
+
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
+    dumpSessions(client);
     for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
     client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);

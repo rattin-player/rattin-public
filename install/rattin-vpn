@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# rattin-vpn — Per-app VPN isolation supervisor for Rattin
+# Manages a Linux network namespace + WireGuard tunnel around the Node.js server.
+# Usage: ./rattin-vpn [node args...]
+#
+# Without a WireGuard config at ~/.config/rattin/wg/wg0.conf, this script
+# simply runs Node normally (pass-through mode).
+#
+# Toggle VPN at runtime: the Node process sends SIGUSR1 to this supervisor.
+
+set -euo pipefail
+
+NAMESPACE="rattin-vpn"
+VETH_HOST="veth-host"
+VETH_NS="veth-rattin"
+SUBNET="10.199.199"
+HOST_IP="${SUBNET}.1"
+NS_IP="${SUBNET}.2"
+CONFIG_DIR="${HOME}/.config/rattin"
+WG_CONF="${CONFIG_DIR}/wg/wg0.conf"
+STATE_FILE="${CONFIG_DIR}/vpn-state.json"
+NODE_CMD="${1:-server.ts}"
+shift 2>/dev/null || true
+NODE_PID=""
+VPN_ACTIVE=false
+
+log() { echo "[$(date +%H:%M:%S.%3N)] VPN   $*"; }
+
+write_state() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  echo "{\"active\":$1,\"configured\":$2}" > "$STATE_FILE"
+}
+
+has_wg_config() { [ -f "$WG_CONF" ]; }
+
+create_namespace() {
+  log "Creating network namespace ${NAMESPACE}"
+
+  # Create namespace
+  ip netns add "$NAMESPACE" 2>/dev/null || true
+
+  # Create veth pair
+  ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
+  ip link set "$VETH_NS" netns "$NAMESPACE"
+
+  # Assign IPs
+  ip addr add "${HOST_IP}/24" dev "$VETH_HOST"
+  ip link set "$VETH_HOST" up
+
+  ip netns exec "$NAMESPACE" ip addr add "${NS_IP}/24" dev "$VETH_NS"
+  ip netns exec "$NAMESPACE" ip link set "$VETH_NS" up
+  ip netns exec "$NAMESPACE" ip link set lo up
+
+  # Enable forwarding + NAT so the namespace can reach the internet via wg0
+  sysctl -qw net.ipv4.ip_forward=1
+  iptables -t nat -A POSTROUTING -s "${SUBNET}.0/24" ! -o "$VETH_HOST" -j MASQUERADE
+
+  # DNS inside namespace
+  mkdir -p "/etc/netns/${NAMESPACE}"
+  if grep -q "^DNS" "$WG_CONF" 2>/dev/null; then
+    grep "^DNS" "$WG_CONF" | head -1 | sed 's/DNS\s*=\s*//' | tr ',' '\n' | \
+      awk '{print "nameserver "$1}' > "/etc/netns/${NAMESPACE}/resolv.conf"
+  else
+    echo "nameserver 1.1.1.1" > "/etc/netns/${NAMESPACE}/resolv.conf"
+  fi
+
+  # Bring up WireGuard inside namespace
+  ip netns exec "$NAMESPACE" wg-quick up "$WG_CONF"
+
+  log "Namespace ${NAMESPACE} ready, WireGuard up"
+}
+
+destroy_namespace() {
+  log "Tearing down namespace ${NAMESPACE}"
+
+  ip netns exec "$NAMESPACE" wg-quick down "$WG_CONF" 2>/dev/null || true
+  ip link del "$VETH_HOST" 2>/dev/null || true
+  ip netns del "$NAMESPACE" 2>/dev/null || true
+  iptables -t nat -D POSTROUTING -s "${SUBNET}.0/24" ! -o "$VETH_HOST" -j MASQUERADE 2>/dev/null || true
+  rm -rf "/etc/netns/${NAMESPACE}" 2>/dev/null || true
+
+  log "Namespace destroyed"
+}
+
+start_node() {
+  if $VPN_ACTIVE; then
+    log "Starting Node inside namespace (HOST=${NS_IP})"
+    ip netns exec "$NAMESPACE" \
+      env HOST="$NS_IP" \
+      node "$NODE_CMD" "$@" &
+    NODE_PID=$!
+  else
+    log "Starting Node normally"
+    node "$NODE_CMD" "$@" &
+    NODE_PID=$!
+  fi
+}
+
+stop_node() {
+  if [ -n "$NODE_PID" ] && kill -0 "$NODE_PID" 2>/dev/null; then
+    log "Stopping Node (PID ${NODE_PID})"
+    kill -TERM "$NODE_PID" 2>/dev/null || true
+    wait "$NODE_PID" 2>/dev/null || true
+  fi
+  NODE_PID=""
+}
+
+toggle_vpn() {
+  stop_node
+
+  if $VPN_ACTIVE; then
+    # Turn OFF
+    destroy_namespace
+    VPN_ACTIVE=false
+    write_state "false" "true"
+  else
+    # Turn ON
+    if ! has_wg_config; then
+      log "No WireGuard config at ${WG_CONF} — cannot enable VPN"
+      write_state "false" "false"
+      start_node "$@"
+      return
+    fi
+    create_namespace
+    VPN_ACTIVE=true
+    write_state "true" "true"
+  fi
+
+  start_node "$@"
+}
+
+cleanup() {
+  log "Shutting down..."
+  stop_node
+  if $VPN_ACTIVE; then
+    destroy_namespace
+  fi
+  write_state "false" "$(has_wg_config && echo true || echo false)"
+  exit 0
+}
+
+# ── Main ──────────────────────────────────────────────────────────
+
+trap cleanup SIGTERM SIGINT
+trap 'toggle_vpn' SIGUSR1
+
+# Initial state
+if has_wg_config; then
+  write_state "false" "true"
+else
+  write_state "false" "false"
+fi
+
+# Start Node in normal mode
+start_node "$@"
+
+log "Supervisor running (PID $$), Node PID ${NODE_PID}"
+if has_wg_config; then
+  log "WireGuard config found — VPN toggle available via SIGUSR1"
+else
+  log "No WireGuard config — running in pass-through mode"
+fi
+
+# Wait for Node to exit (or signals)
+while true; do
+  wait "$NODE_PID" 2>/dev/null || true
+  # If Node exited on its own (not from a toggle), exit supervisor too
+  if [ -n "$NODE_PID" ] && ! kill -0 "$NODE_PID" 2>/dev/null; then
+    log "Node exited, supervisor shutting down"
+    cleanup
+  fi
+done

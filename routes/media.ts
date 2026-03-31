@@ -9,6 +9,7 @@ import { hasPiece } from "../lib/torrent-compat.js";
 import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media-utils.js";
 import { detectIntro, lookupExternal } from "../lib/intro-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
+import { getActiveDebridUrl } from "../lib/debrid.js";
 
 export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   const {
@@ -19,20 +20,25 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   // Duration endpoint - ffprobe the video to get total duration
   app.get("/api/duration/:infoHash/:fileIndex", (req: Request, res: Response) => {
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
-    if (!torrent) return res.status(404).json({ error: "Torrent not found" });
-
-    const file = torrent.files[parseInt(fileIndex, 10)];
-    if (!file) return res.status(404).json({ error: "File not found" });
-
-    const cacheKey = jobKey(torrent.infoHash, fileIndex);
+    const cacheKey = `${infoHash}:${fileIndex}`;
     if (durationCache.has(cacheKey)) {
       return res.json({ duration: durationCache.get(cacheKey) });
     }
 
-    const filePath = diskPath(torrent, file);
-    try { statSync(filePath); } catch {
-      return res.json({ duration: null });
+    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    let filePath: string;
+
+    if (torrent) {
+      const file = torrent.files[parseInt(fileIndex, 10)];
+      if (!file) return res.status(404).json({ error: "File not found" });
+      filePath = diskPath(torrent, file);
+      try { statSync(filePath); } catch {
+        return res.json({ duration: null });
+      }
+    } else {
+      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+      filePath = debridUrl;
     }
 
     const probe = spawn("ffprobe", [
@@ -151,20 +157,28 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
 
   // Probe embedded subtitle streams in a video file
   app.get("/api/subtitles/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    res.removeHeader("ETag");
+    res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
     const torrent = client.torrents.find((t) => t.infoHash === infoHash);
-    if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(fileIndex, 10)];
-    if (!file) return res.status(404).json({ error: "File not found" });
+    let filePath: string;
+    let complete: boolean;
 
-    // Try to probe even if not complete - ffprobe can read partial files
-    const complete = isFileComplete(torrent, file);
-    const filePath = diskPath(torrent, file);
-
-    // Check file exists on disk at all
-    try { statSync(filePath); } catch {
-      return res.json({ tracks: [], complete: false });
+    if (torrent) {
+      const file = torrent.files[parseInt(fileIndex, 10)];
+      if (!file) return res.status(404).json({ error: "File not found" });
+      complete = isFileComplete(torrent, file);
+      filePath = diskPath(torrent, file);
+      try { statSync(filePath); } catch {
+        return res.json({ tracks: [], complete: false });
+      }
+    } else {
+      // Debrid fallback: probe the remote URL directly (ffprobe supports HTTPS)
+      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+      filePath = debridUrl;
+      complete = true;
     }
 
     // Use ffprobe to list subtitle streams
@@ -187,7 +201,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
           title: s.tags?.title || null,
           codec: s.codec_name,
         }));
-        log("info", "Subtitle probe", { file: file.name, tracks: tracks.length, complete });
+        log("info", "Subtitle probe", { path: filePath.slice(-60), tracks: tracks.length, complete });
         res.json({ tracks, complete });
       } catch {
         res.json({ tracks: [], complete });
@@ -197,18 +211,26 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
 
   // List embedded audio streams
   app.get("/api/audio-tracks/:infoHash/:fileIndex", (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
     const torrent = client.torrents.find((t) => t.infoHash === infoHash);
-    if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
-    const file = torrent.files[parseInt(fileIndex, 10)];
-    if (!file) return res.status(404).json({ error: "File not found" });
+    let filePath: string;
+    let complete: boolean;
 
-    const complete = isFileComplete(torrent, file);
-    const filePath = diskPath(torrent, file);
-
-    try { statSync(filePath); } catch {
-      return res.json({ tracks: [], complete: false });
+    if (torrent) {
+      const file = torrent.files[parseInt(fileIndex, 10)];
+      if (!file) return res.status(404).json({ error: "File not found" });
+      complete = isFileComplete(torrent, file);
+      filePath = diskPath(torrent, file);
+      try { statSync(filePath); } catch {
+        return res.json({ tracks: [], complete: false });
+      }
+    } else {
+      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+      filePath = debridUrl;
+      complete = true;
     }
 
     const probe = spawn("ffprobe", [
@@ -231,7 +253,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
           codec: s.codec_name,
           channels: s.channels || 0,
         }));
-        log("info", "Audio track probe", { file: file.name, tracks: tracks.length, complete });
+        log("info", "Audio track probe", { path: filePath.slice(-60), tracks: tracks.length, complete });
         res.json({ tracks, complete });
       } catch {
         res.json({ tracks: [], complete });
@@ -396,4 +418,5 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     });
     res.on("close", () => ffmpeg.kill());
   });
+
 }

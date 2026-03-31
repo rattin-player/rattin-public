@@ -142,8 +142,13 @@ Window {
     Timer {
         id: trackRefreshTimer
         interval: 2000
-        repeat: false
-        onTriggered: root.refreshTracks()
+        repeat: true
+        onTriggered: {
+            root.refreshTracks()
+            // Stop retrying once we have tracks
+            if (root.subTracks.length > 0 || root.audioTracks.length > 1)
+                trackRefreshTimer.stop()
+        }
     }
 
     // ── Native controls overlay (on top of mpv) ──

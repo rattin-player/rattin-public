@@ -40,7 +40,7 @@ interface PlayerContextValue {
   currentTime: number;
   duration: number;
   volume: number;
-  startStream: (infoHash: string | number, fileIndex: string | number, title: string, tags: string[]) => void;
+  startStream: (infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridUrl?: string) => void;
   stopStream: () => void;
   togglePlay: () => void;
   effectiveTimeRef: MutableRefObject<EffectiveTime | null>;
@@ -189,7 +189,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     };
   }, []);
 
-  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[]) => {
+  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridUrl?: string) => {
     const v = videoRef.current;
     // Coerce to string for comparison — URL params are strings, API returns numbers
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
@@ -203,7 +203,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
     // In native mode, mpv handles playback — don't set video.src (triggers transcode)
     if (!isNative && v) {
-      v.src = `/api/stream/${ih}/${fi}`;
+      v.src = debridUrl
+        ? `/api/debrid-stream?url=${encodeURIComponent(debridUrl)}`
+        : `/api/stream/${ih}/${fi}`;
       if (savedPos > 0) {
         v.addEventListener("loadedmetadata", function onMeta() {
           v.removeEventListener("loadedmetadata", onMeta);
