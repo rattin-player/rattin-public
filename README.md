@@ -19,18 +19,18 @@
 
 ## Why Rattin
 
-Most tools in this space make you choose. Torrent clients that stream but can't browse. Media servers that browse but can't stream from torrents without bolting on five extra tools. Apps that do both but choke on MKV or HEVC unless you pay for transcoding.
+Most tools in this space make you choose. Torrent clients that stream but can't browse. Media servers that browse but can't stream from torrents without bolting on five extra tools. Apps that do both but choke on MKV or HEVC unless you pay for transcoding. And none of them touch privacy — you're on your own for that.
 
-Rattin is a single self-hosted process that does all of it — browse TMDB, click play, watch.
+Rattin is a single self-hosted process that does all of it — browse TMDB, click play, watch — with optional debrid integration and per-app VPN isolation built in.
 
 🎬 Every codec, every container, every format — transcoded on the fly for browsers, hardware-accelerated natively on desktop<br>
 ⏩ Smart seeking in incomplete files — jump anywhere, even before it's downloaded<br>
 🔍 TMDB discovery — trending, genres, search, trailers, cast, one-click play<br>
 ⏭️ Audio-fingerprint intro skip — no manual timestamps, no third-party databases<br>
 📱 Phone remote via QR scan — no app install, just point your camera<br>
-🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine
-
-The whole thing runs on one TMDB API key and an `npm install`.
+🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine<br>
+⚡ Optional Real-Debrid — instant streaming via HTTPS, full seeking, no swarm exposure<br>
+🛡️ Optional per-app VPN — WireGuard isolation for torrent traffic only, built-in kill switch
 
 ### Two ways to watch
 
@@ -41,6 +41,17 @@ The whole thing runs on one TMDB API key and an `npm install`.
 | **Best for** | Multi-device, couch/TV, remote access | Main PC, best quality, 4K HDR, Dolby Atmos |
 
 Same interface, same backend. Native mode just replaces the browser's video element with a real video engine.
+
+### Two ways to stream
+
+| | Direct (WebTorrent) | Debrid (Real-Debrid) |
+|---|---|---|
+| **How it works** | Joins the torrent swarm, streams pieces as they download | Sends magnet to debrid server, streams back over HTTPS |
+| **Seeking** | Piece prioritization + keyframe index (works, but slower on incomplete files) | Standard HTTP range requests — instant, like any streaming service |
+| **Privacy** | Your IP visible to peers (use the built-in VPN to hide it) | Your IP never touches the swarm — only the debrid server sees it |
+| **Cost** | Free | ~$3-5/month (your own Real-Debrid account) |
+
+Both modes are optional and work together. Cached content goes through debrid automatically; uncached falls back to WebTorrent.
 
 ---
 
@@ -80,6 +91,12 @@ Same interface, same backend. Native mode just replaces the browser's video elem
 - **Subtitle controls** - Pick tracks and resize text from the player overlay
 - **Instant seeking** - Jump to any point without waiting for the file to download
 
+### :shield: Privacy
+
+- **Real-Debrid integration** - Torrents download on RD's servers, you stream over HTTPS. Your IP never joins the swarm. Configure in Settings (gear icon).
+- **Per-app VPN isolation** - WireGuard tunnel in a Linux network namespace. Only Rattin's traffic goes through the VPN — everything else on your system stays on your normal connection. Built-in kill switch: if the tunnel drops, torrent connections die instead of leaking your real IP.
+- **No built-in tracking** - No analytics, no telemetry, no phone-home. The only external calls are TMDB (metadata) and torrent search providers.
+
 ---
 
 ## Install
@@ -92,7 +109,7 @@ One command:
 curl -fsSL "https://raw.githubusercontent.com/rattin-player/rattin-install/main/install-native.sh" | bash
 ```
 
-Downloads the AppImage, creates a desktop entry, opens the firewall port for phone remote, and prompts for a free [TMDB API key](https://www.themoviedb.org/settings/api). Shows up in your app launcher as "Rattin".
+Downloads the AppImage, creates a desktop entry, opens the firewall port for phone remote, and prompts for a free [TMDB API key](https://www.themoviedb.org/settings/api). Optionally configures WireGuard VPN during install. Shows up in your app launcher as "Rattin".
 
 To update, rerun the same command. To uninstall: add `--uninstall`.
 
@@ -103,7 +120,7 @@ You can also grab the AppImage directly from the [latest release](https://github
 For running as a web server accessible from any browser on your network:
 
 ```bash
-git clone https://github.com/rattin-player/rattin.git && cd player
+git clone https://github.com/rattin-player/rattin.git && cd rattin
 npm install && npm run build
 echo "TMDB_API_KEY=your_key" > .env
 npm start
@@ -123,6 +140,23 @@ Coming soon.
 |----------|----------|-------------|
 | `TMDB_API_KEY` | Yes | Free API key from [themoviedb.org](https://www.themoviedb.org/settings/api) |
 | `PORT` | No | Server port (default: 3000, native mode uses 9630) |
+
+### Debrid Setup
+
+1. Get a [Real-Debrid](https://real-debrid.com) account (~$3/month)
+2. Copy your API token from [real-debrid.com/apitoken](https://real-debrid.com/apitoken)
+3. Open Rattin, click the **Debrid** button in the navbar, paste your key, click **Connect**
+
+Cached torrents stream instantly over HTTPS. Uncached torrents fall back to WebTorrent.
+
+### VPN Setup (optional)
+
+1. Get a WireGuard config from your VPN provider (Mullvad, ProtonVPN, IVPN, etc.)
+2. Place it at `~/.config/rattin/wg/wg0.conf`
+3. Start Rattin via the VPN supervisor: `./rattin-vpn` instead of `node server.ts`
+4. Toggle VPN on/off from the shield icon in the navbar
+
+The VPN isolates only Rattin's traffic in a Linux network namespace. Your browser, other apps, and system traffic stay on your normal connection.
 
 ---
 
@@ -149,10 +183,10 @@ Coming soon.
             -------------+---------------------------------+
                               Express API
             ------------------------------------------------
-                      |           |           |
-                +-----+-----+ +--+---+ +-----+------+
-                | WebTorrent| |ffmpeg| |TMDB + Search|
-                +-----------+ +------+ +-------------+
+               |           |           |           |
+         +-----+-----+ +--+---+ +-----+------+ +--+------+
+         | WebTorrent| |ffmpeg| |TMDB + Search| |Real-Debrid|
+         +-----------+ +------+ +-------------+ +-----------+
 ```
 
 In native mode, the React app runs inside Qt's WebEngineView. When a video plays, React sends the stream URL to mpv via QWebChannel instead of setting `<video>.src`. mpv renders the video in an OpenGL framebuffer object layered above the webview, with a QML controls overlay on top.
@@ -167,6 +201,7 @@ In native mode, the React app runs inside Qt's WebEngineView. When a video plays
 | Incomplete file, non-native | ffmpeg transcode from torrent stream |
 | Seeking in incomplete file | Keyframe index + prioritize pieces at target |
 | **Native mode (any file)** | **Raw bytes to mpv - no transcode** |
+| **Debrid (any file)** | **HTTPS stream from Real-Debrid — full range support** |
 
 ### Native Shell
 
@@ -190,6 +225,12 @@ The phone remote uses Server-Sent Events (SSE) for real-time communication:
 
 The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Firewall port 9630 is opened automatically on start and closed on exit.
 
+### Privacy Architecture
+
+**Debrid path:** Magnet link → Real-Debrid API → HTTPS download URL → stream to player. User's IP only visible to RD (encrypted HTTPS), never to the torrent swarm.
+
+**VPN path:** `rattin-vpn` supervisor creates a Linux network namespace with a WireGuard tunnel. Node.js runs inside the namespace. All torrent traffic (peers, DHT, trackers) goes through the VPN. The browser connects to the API via a veth bridge (`10.199.199.0/24`). If the WireGuard tunnel drops, there's no fallback route — connections fail instead of leaking the real IP.
+
 ### Tech Stack
 
 | Layer | Technology |
@@ -197,11 +238,13 @@ The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Fire
 | Frontend | React 19, React Router 7, Vite 6 |
 | Backend | Express 5, Node.js 20+ |
 | Torrents | WebTorrent |
+| Debrid | Real-Debrid REST API |
 | Native Shell | Qt6, libmpv, QWebChannel, CMake |
 | Transcoding | ffmpeg / ffprobe |
 | Intro Detection | Chromaprint (fpcalc) + AniSkip API |
 | Metadata | TMDB API |
 | Remote | Server-Sent Events + QR (uqr) |
+| VPN | WireGuard + Linux network namespaces |
 
 ### Development
 
