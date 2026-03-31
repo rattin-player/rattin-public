@@ -8,6 +8,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QTcpServer>
+#include <QDir>
+#include <QFile>
 #include <QtWebEngineQuick>
 
 #include "mpvobject.h"
@@ -70,8 +72,11 @@ int main(int argc, char *argv[])
     auto *serverProcess = new QProcess(&app);
     serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
 
-    // Find the app directory (where server.ts and node_modules live)
-    QString appDir = QCoreApplication::applicationDirPath() + "/../";
+    // Find the app directory (where server.ts and node_modules live).
+    // Binary lives at <root>/shell/build/rattin-shell, so go up 2 levels.
+    // Also handle symlinks by resolving the real path first.
+    QString binDir = QCoreApplication::applicationDirPath();
+    QString appDir = QDir(binDir + "/../../").canonicalPath() + "/";
     serverProcess->setWorkingDirectory(appDir);
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -102,6 +107,12 @@ int main(int argc, char *argv[])
         }
         args = {"--env-file=.env", serverScript};
     }
+
+    fprintf(stderr, "[shell] appDir: %s\n", appDir.toUtf8().constData());
+    fprintf(stderr, "[shell] runner: %s\n", runner.toUtf8().constData());
+    fprintf(stderr, "[shell] server: %s\n", serverScript.toUtf8().constData());
+    fprintf(stderr, "[shell] port:   %d\n", port);
+
     serverProcess->start(runner, args);
 
     // Clean up server on exit
