@@ -56,14 +56,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body.native-playing {
-  background: transparent;
-}
-
-body.native-playing #root::after {
-  display: none;
-}
-
 /* Subtle noise texture overlay on the whole app */
 #root::after {
   content: "";

@@ -42,8 +42,8 @@ Window {
         function onPauseChanged(paused) { transport.pauseChanged(paused) }
         function onIsPlayingChanged(playing) {
             transport.isPlayingChanged(playing)
-            // Webview stays on top (z:2) always — it's transparent so mpv shows through.
-            // Just toggle mpv visibility.
+            // Mpv goes on top (z:3) during playback, webview behind (z:2).
+            // Controls will be handled in a follow-up (transparent overlay).
             mpvPlayer.visible = playing
         }
     }
@@ -52,7 +52,7 @@ Window {
         id: mpvPlayer
         anchors.fill: parent
         visible: false
-        z: 1
+        z: 3
     }
 
     WebEngineView {
@@ -60,7 +60,6 @@ Window {
         anchors.fill: parent
         url: initialUrl
         z: 2
-        backgroundColor: "transparent"
         webChannel: wChannel
 
         onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceId) {
