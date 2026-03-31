@@ -28,6 +28,8 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reviews, setReviews] = useState<any>(null);
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
+  const [showAllReddit, setShowAllReddit] = useState(false);
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   useEffect(() => {
     setData(null);
@@ -38,6 +40,8 @@ export default function Detail() {
 
   useEffect(() => {
     setReviews(null);
+    setShowAllReddit(false);
+    setShowAllReviews(false);
     fetchReviews(type, id!).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
   }, [id, type]);
 
@@ -332,7 +336,7 @@ export default function Detail() {
                 </div>
                 <div className="reddit-list">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {reviews.reddit.map((t: any) => (
+                  {(showAllReddit ? reviews.reddit : reviews.reddit.slice(0, 3)).map((t: any) => (
                     <a
                       key={t.id}
                       className="reddit-card"
@@ -363,6 +367,11 @@ export default function Detail() {
                       </div>
                     </a>
                   ))}
+                  {!showAllReddit && reviews.reddit.length > 3 && (
+                    <button className="reviews-show-more" onClick={() => setShowAllReddit(true)}>
+                      Show more ({reviews.reddit.length - 3})
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -384,7 +393,7 @@ export default function Detail() {
                 </div>
                 <div className="reviews-list">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {reviews.reviews.map((r: any) => {
+                  {(showAllReviews ? reviews.reviews : reviews.reviews.slice(0, 3)).map((r: any) => {
                     const isExpanded = expandedReview === r.id;
                     const isLong = r.content.length > 300;
                     return (
@@ -418,6 +427,11 @@ export default function Detail() {
                       </div>
                     );
                   })}
+                  {!showAllReviews && reviews.reviews.length > 3 && (
+                    <button className="reviews-show-more" onClick={() => setShowAllReviews(true)}>
+                      Show more ({reviews.reviews.length - 3})
+                    </button>
+                  )}
                 </div>
               </div>
             )}

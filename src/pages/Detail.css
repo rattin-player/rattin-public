@@ -566,6 +566,23 @@
   color: var(--text-primary);
 }
 
+.reviews-show-more {
+  padding: 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.reviews-show-more:hover {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
 .reddit-list {
   display: flex;
   flex-direction: column;

@@ -176,6 +176,8 @@ async function fetchRedditThreads(title: string, type: string): Promise<RedditTh
         if (seen.has(post.id)) continue;
         // Skip threads that don't mention the title (e.g. weekly megathreads bundling multiple films)
         if (!post.title.toLowerCase().includes(titleLower)) continue;
+        // For TV shows, skip episode-specific discussion threads
+        if (type === "tv" && /\bS\d{1,2}\s*E\d{1,2}\b/i.test(post.title)) continue;
         seen.add(post.id);
         threads.push({
           id: post.id,
