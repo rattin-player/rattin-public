@@ -29,8 +29,10 @@ Window {
 
         webChannel: channel
 
-        // Native detection is via ?native=1 URL param (set in main.cpp).
-        // qwebchannel.js is loaded via runJavaScript in onLoadingChanged below.
+        // Forward JS console.log to stderr for debugging
+        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceId) {
+            console.log("[js]", message);
+        }
 
         onLoadingChanged: function(loadingInfo) {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
