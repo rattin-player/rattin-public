@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import path from "path";
-import { statSync } from "fs";
+import { statSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { tmdbCache } from "./lib/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
@@ -134,11 +134,9 @@ const _cacheJanitor = setInterval(() => {
 }, 5 * 60 * 1000);
 if (_cacheJanitor.unref) _cacheJanitor.unref();
 
-app.get("/{*splat}", (req: Request, res: Response) => {
-  const index = path.join(__dirname, "public", "index.html");
-  res.sendFile(index, (err) => {
-    if (err) res.status(404).send("Not found");
-  });
+const indexHtml = readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
+app.get("/{*splat}", (_req: Request, res: Response) => {
+  res.type("html").send(indexHtml);
 });
 
   return {
