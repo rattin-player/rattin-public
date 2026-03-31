@@ -8,11 +8,6 @@
   cursor: none;
 }
 
-/* Native mode: make player background transparent so mpv shows through */
-.player-page.native-player {
-  background: transparent;
-}
-
 .player-page:hover {
   cursor: default;
 }

@@ -163,9 +163,6 @@ export default function Player() {
   useEffect(() => {
     if (!isNative || !infoHash || !fileIndex) return;
 
-    // Make body + noise overlay transparent so mpv shows through webview
-    document.body.classList.add("native-playing");
-
     waitForBridge().then(() => {
       // Use 127.0.0.1 instead of localhost — mpv is a separate process and
       // localhost may resolve to ::1 (IPv6) while the server binds to 127.0.0.1
@@ -194,10 +191,7 @@ export default function Player() {
       navigate(-1);
     });
 
-    return () => {
-      mpvStop();
-      document.body.classList.remove("native-playing");
-    };
+    return () => { mpvStop(); };
   }, [infoHash, fileIndex]);
 
   // Register command handlers for remote control (assigned every render to avoid stale closures)
@@ -365,7 +359,7 @@ export default function Player() {
   }, [showReconnectQr, rcSessionId, rcAuthToken]);
 
   return (
-    <div className={`player-page${isNative ? " native-player" : ""}`} ref={pageRef} onClick={handlePageClick}>
+    <div className="player-page" ref={pageRef} onClick={handlePageClick}>
       {!isNative && <div className="player-video-container" ref={videoContainerRef} />}
 
       {remoteToast && (
