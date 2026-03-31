@@ -62,6 +62,7 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
     const ext = path.extname(file.name).toLowerCase();
     const fileIdx = parseInt(fileIndex, 10);
     const audioStreamIdx = req.query.audio ? parseInt(req.query.audio as string, 10) : null;
+    const nativeMode = req.query.native === "1";
 
     // Helper: call unified serveLiveTranscode with torrent context
     const liveTranscode = (isComplete: boolean, seek: number) => _serveLiveTranscode({
@@ -121,7 +122,7 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
         }
       } catch {}
     }
-    const xcode = needsTranscode(ext);
+    const xcode = !nativeMode && needsTranscode(ext);
 
     // 1) Transcoded MP4 ready - serve it (full seeking works)
     if (xcode) {

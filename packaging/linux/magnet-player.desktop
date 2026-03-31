@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Rattin
+Comment=Stream torrents instantly with native video playback
+Exec=rattin-shell %U
+Icon=rattin
+Type=Application
+Categories=AudioVideo;Video;Player;
+MimeType=x-scheme-handler/magnet;application/x-bittorrent;
+Terminal=false
