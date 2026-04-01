@@ -121,6 +121,9 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     // Pass config dir to Node.js so lib/paths.ts uses the same location
     env.insert("MAGNET_CONFIG_DIR", configDir);
+    // Add the directory containing node.exe to PATH so tsx.cmd can find it
+    QString nodePath = QDir(binDir).canonicalPath();
+    env.insert("PATH", nodePath + ";" + env.value("PATH"));
 #endif
 
     // Load .env file and inject vars into process environment directly.
