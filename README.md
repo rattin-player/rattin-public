@@ -105,7 +105,7 @@ You can also grab the AppImage directly from the [latest release](https://github
 For running as a web server accessible from any browser on your network:
 
 ```bash
-git clone https://github.com/rattin-player/rattin.git && cd rattin
+git clone https://github.com/rattin-player/rattin-public.git && cd rattin&& cd rattin cd rattin-public
 npm install && npm run build
 echo "TMDB_API_KEY=your_key" > .env
 npm start

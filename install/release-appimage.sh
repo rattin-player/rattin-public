@@ -30,7 +30,7 @@ if ! git diff --quiet; then
     git config user.email "rattin@noreply.github.com"
     git config user.name "Rattin"
     git add install-native.sh
-    git commit -m "sync install script from rattin-player/rattin"
+    git commit -m "sync install script from rattin-player/rattin-public"
     git push
 fi
 rm -rf "$INSTALL_REPO"
