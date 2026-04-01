@@ -1,0 +1,46 @@
+name: Build AppImage
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake g++ \
+            qt6-base-dev qt6-webengine-dev qt6-declarative-dev qt6-webchannel-dev \
+            libmpv-dev \
+            qml6-module-qtwebengine qml6-module-qtwebengine-controlsdelegates \
+            qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \
+            qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtwebchannel \
+            qml6-module-qtqml qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+            qml6-module-qtcore \
+            libfuse2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build AppImage
+        run: bash install/build-appimage.sh --clean
+
+      - name: Upload AppImage to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" Rattin-x86_64.AppImage --clobber
+
+      - name: Upload artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rattin-x86_64.AppImage
+          path: Rattin-x86_64.AppImage

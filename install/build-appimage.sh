@@ -267,6 +267,10 @@ build_appimage() {
         --plugin qt \
         || true
 
+    # linuxdeploy --custom-apprun is unreliable — copy manually
+    cp "$REPO_ROOT/install/AppRun" "$APPDIR/AppRun"
+    chmod +x "$APPDIR/AppRun"
+
     # Strip with system strip (handles modern ELF sections)
     log "Stripping libraries with system strip..."
     find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -exec strip --strip-unneeded {} \; 2>/dev/null || true
