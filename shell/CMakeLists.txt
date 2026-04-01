@@ -13,14 +13,18 @@ find_package(Qt6 REQUIRED COMPONENTS Quick WebEngineQuick WebChannel Network)
 if(WIN32)
     find_path(MPV_INCLUDE_DIR mpv/client.h
         HINTS ${MPV_PREFIX}/include $ENV{MPV_PREFIX}/include)
-    find_library(MPV_LIBRARY NAMES mpv mpv.dll
-        HINTS ${MPV_PREFIX}/lib $ENV{MPV_PREFIX}/lib)
-    if(NOT MPV_INCLUDE_DIR OR NOT MPV_LIBRARY)
+    # shinchiro builds ship libmpv.dll.a (GNU import lib) — find it directly
+    find_file(MPV_IMPLIB NAMES libmpv.dll.a mpv.lib
+        HINTS ${MPV_PREFIX} ${MPV_PREFIX}/lib $ENV{MPV_PREFIX} $ENV{MPV_PREFIX}/lib)
+    find_file(MPV_DLL NAMES libmpv-2.dll
+        HINTS ${MPV_PREFIX} $ENV{MPV_PREFIX})
+    if(NOT MPV_INCLUDE_DIR OR NOT MPV_IMPLIB)
         message(FATAL_ERROR "libmpv not found. Set MPV_PREFIX to the mpv dev directory.")
     endif()
-    add_library(PkgConfig::MPV IMPORTED UNKNOWN)
+    add_library(PkgConfig::MPV IMPORTED SHARED)
     set_target_properties(PkgConfig::MPV PROPERTIES
-        IMPORTED_LOCATION "${MPV_LIBRARY}"
+        IMPORTED_IMPLIB "${MPV_IMPLIB}"
+        IMPORTED_LOCATION "${MPV_DLL}"
         INTERFACE_INCLUDE_DIRECTORIES "${MPV_INCLUDE_DIR}")
 else()
     find_package(PkgConfig REQUIRED)

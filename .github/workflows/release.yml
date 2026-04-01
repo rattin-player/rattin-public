@@ -62,16 +62,13 @@ jobs:
       - name: Download libmpv
         shell: pwsh
         run: |
-          $mpvUrl = "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-latest.7z"
-          Invoke-WebRequest -Uri $mpvUrl -OutFile mpv-dev.7z
+          # Get latest mpv-dev x86_64 from shinchiro's GitHub releases
+          $release = gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest --jq '.assets[] | select(.name | test("mpv-dev-x86_64-[0-9]")) | .browser_download_url' | Select-Object -First 1
+          Write-Host "Downloading: $release"
+          Invoke-WebRequest -Uri $release -OutFile mpv-dev.7z
           7z x mpv-dev.7z -ompv-dev -y
-
-      - name: Download ffmpeg
-        shell: pwsh
-        run: |
-          $ffUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-          Invoke-WebRequest -Uri $ffUrl -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-build -Force
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Node.js binary
         shell: pwsh
@@ -117,11 +114,6 @@ jobs:
           # Node.js
           $nodeDir = Get-ChildItem node-build -Directory | Select-Object -First 1
           Copy-Item "$($nodeDir.FullName)/node.exe" $dist/
-
-          # ffmpeg
-          $ffDir = Get-ChildItem ffmpeg-build -Directory | Select-Object -First 1
-          Copy-Item "$($ffDir.FullName)/bin/ffmpeg.exe"  $dist/
-          Copy-Item "$($ffDir.FullName)/bin/ffprobe.exe" $dist/
 
           # libmpv
           Copy-Item mpv-dev/libmpv-2.dll $dist/

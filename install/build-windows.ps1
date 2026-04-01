@@ -77,25 +77,7 @@ if (Test-Path $NodeExe) {
     Remove-Item $nodeZip
 }
 
-# ffmpeg + ffprobe
-$FfmpegExe = Join-Path $ToolsDir "ffmpeg.exe"
-if (Test-Path $FfmpegExe) {
-    Skip "ffmpeg already downloaded"
-} else {
-    Log "Downloading ffmpeg (static GPL build)"
-    $ffZip = Join-Path $ToolsDir "ffmpeg.zip"
-    $ffUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-    Invoke-WebRequest -Uri $ffUrl -OutFile $ffZip
-    Expand-Archive $ffZip -DestinationPath $ToolsDir -Force
-    # BtbN archives have a nested directory
-    $ffDir = Get-ChildItem (Join-Path $ToolsDir "ffmpeg-*") -Directory | Select-Object -First 1
-    Copy-Item (Join-Path $ffDir.FullName "bin/ffmpeg.exe")  $ToolsDir
-    Copy-Item (Join-Path $ffDir.FullName "bin/ffprobe.exe") $ToolsDir
-    Remove-Item $ffZip
-    Remove-Item $ffDir.FullName -Recurse -Force
-}
-
-# libmpv
+# libmpv (from shinchiro/mpv-winbuild-cmake GitHub releases)
 $MpvDir = Join-Path $ToolsDir "mpv"
 $MpvDll = Join-Path $MpvDir "libmpv-2.dll"
 if (Test-Path $MpvDll) {
@@ -103,7 +85,8 @@ if (Test-Path $MpvDll) {
 } else {
     Log "Downloading libmpv dev build"
     $mpv7z = Join-Path $ToolsDir "mpv-dev.7z"
-    $mpvUrl = "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-latest.7z"
+    $mpvUrl = (gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest --jq '.assets[] | select(.name | test("mpv-dev-x86_64-[0-9]")) | .browser_download_url' | Select-Object -First 1)
+    Log "URL: $mpvUrl"
     Invoke-WebRequest -Uri $mpvUrl -OutFile $mpv7z
     New-Item -ItemType Directory -Force -Path $MpvDir | Out-Null
     & 7z x $mpv7z -o"$MpvDir" -y
@@ -171,10 +154,6 @@ if ($windeployqt) {
 
 # Node.js
 Copy-Item $NodeExe $DistDir
-
-# ffmpeg + ffprobe
-Copy-Item (Join-Path $ToolsDir "ffmpeg.exe")  $DistDir
-Copy-Item (Join-Path $ToolsDir "ffprobe.exe") $DistDir
 
 # libmpv DLL
 Copy-Item $MpvDll $DistDir
