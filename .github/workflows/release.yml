@@ -1,12 +1,15 @@
-name: Build AppImage
+name: Release
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -32,15 +35,25 @@ jobs:
       - name: Build AppImage
         run: bash install/build-appimage.sh --clean
 
-      - name: Upload AppImage to release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" Rattin-x86_64.AppImage --clobber
-
-      - name: Upload artifact
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: Rattin-x86_64.AppImage
           path: Rattin-x86_64.AppImage
+
+  release:
+    needs: [build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            Rattin-x86_64.AppImage/Rattin-x86_64.AppImage

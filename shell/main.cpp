@@ -85,12 +85,12 @@ int main(int argc, char *argv[])
     serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
 
     // Find the app directory (where server.ts and node_modules live).
-    // When RATTIN_APP_DIR is set (AppImage mode), use that directly.
+    // When MAGNET_APP_DIR is set (AppImage mode), use that directly.
     // Otherwise, binary lives at <root>/shell/build/rattin-shell — go up 2 levels.
     QString binDir = QCoreApplication::applicationDirPath();
     QString appDir;
-    if (qEnvironmentVariableIsSet("RATTIN_APP_DIR"))
-        appDir = qEnvironmentVariable("RATTIN_APP_DIR");
+    if (qEnvironmentVariableIsSet("MAGNET_APP_DIR"))
+        appDir = qEnvironmentVariable("MAGNET_APP_DIR");
     else
         appDir = QDir(binDir + "/../../").canonicalPath() + "/";
     serverProcess->setWorkingDirectory(appDir);
@@ -98,8 +98,8 @@ int main(int argc, char *argv[])
     // Config directory for .env file (writable — outside AppImage mount).
     // Falls back to appDir for non-AppImage installs.
     QString configDir;
-    if (qEnvironmentVariableIsSet("RATTIN_CONFIG_DIR"))
-        configDir = qEnvironmentVariable("RATTIN_CONFIG_DIR");
+    if (qEnvironmentVariableIsSet("MAGNET_CONFIG_DIR"))
+        configDir = qEnvironmentVariable("MAGNET_CONFIG_DIR");
     else
         configDir = appDir;
 
@@ -140,10 +140,10 @@ int main(int argc, char *argv[])
     // 1. If server.js exists (pre-compiled), use node
     // 2. Otherwise use node + tsx loader for server.ts
     //
-    // RATTIN_NODE_PATH overrides the node binary (for bundled node in AppImage).
+    // MAGNET_NODE_PATH overrides the node binary (for bundled node in AppImage).
     QString nodeRunner;
-    if (qEnvironmentVariableIsSet("RATTIN_NODE_PATH"))
-        nodeRunner = qEnvironmentVariable("RATTIN_NODE_PATH");
+    if (qEnvironmentVariableIsSet("MAGNET_NODE_PATH"))
+        nodeRunner = qEnvironmentVariable("MAGNET_NODE_PATH");
     else
         nodeRunner = "node";
 

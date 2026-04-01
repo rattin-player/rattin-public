@@ -22,18 +22,18 @@ export QTWEBENGINE_CHROMIUM_FLAGS="${QTWEBENGINE_CHROMIUM_FLAGS:+$QTWEBENGINE_CH
 export PATH="$HERE/usr/share/rattin/node/bin:$HERE/usr/bin:$PATH"
 
 # ── App directories ─────────────────────────────────────────────────────────
-export RATTIN_APP_DIR="$HERE/usr/share/rattin/app/"
-export RATTIN_NODE_PATH="$HERE/usr/share/rattin/node/bin/node"
+export MAGNET_APP_DIR="$HERE/usr/share/rattin/app/"
+export MAGNET_NODE_PATH="$HERE/usr/share/rattin/node/bin/node"
 
 # Writable config directory (outside the read-only AppImage mount)
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
-export RATTIN_CONFIG_DIR="$CONFIG_DIR"
+export MAGNET_CONFIG_DIR="$CONFIG_DIR"
 mkdir -p "$CONFIG_DIR"
 
 # First-run: create .env from bundled example
 if [ ! -f "$CONFIG_DIR/.env" ]; then
-    if [ -f "$RATTIN_APP_DIR/.env.example" ]; then
-        cp "$RATTIN_APP_DIR/.env.example" "$CONFIG_DIR/.env"
+    if [ -f "$MAGNET_APP_DIR/.env.example" ]; then
+        cp "$MAGNET_APP_DIR/.env.example" "$CONFIG_DIR/.env"
     else
         echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
     fi
