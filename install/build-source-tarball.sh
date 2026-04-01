@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# Build native-app.tar.gz for upload to rattin-player/rattin-install releases
+# Build native-app.tar.gz for upload to rattin-player/rattin-public releases
 # Run this from the repo root after `npm run build` (frontend must be built)
 # ==============================================================================
 
@@ -54,5 +54,5 @@ tar -czf "$OUT" \
 SIZE=$(du -h "$OUT" | cut -f1)
 echo "Done: $OUT ($SIZE)"
 echo ""
-echo "Upload to: https://github.com/rattin-player/rattin-install/releases"
-echo "  gh release create v1.0.0-native --repo rattin-player/rattin-install native-app.tar.gz"
+echo "Upload to: https://github.com/rattin-player/rattin-public/releases"
+echo "  gh release create v1.0.0-native --repo rattin-player/rattin-public native-app.tar.gz"

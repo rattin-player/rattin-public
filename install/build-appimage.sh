@@ -367,7 +367,7 @@ main() {
     echo "  Output: $OUTPUT"
     echo ""
     echo "  Test it:  chmod +x $(basename "$OUTPUT") && ./$(basename "$OUTPUT")"
-    echo "  Deploy:   gh release upload v1.0.0-native $(basename "$OUTPUT") --repo rattin-player/rattin-install --clobber"
+    echo "  Deploy:   gh release upload v1.0.0-native $(basename "$OUTPUT") --repo rattin-player/rattin-public --clobber"
     echo ""
 }
 
