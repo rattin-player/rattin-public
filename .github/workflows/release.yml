@@ -41,8 +41,137 @@ jobs:
           name: Rattin-x86_64.AppImage
           path: Rattin-x86_64.AppImage
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtwebengine qtwebchannel qtpositioning
+
+      - name: Download libmpv
+        shell: pwsh
+        run: |
+          $mpvUrl = "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-latest.7z"
+          Invoke-WebRequest -Uri $mpvUrl -OutFile mpv-dev.7z
+          7z x mpv-dev.7z -ompv-dev -y
+
+      - name: Download ffmpeg
+        shell: pwsh
+        run: |
+          $ffUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $ffUrl -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-build -Force
+
+      - name: Download Node.js binary
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip" -OutFile node.zip
+          Expand-Archive node.zip -DestinationPath node-build -Force
+
+      - name: Build frontend
+        run: npm ci && npm run build
+
+      - name: Build Qt shell
+        shell: pwsh
+        run: |
+          $mpvDir = "$env:GITHUB_WORKSPACE/mpv-dev"
+          cd shell
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          cd build
+          cmake -G "Visual Studio 17 2022" -A x64 `
+            -DMPV_PREFIX="$mpvDir" `
+            ..
+          cmake --build . --config Release
+
+      - name: Assemble distribution
+        shell: pwsh
+        run: |
+          $dist = "Rattin"
+          $app  = "$dist/app"
+          New-Item -ItemType Directory -Force -Path $app | Out-Null
+
+          # Qt shell
+          Copy-Item shell/build/Release/rattin-shell.exe $dist/
+
+          # windeployqt — try windeployqt6 first, fall back to windeployqt
+          $wdq = Get-Command windeployqt6 -ErrorAction SilentlyContinue
+          if (-not $wdq) { $wdq = Get-Command windeployqt -ErrorAction SilentlyContinue }
+          if ($wdq) {
+              & $wdq.Source "$dist/rattin-shell.exe" --qmldir shell --release --no-translations
+          } else {
+              Write-Error "windeployqt not found in PATH"
+              exit 1
+          }
+
+          # Node.js
+          $nodeDir = Get-ChildItem node-build -Directory | Select-Object -First 1
+          Copy-Item "$($nodeDir.FullName)/node.exe" $dist/
+
+          # ffmpeg
+          $ffDir = Get-ChildItem ffmpeg-build -Directory | Select-Object -First 1
+          Copy-Item "$($ffDir.FullName)/bin/ffmpeg.exe"  $dist/
+          Copy-Item "$($ffDir.FullName)/bin/ffprobe.exe" $dist/
+
+          # libmpv
+          Copy-Item mpv-dev/libmpv-2.dll $dist/
+
+          # App code
+          foreach ($item in @("server.ts","tsconfig.json","package.json","package-lock.json")) {
+              if (Test-Path $item) { Copy-Item $item "$app/" }
+          }
+          foreach ($dir in @("routes","lib","public")) {
+              if (Test-Path $dir) { Copy-Item $dir (Join-Path $app $dir) -Recurse }
+          }
+
+          # Production dependencies
+          Push-Location $app
+          & "$env:GITHUB_WORKSPACE/$dist/node.exe" "$($nodeDir.FullName)/node_modules/npm/bin/npm-cli.js" ci --omit=dev
+          Pop-Location
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path Rattin -DestinationPath Rattin-x64-Portable.zip
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $distDir = "$env:GITHUB_WORKSPACE/Rattin"
+          $output  = "$env:GITHUB_WORKSPACE/Rattin-x64-Setup.exe"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            /DVERSION="2.0.0" `
+            /DDIST_DIR="$distDir" `
+            /DOUTPUT="$output" `
+            packaging/windows/rattin.nsi
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rattin-x64-Portable.zip
+          path: Rattin-x64-Portable.zip
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rattin-x64-Setup.exe
+          path: Rattin-x64-Setup.exe
+
   release:
-    needs: [build-linux]
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -56,4 +185,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
-            Rattin-x86_64.AppImage/Rattin-x86_64.AppImage
+            Rattin-x86_64.AppImage/Rattin-x86_64.AppImage \
+            Rattin-x64-Portable.zip/Rattin-x64-Portable.zip \
+            Rattin-x64-Setup.exe/Rattin-x64-Setup.exe

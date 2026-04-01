@@ -5,6 +5,7 @@ import WebTorrent from "webtorrent";
 import crypto from "crypto";
 import { BoundedMap } from "./bounded-map.js";
 import { registerCache, cleanupHash } from "./torrent-caches.js";
+import { downloadDir, transcodeDir } from "./paths.js";
 import type { Request, Response, NextFunction } from "express";
 import type {
   TranscodeJob, CompletedFile, StreamEntry, ActiveTranscode,
@@ -19,8 +20,8 @@ interface CreateContextOverrides {
 export function createContext(overrides: CreateContextOverrides = {}): ServerContext {
   const client = overrides.client || new WebTorrent() as unknown as TorrentClient;
 
-  const DOWNLOAD_PATH = process.env.DOWNLOAD_PATH || "/tmp/rattin";
-  const TRANSCODE_PATH = process.env.TRANSCODE_PATH || "/tmp/rattin-transcoded";
+  const DOWNLOAD_PATH = downloadDir();
+  const TRANSCODE_PATH = transcodeDir();
 
   const transcodeJobs = new Map<string, TranscodeJob>();
   const durationCache = new Map<string, number>(); // "infoHash:fileIndex" -> seconds

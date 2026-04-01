@@ -10,6 +10,7 @@
 #include <QTcpServer>
 #include <QDir>
 #include <QFile>
+#include <QStandardPaths>
 #include <QtWebEngineQuick>
 
 #include "mpvobject.h"
@@ -92,7 +93,13 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsSet("MAGNET_APP_DIR"))
         appDir = qEnvironmentVariable("MAGNET_APP_DIR");
     else
+#ifdef Q_OS_WIN
+        // Installed layout: binary sits in root, app code in app/ subdirectory
+        appDir = QDir(binDir + "/app/").canonicalPath() + "/";
+#else
+        // Dev layout: binary at shell/build/rattin-shell — go up 2 levels
         appDir = QDir(binDir + "/../../").canonicalPath() + "/";
+#endif
     serverProcess->setWorkingDirectory(appDir);
 
     // Config directory for .env file (writable — outside AppImage mount).
@@ -101,11 +108,20 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsSet("MAGNET_CONFIG_DIR"))
         configDir = qEnvironmentVariable("MAGNET_CONFIG_DIR");
     else
+#ifdef Q_OS_WIN
+        // %APPDATA%/Rattin — matches lib/paths.ts configDir() on Windows
+        configDir = qEnvironmentVariable("APPDATA", QDir::homePath() + "/AppData/Roaming") + "/Rattin";
+#else
         configDir = appDir;
+#endif
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("PORT", QString::number(port));
     env.insert("HOST", "0.0.0.0");
+#ifdef Q_OS_WIN
+    // Pass config dir to Node.js so lib/paths.ts uses the same location
+    env.insert("MAGNET_CONFIG_DIR", configDir);
+#endif
 
     // Load .env file and inject vars into process environment directly.
     // Node's --env-file flag doesn't propagate through tsx's child fork,
@@ -161,7 +177,11 @@ int main(int argc, char *argv[])
         serverScript = "server.ts";
         runner = nodeRunner;
         // Use local tsx from node_modules, invoked via node for reliable path resolution
+#ifdef Q_OS_WIN
+        QString localTsx = appDir + "/node_modules/.bin/tsx.cmd";
+#else
         QString localTsx = appDir + "/node_modules/.bin/tsx";
+#endif
         if (!QFile::exists(localTsx)) {
             // Fall back to global tsx (might work if user installed it)
             localTsx = "tsx";

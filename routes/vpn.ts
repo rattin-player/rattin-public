@@ -1,10 +1,10 @@
 import { readFileSync, existsSync } from "fs";
 import path from "path";
-import os from "os";
 import type { Express, Request, Response } from "express";
 import type { ServerContext } from "../lib/types.js";
+import { configDir } from "../lib/paths.js";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "rattin");
+const CONFIG_DIR = configDir();
 const STATE_FILE = path.join(CONFIG_DIR, "vpn-state.json");
 const WG_CONF = path.join(CONFIG_DIR, "wg", "wg0.conf");
 
@@ -36,6 +36,10 @@ export default function vpnRoutes(app: Express, ctx: ServerContext): void {
 
   // Toggle VPN on/off — signals the supervisor via SIGUSR1
   app.post("/api/vpn/toggle", async (req: Request, res: Response) => {
+    if (process.platform === "win32") {
+      return res.status(501).json({ error: "VPN routing is not available on Windows" });
+    }
+
     const { action } = req.body as { action?: "on" | "off" };
     if (action !== "on" && action !== "off") {
       return res.status(400).json({ error: "action must be 'on' or 'off'" });
@@ -43,7 +47,7 @@ export default function vpnRoutes(app: Express, ctx: ServerContext): void {
 
     const state = readState();
     if (!state.configured) {
-      return res.status(400).json({ error: "No WireGuard config found. Place wg0.conf in ~/.config/rattin/wg/" });
+      return res.status(400).json({ error: `No WireGuard config found. Place wg0.conf in ${path.join(CONFIG_DIR, "wg")}/` });
     }
 
     if ((action === "on" && state.active) || (action === "off" && !state.active)) {

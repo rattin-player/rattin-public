@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
-import os from "os";
+import { sessionsPath, downloadDir } from "./lib/paths.js";
 import { tmdbCache } from "./lib/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
@@ -155,10 +155,12 @@ app.get("/{*splat}", (_req: Request, res: Response) => {
 const isMain = process.argv[1] && (
   process.argv[1] === fileURLToPath(import.meta.url) ||
   process.argv[1].endsWith("/server.js") ||
-  process.argv[1].endsWith("/server.ts")
+  process.argv[1].endsWith("/server.ts") ||
+  process.argv[1].endsWith("\\server.js") ||
+  process.argv[1].endsWith("\\server.ts")
 );
 // ── Session persistence (for VPN toggle restarts) ─────────────────
-const SESSIONS_PATH = path.join(os.homedir(), ".config", "rattin", "sessions.json");
+const SESSIONS_PATH = sessionsPath();
 
 interface SessionEntry { infoHash: string; magnetURI: string; fileIndex: number }
 
@@ -192,7 +194,7 @@ if (isMain) {
   const { app, client, transcodeJobs } = createApp();
 
   // Restore sessions from a previous VPN toggle restart
-  restoreSessions(client, process.env.DOWNLOAD_PATH || "/tmp/rattin");
+  restoreSessions(client, downloadDir());
 
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);

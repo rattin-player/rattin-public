@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import path from "path";
-import os from "os";
+import { configDir } from "./paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ interface RDTorrentInfo {
 
 // ── Config ───────────────────────────────────────────────────────────
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "rattin");
+const CONFIG_DIR = configDir();
 const CONFIG_PATH = path.join(CONFIG_DIR, "debrid.json");
 
 export function loadConfig(): DebridConfig | null {
