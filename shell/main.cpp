@@ -175,18 +175,19 @@ int main(int argc, char *argv[])
         args = {serverScript};
     } else {
         serverScript = "server.ts";
+#ifdef Q_OS_WIN
+        // On Windows, tsx.cmd is a batch script — run it directly, not via node
+        QString localTsx = appDir + "/node_modules/.bin/tsx.cmd";
+        if (!QFile::exists(localTsx)) localTsx = "tsx.cmd";
+        runner = localTsx;
+        args = {serverScript};
+#else
         runner = nodeRunner;
         // Use local tsx from node_modules, invoked via node for reliable path resolution
-#ifdef Q_OS_WIN
-        QString localTsx = appDir + "/node_modules/.bin/tsx.cmd";
-#else
         QString localTsx = appDir + "/node_modules/.bin/tsx";
-#endif
-        if (!QFile::exists(localTsx)) {
-            // Fall back to global tsx (might work if user installed it)
-            localTsx = "tsx";
-        }
+        if (!QFile::exists(localTsx)) localTsx = "tsx";
         args = {localTsx, serverScript};
+#endif
     }
 
     fprintf(stderr, "[shell] appDir: %s\n", appDir.toUtf8().constData());
