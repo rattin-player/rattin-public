@@ -62,7 +62,6 @@ int main(int argc, char *argv[])
     fprintf(stderr, "[shell] starting\n");
 
     // Force OpenGL — required for QQuickFramebufferObject + libmpv.
-    // Verified working: known working pattern on Qt6.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 

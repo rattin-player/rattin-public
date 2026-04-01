@@ -5,7 +5,7 @@
 </h1>
 
 <p align="center">
-  <strong>Torrents that play like Netflix.</strong><br>
+  <strong>Self-hosted streaming from magnet links.</strong><br>
   Browse. Click. Watch. No downloads. No waiting.
 </p>
 
@@ -26,26 +26,26 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 🎬 Every codec, every container, every format — transcoded on the fly for browsers, hardware-accelerated natively on desktop<br>
 ⏩ Smart seeking in incomplete files — jump anywhere, even before it's downloaded<br>
 🔍 TMDB discovery — trending, genres, search, trailers, cast, one-click play<br>
-⏭️ Audio-fingerprint intro skip — no manual timestamps, no third-party databases<br>
 📱 Phone remote via QR scan — no app install, just point your camera<br>
 🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine<br>
 ⚡ Optional Real-Debrid — instant streaming via HTTPS, full seeking, no swarm exposure<br>
-🛡️ Optional per-app VPN — WireGuard isolation for torrent traffic only, built-in kill switch
+🛡️ Optional per-app VPN *(WIP)* — WireGuard isolation for torrent traffic only, built-in kill switch
 
-### How it works
+### Web vs Native
 
-**Player:** Runs as a browser tab (web mode) or a desktop app with libmpv (native mode). Same interface, same backend — native mode just swaps the browser's video element for a real video engine with GPU hardware decoding. Best quality (4K HDR, Dolby Atmos) on your main PC, web mode for everything else on your network.
-
-**Streaming:** Plays directly from the torrent swarm by default (free, works with any torrent). Optionally routes through [Real-Debrid](https://real-debrid.com) (~$3/mo) — torrents download on their servers, you stream over HTTPS with instant seeking and zero IP exposure. Both work together: cached content goes through debrid automatically, uncached falls back to direct streaming.
-
----
-
-### :fire: Streaming
-
-- **Plays while downloading** - Start watching in seconds, not hours
-- **Seek anywhere** - Even in files that haven't fully downloaded yet
-- **Every format works** - MKV, AVI, MP4, HEVC, AV1, HDR, Dolby Vision
-- **Real-time progress** - See download speed, peer count, and completion in the player
+| Feature | Web | Native |
+|---------|:---:|:------:|
+| Plays while downloading | ✅ | ✅ |
+| Seek in incomplete files | ⚠️ native formats only | ✅ |
+| Every format (MKV, AVI, HEVC, AV1, HDR, DV) | ✅ transcoded | ✅ native |
+| Hardware decoding (VAAPI, NVDEC) | ❌ | ✅ |
+| 4K HDR / Dolby Atmos | ❌ | ✅ |
+| Subtitles (SRT, ASS, SSA, VTT) | ✅ | ✅ |
+| Multiple audio tracks | ✅ | ✅ |
+| Source switching mid-playback | ✅ | 🔜 |
+| Mini player | ✅ | ✅ |
+| Phone remote | ✅ | ✅ |
+| Accessible from other devices | ✅ | ❌ |
 
 ### :mag: Discovery
 
@@ -56,10 +56,11 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 
 ### :zap: Player
 
-- **Skip intro** - Automatically detects TV show intros via audio fingerprinting
+- **Seek anywhere** - Even in files that haven't fully downloaded yet
+- **Skip intro** *(WIP)* - Detects TV show intros via audio fingerprinting
 - **Subtitles** - Embedded and external, with language detection (SRT, ASS, SSA, VTT)
 - **Multiple audio tracks** - Switch languages and surround formats on the fly
-- **Source switching** - Swap between different torrents mid-playback if one is slow
+- **Source switching** - Swap between different torrents mid-playback if one is slow (web only)
 - **Mini player** - Keep watching while browsing other content
 
 ### :iphone: Phone Remote
@@ -79,8 +80,8 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 ### :shield: Privacy
 
 - **Real-Debrid integration** - Torrents download on RD's servers, you stream over HTTPS. Your IP never joins the swarm. Configure in Settings (gear icon).
-- **Per-app VPN isolation** - WireGuard tunnel in a Linux network namespace. Only Rattin's traffic goes through the VPN — everything else on your system stays on your normal connection. Built-in kill switch: if the tunnel drops, torrent connections die instead of leaking your real IP.
-- **No built-in tracking** - No analytics, no telemetry, no phone-home. The only external calls are TMDB (metadata) and torrent search providers.
+- **Per-app VPN isolation** *(WIP)* - WireGuard tunnel in a Linux network namespace. Only Rattin's traffic goes through the VPN — everything else on your system stays on your normal connection. Built-in kill switch: if the tunnel drops, torrent connections die instead of leaking your real IP.
+- **No built-in tracking** - No signup, no analytics, no telemetry, no phone-home. The only external calls are TMDB (metadata) and torrent search providers.
 
 ---
 
