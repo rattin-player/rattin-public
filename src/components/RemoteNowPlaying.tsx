@@ -59,7 +59,24 @@ export default function RemoteNowPlaying() {
     return () => { es.close(); esRef.current = null; };
   }, [isRemote, sessionId, isOnRemotePage]);
 
-  if (!isRemote || isOnRemotePage || !state?.infoHash) return null;
+  if (!isRemote || isOnRemotePage) return null;
+
+  // Connected but no playback — show "Ready to stream" bar
+  if (!state?.infoHash) {
+    // Only show if we have a connection (state object exists means SSE is working)
+    if (!state?.connected) return null;
+    return (
+      <div className="remote-now-playing remote-now-playing-idle">
+        <div className="remote-now-playing-info">
+          <div className="remote-now-playing-title">
+            <span className="remote-idle-dot" />
+            Connected
+          </div>
+          <div className="remote-now-playing-meta">Ready to stream</div>
+        </div>
+      </div>
+    );
+  }
 
   const ct = state.currentTime > 0 ? state.currentTime : lastGood.current.currentTime;
   const dur = state.duration > 0 ? state.duration : lastGood.current.duration;

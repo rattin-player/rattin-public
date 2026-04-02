@@ -598,6 +598,20 @@
   transform: scale(0.96);
 }
 
+.remote-now-playing-idle {
+  cursor: default;
+}
+
+.remote-idle-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green, #22c55e);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
 /* ── QR Scanner ── */
 .qr-scanner-overlay {
   position: fixed;
