@@ -10,6 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/desktop-linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux" />
+  <img src="https://img.shields.io/badge/desktop-windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/remote-phone-34A853?style=for-the-badge&logo=android&logoColor=white" alt="Remote" />
 </p>
 
@@ -80,7 +81,12 @@ You can also grab the AppImage directly from the [latest release](https://github
 
 ### :window: Windows
 
-Coming soon.
+Download the installer or portable ZIP from the [latest release](https://github.com/rattin-player/rattin-public/releases/latest):
+
+- **Rattin-x64-Setup.exe** — installer with Start Menu and desktop shortcuts
+- **Rattin-x64-Portable.zip** — extract and run, no install needed
+
+On first launch, go to Settings (gear icon) and enter a free [TMDB API key](https://www.themoviedb.org/settings/api).
 
 ---
 
