@@ -1,11 +1,10 @@
 import path from "path";
-import fs from "fs";
 import { createReadStream } from "fs";
 import { spawn } from "child_process";
 import type { ChildProcess } from "child_process";
 import type { Readable } from "stream";
 import type { Request, Response } from "express";
-import type { TranscodeArgs, TranscodeJob, ProbeResult, LiveTranscodeOpts, ActiveTranscode, LogFn } from "./types.js";
+import type { TranscodeArgs, ProbeResult, LiveTranscodeOpts, ActiveTranscode, LogFn } from "./types.js";
 
 const WATCHDOG_TIMEOUT = 120000;
 
@@ -14,11 +13,9 @@ const WATCHDOG_TIMEOUT = 120000;
  */
 export function buildTranscodeArgs({ input, useStdin, seekTo, audioStreamIdx, videoCodec, needsDownscale, isRetry }: TranscodeArgs): string[] {
   const doSeek = seekTo > 0;
-  const browserSafeCodec = !videoCodec || videoCodec === "h264";
-
   const vFilters: string[] = [];
   if (needsDownscale) vFilters.push("scale=-2:1080");
-  if (!browserSafeCodec || isRetry) vFilters.push("format=yuv420p");
+  if (isRetry) vFilters.push("format=yuv420p");
 
   const canCopySeek = doSeek && !useStdin;
 
@@ -60,13 +57,6 @@ export function spawnWatchdog(ffmpeg: ChildProcess, timeoutMs: number, log: LogF
   const clear = () => clearInterval(interval);
   ffmpeg.on("close", clear);
   return clear;
-}
-
-interface TranscodeContext {
-  TRANSCODE_PATH: string;
-  transcodeJobs: Map<string, TranscodeJob>;
-  probeCache: Map<string, ProbeResult>;
-  log: LogFn;
 }
 
 /**
@@ -118,97 +108,6 @@ export function probeMedia(filePath: string, probeCache: Map<string, ProbeResult
       resolve({ valid: false, reason: "ffprobe not available" });
     });
   });
-}
-
-/**
- * Start background transcode to a proper MP4 with faststart (moov at beginning).
- */
-export function startTranscode(inputPath: string, cacheKey: string, ctx: TranscodeContext, audioStreamIdx: number | null = null): TranscodeJob {
-  const { TRANSCODE_PATH, transcodeJobs, probeCache, log } = ctx;
-  fs.mkdirSync(TRANSCODE_PATH, { recursive: true });
-  const outputPath = path.join(TRANSCODE_PATH, cacheKey.replace(/:/g, "_") + ".mp4");
-
-  if (transcodeJobs.has(cacheKey)) {
-    const job = transcodeJobs.get(cacheKey)!;
-    if ((job.done && !job.error) || (!job.done && !job.error)) return job;
-  }
-
-  // Check probe cache to decide whether remux is likely to work
-  const cached = probeCache.get(inputPath);
-  const canRemux = !cached?.videoCodec || cached.videoCodec === "h264";
-
-  log("info", "Starting transcode", { input: path.basename(inputPath), canRemux, vcodec: cached?.videoCodec });
-  const job: TranscodeJob = { outputPath, done: false, error: null, process: null };
-  transcodeJobs.set(cacheKey, job);
-
-  function startEncode(): void {
-    const proc2 = spawn("ffmpeg", [
-      "-i", inputPath,
-      ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
-      "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-      "-c:a", "aac",
-      "-movflags", "+faststart",
-      "-y", outputPath,
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-    job.process = proc2;
-
-    let encodeStderr = "";
-    proc2.stderr!.on("data", (d: Buffer) => {
-      const chunk = d.toString();
-      encodeStderr = (encodeStderr + chunk).slice(-1024);
-      const m = chunk.match(/time=(\S+)/);
-      if (m) log("info", "Transcode progress", { time: m[1] });
-    });
-
-    proc2.on("close", (code2: number | null) => {
-      if (code2 === 0) {
-        job.done = true;
-        log("info", "Transcode complete (re-encode)");
-      } else {
-        job.error = "Transcode failed (code " + code2 + ")";
-        log("err", "Transcode re-encode failed", { code: code2, stderr: encodeStderr.slice(-300) });
-      }
-    });
-    proc2.on("error", (err: Error) => {
-      job.error = "ffmpeg error: " + err.message;
-    });
-  }
-
-  // Skip remux if video codec isn't H.264 — go straight to re-encode
-  if (!canRemux) {
-    startEncode();
-    return job;
-  }
-
-  // Try remux first (fast - just repackage, no re-encoding)
-  const proc = spawn("ffmpeg", [
-    "-i", inputPath,
-    ...(audioStreamIdx !== null ? ["-map", "0:v:0", "-map", `0:${audioStreamIdx}`] : []),
-    "-c:v", "copy", "-c:a", "aac",
-    "-movflags", "+faststart",
-    "-y", outputPath,
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  job.process = proc;
-
-  let remuxStderr = "";
-  proc.stderr!.on("data", (d: Buffer) => { remuxStderr = (remuxStderr + d.toString()).slice(-1024); });
-
-  proc.on("close", (code: number | null) => {
-    if (code === 0) {
-      job.done = true;
-      log("info", "Transcode complete (remux)", { output: path.basename(outputPath) });
-    } else {
-      log("info", "Remux failed (code " + code + "), re-encoding with H.264", { stderr: remuxStderr.slice(-200) });
-      startEncode();
-    }
-  });
-
-  proc.on("error", (err: Error) => {
-    job.error = "ffmpeg error: " + err.message;
-    log("err", "ffmpeg spawn error", { error: err.message });
-  });
-
-  return job;
 }
 
 interface TorrentFileForServe {
@@ -307,8 +206,7 @@ export function serveLiveTranscode(opts: LiveTranscodeOpts, req: Request, res: R
   const input = useStdin ? "pipe:0" : inputPath;
 
   const cached = probeCache.get(inputPath);
-  const browserSafeCodec = !cached?.videoCodec || cached.videoCodec === "h264";
-  const needsDownscale = !browserSafeCodec && !!cached?.videoCodec;
+  const needsDownscale = !!cached?.videoCodec && cached.videoCodec !== "h264";
 
   const args = buildTranscodeArgs({
     input, useStdin, seekTo, audioStreamIdx,
