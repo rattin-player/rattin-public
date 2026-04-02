@@ -31,6 +31,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       const s = await getDebridStatus();
       setStatus(s);
+      if (s.provider) setProvider(s.provider as "realdebrid" | "torbox");
       if (s.configured) {
         setVerifying(true);
         const v = await verifyDebridKey();
