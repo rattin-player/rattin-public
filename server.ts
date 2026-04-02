@@ -16,6 +16,7 @@ import searchRoutes from "./routes/search.js";
 import streamRoutes from "./routes/stream.js";
 import debridRoutes from "./routes/debrid.js";
 import vpnRoutes from "./routes/vpn.js";
+import cacheRoutes from "./routes/cache.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 
 interface CreateAppOverrides {
@@ -124,6 +125,7 @@ searchRoutes(app, ctx);
 streamRoutes(app, ctx);
 debridRoutes(app, ctx);
 vpnRoutes(app, ctx);
+cacheRoutes(app, ctx);
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {
