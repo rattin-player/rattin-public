@@ -5,13 +5,10 @@
       <stop offset="100%" stop-color="#16213e"/>
     </linearGradient>
   </defs>
+  <!-- Dark rounded background -->
   <rect width="256" height="256" rx="48" fill="url(#bg)"/>
-  <!-- Horseshoe magnet shape -->
-  <path d="M 80 170 L 80 110 A 48 48 0 0 1 176 110 L 176 170"
-        fill="none" stroke="#e94560" stroke-width="28" stroke-linecap="round"/>
-  <!-- Magnet poles (silver caps) -->
-  <rect x="66" y="158" width="28" height="24" rx="4" fill="#c0c0c0"/>
-  <rect x="162" y="158" width="28" height="24" rx="4" fill="#c0c0c0"/>
-  <!-- Play triangle in the center of the magnet -->
-  <polygon points="118,95 118,140 150,117.5" fill="white"/>
+  <!-- Rounded box for the R -->
+  <rect x="40" y="40" width="176" height="176" rx="28" fill="none" stroke="#c9a84c" stroke-width="8"/>
+  <!-- Letter R -->
+  <text x="128" y="172" text-anchor="middle" font-family="Georgia,serif" font-size="140" font-weight="700" fill="#e2c06d">R</text>
 </svg>

@@ -10,6 +10,7 @@
 #include <QTcpServer>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
 #include <QStandardPaths>
 #include <QtWebEngineQuick>
 #ifdef Q_OS_WIN
@@ -77,6 +78,24 @@ int main(int argc, char *argv[])
     app.setApplicationName("Rattin");
     app.setOrganizationName("Rattin");
     app.setApplicationVersion("1.0.0");
+
+    // Set window icon — on Linux, look next to the binary or in standard paths;
+    // on Windows the .exe already embeds the icon via rattin.rc.
+#ifndef Q_OS_WIN
+    {
+        QString binDir = QCoreApplication::applicationDirPath();
+        QStringList iconPaths = {
+            binDir + "/../share/icons/hicolor/scalable/apps/rattin.svg",
+            binDir + "/../../packaging/linux/rattin.svg",
+        };
+        for (const auto &path : iconPaths) {
+            if (QFile::exists(path)) {
+                app.setWindowIcon(QIcon(path));
+                break;
+            }
+        }
+    }
+#endif
 
     fprintf(stderr, "[shell] registering MpvObject type\n");
     // Register MpvObject QML type

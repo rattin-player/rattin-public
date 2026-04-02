@@ -31,12 +31,18 @@ else()
     pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
 endif()
 
-add_executable(rattin-shell
+set(SOURCES
     main.cpp
     mpvobject.cpp
     mpvbridge.cpp
     resources.qrc
 )
+
+if(WIN32)
+    list(APPEND SOURCES rattin.rc)
+endif()
+
+add_executable(rattin-shell ${SOURCES})
 
 target_link_libraries(rattin-shell PRIVATE
     Qt6::Quick

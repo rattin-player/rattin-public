@@ -135,8 +135,9 @@ if (Test-Path $DistDir) { Remove-Item -Recurse -Force $DistDir }
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 New-Item -ItemType Directory -Force -Path $AppDir  | Out-Null
 
-# Qt shell
+# Qt shell + icon
 Copy-Item $ShellExe $DistDir
+Copy-Item (Join-Path $RepoRoot "packaging/windows/rattin.ico") $DistDir
 
 # Run windeployqt to gather Qt DLLs
 Log "Running windeployqt"

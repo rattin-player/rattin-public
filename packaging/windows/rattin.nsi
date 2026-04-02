@@ -17,6 +17,8 @@
 !endif
 
 Name "Rattin ${VERSION}"
+!define MUI_ICON "${DIST_DIR}\rattin.ico"
+!define MUI_UNICON "${DIST_DIR}\rattin.ico"
 OutFile "${OUTPUT}"
 Unicode True
 RequestExecutionLevel user
@@ -64,6 +66,8 @@ Section "Install"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rattin" \
         "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rattin" \
+        "DisplayIcon" "$INSTDIR\rattin.ico"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rattin" \
         "Publisher" "Rattin"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rattin" \
         "NoModify" 1
@@ -72,11 +76,11 @@ Section "Install"
 
     ; Start Menu shortcut
     CreateDirectory "$SMPROGRAMS\Rattin"
-    CreateShortcut "$SMPROGRAMS\Rattin\Rattin.lnk" "$INSTDIR\rattin-shell.exe"
+    CreateShortcut "$SMPROGRAMS\Rattin\Rattin.lnk" "$INSTDIR\rattin-shell.exe" "" "$INSTDIR\rattin.ico"
     CreateShortcut "$SMPROGRAMS\Rattin\Uninstall Rattin.lnk" "$INSTDIR\uninstall.exe"
 
     ; Optional desktop shortcut
-    CreateShortcut "$DESKTOP\Rattin.lnk" "$INSTDIR\rattin-shell.exe"
+    CreateShortcut "$DESKTOP\Rattin.lnk" "$INSTDIR\rattin-shell.exe" "" "$INSTDIR\rattin.ico"
 SectionEnd
 
 ; ---------------------------------------------------------------------------
