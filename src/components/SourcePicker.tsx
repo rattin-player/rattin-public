@@ -41,7 +41,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
 
     const resCounts = new Map<string, number>();
     const langSet = new Map<string, string>(); // label -> flag
-    let hasFullSeek = false;
+    // In native-only mode, all formats support full seek via mpv
     let hasSubs = false;
     let hasMultiAudio = false;
 
@@ -70,7 +70,6 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
       .map(([label, flag]) => ({ label, flag }));
 
     const features: { label: string; key: string }[] = [];
-    if (hasFullSeek) features.push({ label: "Full Seek", key: "fullseek" });
     if (hasSubs) features.push({ label: "Subs", key: "subs" });
     if (hasMultiAudio) features.push({ label: "Multi Audio", key: "multiaudio" });
 

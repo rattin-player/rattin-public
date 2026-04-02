@@ -50,7 +50,7 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
             isAudio: AUDIO_EXTENSIONS.includes(ext),
             isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
             isAllowed: isAllowedFile(info.name),
-            transcodeStatus: null, duration: durationCache.get(key) || null,
+            duration: durationCache.get(key) || null,
           });
         }
       }
@@ -78,7 +78,6 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
             isAudio: AUDIO_EXTENSIONS.includes(ext),
             isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
             isAllowed: isAllowedFile(f.path),
-            transcodeStatus: null,
             duration: null,
           };
         });
@@ -105,7 +104,6 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
       files: torrent.files.map((f, i) => {
         const ext = path.extname(f.name).toLowerCase();
         const key = jobKey(torrent.infoHash, i);
-        const transcodeStatus: string | null = null;
         return {
           index: i, name: f.name, path: f.path, length: f.length,
           downloaded: f.downloaded,
@@ -114,7 +112,6 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
           isAudio: AUDIO_EXTENSIONS.includes(ext),
           isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
           isAllowed: isAllowedFile(f.name),
-          transcodeStatus,
           duration: durationCache.get(key) || null,
         };
       }),
