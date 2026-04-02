@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type RefObject, type MutableRefObject } from "react";
+import { useState, useEffect, useCallback, type MutableRefObject } from "react";
 import { fetchStatus, fetchSubtitleTracks } from "./api";
 
 export const LANG_MAP: Record<string, string> = {
@@ -35,7 +35,6 @@ interface UseSubtitlesReturn {
   setActiveSub: (val: string) => void;
   switchSubtitle: (val: string) => void;
   reloadActiveSub: (seekOffset: number) => void;
-  clearAllTracks: () => void;
   shiftVtt: (vttText: string, offsetSeconds: number) => string;
   LANG_MAP: Record<string, string>;
 }
@@ -77,8 +76,8 @@ export function subtitleMatchesVideo(subPath: string, videoPath: string): boolea
   return false;
 }
 
-export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps: UseSubtitlesDeps): UseSubtitlesReturn {
-  const { infoHash, fileIndex, subsRef, activeSubRef, preSelectedSub, isLiveRef, seekOffsetRef } = deps;
+export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
+  const { infoHash, fileIndex, subsRef, activeSubRef, preSelectedSub } = deps;
 
   const [subs, setSubsRaw] = useState<SubtitleOption[]>(subsRef.current || []);
   const [activeSub, setActiveSubRaw] = useState<string>(activeSubRef.current || "");
@@ -102,13 +101,6 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
       if (base.includes("." + code) || base.includes("_" + code) || base.includes("-" + code)) return lang;
     }
     return name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop() || name;
-  }
-
-  function clearAllTracks() {
-    const v = videoRef.current;
-    if (!v) return;
-    for (const t of v.textTracks) t.mode = "disabled";
-    v.querySelectorAll("track").forEach((el) => el.remove());
   }
 
   // Shift VTT cue timestamps and remove cues before the offset
@@ -155,62 +147,12 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
     return out.join("\n");
   }
 
-  function loadSubtitleTrack(src: string, timeOffset: number, retries = 0) {
-    const v = videoRef.current;
-    if (!v) return;
-    clearAllTracks();
-    fetch(retries > 0 ? `${src}${src.includes("?") ? "&" : "?"}_t=${Date.now()}` : src)
-      .then((r) => {
-        // 202 means subtitle file is still downloading — retry after a delay
-        if (r.status === 202 && retries < 10) {
-          setTimeout(() => {
-            if (activeSubRef.current) loadSubtitleTrack(src, timeOffset, retries + 1);
-          }, 2000);
-          return null;
-        }
-        return r.ok ? r.text() : null;
-      })
-      .then((text) => {
-        if (!text || !activeSubRef.current) return;
-        // Shift cue timestamps to match v.currentTime base (which starts at ~0 after seeking)
-        const shifted = shiftVtt(text, timeOffset || 0);
-        const blob = new Blob([shifted], { type: "text/vtt" });
-        const url = URL.createObjectURL(blob);
-        clearAllTracks();
-        const track = document.createElement("track");
-        track.kind = "subtitles";
-        track.src = url;
-        track.label = "Subtitles";
-        track.default = true;
-        v.appendChild(track);
-        track.addEventListener("load", () => {
-          if (track.track) track.track.mode = "showing";
-          URL.revokeObjectURL(url);
-        });
-        setTimeout(() => {
-          if (track.track && track.track.mode !== "showing") track.track.mode = "showing";
-        }, 500);
-      })
-      .catch(() => {});
-  }
-
-  const reloadActiveSub = useCallback(function reloadActiveSub(seekOffset: number) {
-    const sub = activeSubRef.current;
-    if (!sub) return;
-    let src: string | undefined;
-    if (sub.startsWith("file:")) {
-      src = `/api/subtitle/${infoHash}/${parseInt(sub.split(":")[1], 10)}`;
-    } else if (sub.startsWith("embedded:")) {
-      src = `/api/subtitle-extract/${infoHash}/${fileIndex}/${parseInt(sub.split(":")[1], 10)}`;
-    }
-    if (src) loadSubtitleTrack(src, seekOffset || 0);
-  }, [infoHash, fileIndex]);
+  const reloadActiveSub = useCallback(function reloadActiveSub(_seekOffset: number) {
+    // In native mode, mpv manages subtitle loading — no browser-side reload needed
+  }, []);
 
   function switchSubtitle(val: string) {
     setActiveSub(val);
-    if (!videoRef.current) return;
-    if (!val) { clearAllTracks(); return; }
-    reloadActiveSub(isLiveRef.current ? seekOffsetRef.current : 0);
   }
 
   // Load embedded subtitles
@@ -251,7 +193,6 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
   useEffect(() => {
     setSubs([]);
     setActiveSub("");
-    clearAllTracks();
   }, [infoHash, fileIndex]);
 
   // Load external subtitle files — only those matching the current video
@@ -283,16 +224,9 @@ export function useSubtitles(videoRef: RefObject<HTMLVideoElement | null>, deps:
     }).catch(() => {});
   }, [infoHash, fileIndex]);
 
-  // Restore active subtitle when returning from mini player
-  useEffect(() => {
-    if (activeSub && subs.length > 0) {
-      switchSubtitle(activeSub);
-    }
-  }, [subs.length]);
-
   return {
     subs, activeSub, setSubs, setActiveSub,
-    switchSubtitle, reloadActiveSub, clearAllTracks,
+    switchSubtitle, reloadActiveSub,
     shiftVtt, LANG_MAP,
   };
 }
