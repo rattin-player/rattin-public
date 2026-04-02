@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     // Pass config dir to Node.js so lib/paths.ts uses the same location
     env.insert("MAGNET_CONFIG_DIR", configDir);
-    // Add the directory containing node.exe to PATH so tsx.cmd can find it
+    // Add the directory containing rattin-runtime.exe to PATH
     QString nodePath = QDir(binDir).canonicalPath();
     env.insert("PATH", nodePath + ";" + env.value("PATH"));
 #endif
@@ -195,7 +195,11 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsSet("MAGNET_NODE_PATH"))
         nodeRunner = qEnvironmentVariable("MAGNET_NODE_PATH");
     else
+#ifdef Q_OS_WIN
+        nodeRunner = "rattin-runtime";
+#else
         nodeRunner = "node";
+#endif
 
     QString serverScript;
     QString runner;
