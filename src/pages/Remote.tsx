@@ -196,11 +196,12 @@ export default function Remote() {
   }, [sessionId, connectAttempt]);
 
   // Auto-navigate to home when playback stops (skip the "Browse Content" intermediate)
+  // Don't navigate during switching — the idle state is transient
   useEffect(() => {
-    if (remoteState === S.CONNECTED_IDLE && hadPlayback.current) {
+    if (remoteState === S.CONNECTED_IDLE && hadPlayback.current && !state?.switching) {
       navigate(`/?session=${sessionId}`, { replace: true });
     }
-  }, [remoteState, sessionId, navigate]);
+  }, [remoteState, sessionId, navigate, state?.switching]);
 
   // ── Send command ──
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -426,6 +427,8 @@ export default function Remote() {
 
   // ── CONNECTED states (IDLE, PLAYING, RECONNECTING) ──
   const isReconnecting = remoteState === S.RECONNECTING;
+  const isSwitching = !!state?.switching;
+  const isDisabled = isReconnecting || isSwitching;
   const hasPlayback = state?.infoHash;
 
   // CONNECTED_IDLE (no playback) — or pending playback
@@ -481,6 +484,12 @@ export default function Remote() {
           <span>Reconnecting...</span>
         </div>
       )}
+      {isSwitching && !isReconnecting && (
+        <div className="remote-reconnecting-overlay">
+          <div className="remote-spinner" />
+          <span>Switching...</span>
+        </div>
+      )}
 
       <div className={`remote-status ${isReconnecting ? "reconnecting" : "online"}`}>
         <span className="remote-status-dot" />
@@ -497,20 +506,20 @@ export default function Remote() {
       </div>
 
       <div className="remote-play-area">
-        <button className="remote-skip-btn" onClick={() => handleSkip(-10)} disabled={isReconnecting}>
+        <button className="remote-skip-btn" onClick={() => handleSkip(-10)} disabled={isDisabled}>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
           </svg>
           <span>10</span>
         </button>
-        <button className="remote-play-btn" onClick={handleTogglePlay} disabled={isReconnecting}>
+        <button className="remote-play-btn" onClick={handleTogglePlay} disabled={isDisabled}>
           {isPlaying ? (
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
           ) : (
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           )}
         </button>
-        <button className="remote-skip-btn" onClick={() => handleSkip(10)} disabled={isReconnecting}>
+        <button className="remote-skip-btn" onClick={() => handleSkip(10)} disabled={isDisabled}>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M11.5 8c2.65 0 5.05.99 6.9 2.6L22 7v9h-9l3.62-3.62C15.23 11.22 13.46 10.5 11.5 10.5c-3.54 0-6.55 2.31-7.6 5.5L1.53 15.22C2.92 11.03 6.85 8 11.5 8z"/>
           </svg>
@@ -522,7 +531,7 @@ export default function Remote() {
         <button
           className="remote-skip-intro"
           onClick={() => sendCommand("skip-intro")}
-          disabled={isReconnecting}
+          disabled={isDisabled}
         >
           Skip Intro
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -566,7 +575,7 @@ export default function Remote() {
           min="0" max="1" step="0.05"
           value={displayVolume}
           onChange={handleVolumeChange}
-          disabled={isReconnecting}
+          disabled={isDisabled}
         />
       </div>
 
@@ -576,7 +585,7 @@ export default function Remote() {
             className="remote-sub-select"
             value={state.activeSub || ""}
             onChange={(e) => sendCommand("subtitle", e.target.value)}
-            disabled={isReconnecting}
+            disabled={isDisabled}
           >
             <option value="">Subtitles Off</option>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -585,9 +594,9 @@ export default function Remote() {
             ))}
           </select>
           <div className="remote-sub-size">
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", -5)} disabled={isReconnecting}>A−</button>
+            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", -5)} disabled={isDisabled}>A−</button>
             <span className="remote-sub-size-val">{state.subSize ?? 55}</span>
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", 5)} disabled={isReconnecting}>A+</button>
+            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", 5)} disabled={isDisabled}>A+</button>
           </div>
         </div>
       )}
@@ -598,7 +607,7 @@ export default function Remote() {
             className="remote-sub-select"
             value={state.activeAudio ?? ""}
             onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
-            disabled={isReconnecting}
+            disabled={isDisabled}
           >
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {state.audioTracks.map((t: any) => (
@@ -612,7 +621,7 @@ export default function Remote() {
         <button
           className="remote-source-toggle"
           onClick={() => setShowSources((v) => !v)}
-          disabled={isReconnecting}
+          disabled={isDisabled}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
@@ -657,20 +666,20 @@ export default function Remote() {
       )}
 
       <div className="remote-bottom-row">
-        <button className="remote-back-btn" onClick={() => navigate(-1)} disabled={isReconnecting}>
+        <button className="remote-back-btn" onClick={() => navigate(-1)} disabled={isDisabled}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
           </svg>
         </button>
-        <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isReconnecting}>
+        <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isDisabled}>
           Browse
         </button>
-        <button className="remote-fullscreen-btn" onClick={() => sendCommand("toggle-fullscreen")} disabled={isReconnecting}>
+        <button className="remote-fullscreen-btn" onClick={() => sendCommand("toggle-fullscreen")} disabled={isDisabled}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
           </svg>
         </button>
-        <button className="remote-stop-btn" onClick={() => sendCommand("stop-stream")} disabled={isReconnecting}>
+        <button className="remote-stop-btn" onClick={() => sendCommand("stop-stream")} disabled={isDisabled}>
           Stop
         </button>
       </div>

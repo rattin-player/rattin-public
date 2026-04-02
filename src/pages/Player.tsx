@@ -9,7 +9,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
@@ -62,7 +62,7 @@ export default function Player() {
     return () => clearInterval(livePeerTimer.current);
   }, [showSources, active?.infoHash]);
 
-  // Switch to a different source
+  // Switch to a different source — full stop-and-respawn like content switching
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSwitchSource = useCallback(async (source: any) => {
     if (source.infoHash === active?.infoHash) {
@@ -71,16 +71,18 @@ export default function Player() {
     }
     setSwitchingSource(source.infoHash);
     try {
-      // Start the new torrent
       const result = await playTorrent(
         source.infoHash, source.name,
         state?.pickerSeason, state?.pickerEpisode,
       );
       const newTags = result.tags || source.tags || [];
       setCurrentTags(newTags);
-      // Navigate to the new stream URL (replace so back button goes to detail)
+      setShowSources(false);
+      // Kill old player, wait for mpv to fully stop, then spawn new player
+      navigate("/", { replace: true });
+      await mpvStopAndWait();
+      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridUrl);
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
-        replace: true,
         state: {
           ...state,
           tags: newTags,
@@ -88,9 +90,6 @@ export default function Player() {
           debridUrl: result.debridUrl,
         },
       });
-      // Start the new stream
-      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridUrl);
-      setShowSources(false);
     } catch {
       // If switch fails, stay on current
     } finally {
