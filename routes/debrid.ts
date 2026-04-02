@@ -25,8 +25,8 @@ export default function debridRoutes(app: Express, ctx: ServerContext): void {
     if (!apiKey || !provider) {
       return res.status(400).json({ error: "apiKey and provider are required" });
     }
-    if (provider !== "realdebrid") {
-      return res.status(400).json({ error: "Unsupported provider. Supported: realdebrid" });
+    if (provider !== "realdebrid" && provider !== "torbox") {
+      return res.status(400).json({ error: "Unsupported provider. Supported: realdebrid, torbox" });
     }
 
     saveConfig(provider, apiKey, mode || "always");

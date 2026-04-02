@@ -8,6 +8,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState("");
+  const [provider, setProvider] = useState<"realdebrid" | "torbox">("realdebrid");
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [status, setStatus] = useState<{
@@ -17,6 +18,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     username?: string | null;
     expiration?: string | null;
     mode?: "always" | "cached";
+    provider?: string | null;
   } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -29,6 +31,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       const s = await getDebridStatus();
       setStatus(s);
+      if (s.provider) setProvider(s.provider as "realdebrid" | "torbox");
       if (s.configured) {
         setVerifying(true);
         const v = await verifyDebridKey();
@@ -46,7 +49,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     setError("");
     setSuccess("");
     try {
-      await setDebridConfig(apiKey.trim());
+      await setDebridConfig(apiKey.trim(), provider);
       const v = await verifyDebridKey();
       if (!v.valid) {
         setError("Invalid API key");
@@ -101,12 +104,16 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               )}
             </div>
             <p className="pair-desc">
-              Route torrents through a{" "}
+              Route torrents through a debrid service for instant streaming, full seeking, and IP privacy.
+              Supports{" "}
               <a href="https://real-debrid.com" target="_blank" rel="noopener noreferrer" className="settings-link">
                 Real-Debrid
               </a>{" "}
-              service for instant streaming, full seeking, and IP privacy.
-              Requires your own account — this is optional.
+              and{" "}
+              <a href="https://torbox.app" target="_blank" rel="noopener noreferrer" className="settings-link">
+                TorBox
+              </a>
+              . Requires your own account — this is optional.
             </p>
 
             {!status ? (
@@ -119,6 +126,12 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 <div className="settings-info-row">
                   <span className="settings-info-label">Account</span>
                   <span className="settings-info-value">{status.username}</span>
+                </div>
+                <div className="settings-info-row">
+                  <span className="settings-info-label">Provider</span>
+                  <span className="settings-info-value">
+                    {status.provider === "torbox" ? "TorBox" : "Real-Debrid"}
+                  </span>
                 </div>
                 {status.expiration && (
                   <div className="settings-info-row">
@@ -151,10 +164,18 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               </div>
             ) : (
               <div className="settings-form">
+                <select
+                  className="settings-mode-select"
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value as "realdebrid" | "torbox")}
+                >
+                  <option value="realdebrid">Real-Debrid</option>
+                  <option value="torbox">TorBox</option>
+                </select>
                 <input
                   className="settings-input"
                   type="password"
-                  placeholder="Real-Debrid API key"
+                  placeholder={provider === "realdebrid" ? "Real-Debrid API key" : "TorBox API key"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSave()}
