@@ -1,8 +1,7 @@
-<h1 align="center">
-  <br>
-  <img src="https://img.shields.io/badge/%F0%9F%A7%B2-Rattin-000?style=for-the-badge&labelColor=000" alt="Rattin" height="40"/>
-  <br>
-</h1>
+<p align="center">
+  <img src="packaging/linux/rattin.svg" alt="Rattin" width="128" height="128"/>
+</p>
+<h1 align="center">Rattin</h1>
 
 <p align="center">
   <strong>Desktop streaming from magnet links.</strong><br>
