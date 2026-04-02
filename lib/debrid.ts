@@ -451,7 +451,8 @@ class TorBoxProvider implements DebridProvider {
     while (Date.now() < deadline) {
       const res = await this.tbFetch(`/torrents/mylist?bypass_cache=true&id=${torrentId}`);
       if (!res.ok) throw new Error("debrid_poll_failed");
-      const { data } = await res.json() as { data: TBTorrentInfo };
+      const { data } = await res.json() as { data: TBTorrentInfo | null };
+      if (!data) throw new Error("debrid_poll_failed");
 
       if (data.download_finished) return data;
 
