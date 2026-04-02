@@ -98,8 +98,9 @@ jobs:
           $app  = "$dist/app"
           New-Item -ItemType Directory -Force -Path $app | Out-Null
 
-          # Qt shell
+          # Qt shell + icon
           Copy-Item shell/build/Release/rattin-shell.exe $dist/
+          Copy-Item packaging/windows/rattin.ico $dist/
 
           # windeployqt — try windeployqt6 first, fall back to windeployqt
           $wdq = Get-Command windeployqt6 -ErrorAction SilentlyContinue
