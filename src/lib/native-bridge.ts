@@ -27,6 +27,7 @@ interface MpvEvents {
   onDurationChanged: ((seconds: number) => void) | null;
   onEofReached: (() => void) | null;
   onPauseChanged: ((paused: boolean) => void) | null;
+  onIsPlayingChanged: ((playing: boolean) => void) | null;
   onNativeSubChanged: ((mpvId: number) => void) | null;
   onNativeAudioChanged: ((mpvId: number) => void) | null;
   onNativeVolumeChanged: ((percent: number) => void) | null;
@@ -68,6 +69,7 @@ export function waitForBridge(): Promise<void> {
           onDurationChanged: null,
           onEofReached: null,
           onPauseChanged: null,
+          onIsPlayingChanged: null,
           onNativeSubChanged: null,
           onNativeAudioChanged: null,
           onNativeVolumeChanged: null,
@@ -85,6 +87,9 @@ export function waitForBridge(): Promise<void> {
         bridge.pauseChanged.connect((p: boolean) => {
           mpvPaused = p;
           if (window.mpvEvents?.onPauseChanged) window.mpvEvents.onPauseChanged(p);
+        });
+        bridge.isPlayingChanged.connect((p: boolean) => {
+          if (window.mpvEvents?.onIsPlayingChanged) window.mpvEvents.onIsPlayingChanged(p);
         });
         bridge.nativeSubChanged.connect((mpvId: number) => {
           if (window.mpvEvents?.onNativeSubChanged) window.mpvEvents.onNativeSubChanged(mpvId);
@@ -168,6 +173,29 @@ export function mpvSetSubFontSize(size: number): void {
 
 export function mpvStop(): void {
   window.mpvBridge?.stop();
+}
+
+/** Stop mpv and wait for confirmation that playback has fully stopped. */
+export function mpvStopAndWait(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!window.mpvBridge) { resolve(); return; }
+    const prev = window.mpvEvents?.onIsPlayingChanged ?? null;
+    if (window.mpvEvents) {
+      window.mpvEvents.onIsPlayingChanged = (playing: boolean) => {
+        if (!playing) {
+          // Restore previous handler and resolve
+          if (window.mpvEvents) window.mpvEvents.onIsPlayingChanged = prev;
+          resolve();
+        }
+      };
+    }
+    window.mpvBridge.stop();
+    // Safety timeout in case signal never arrives
+    setTimeout(() => {
+      if (window.mpvEvents) window.mpvEvents.onIsPlayingChanged = prev;
+      resolve();
+    }, 2000);
+  });
 }
 
 export function mpvSetTitle(title: string): void {
