@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { encode } from "uqr";
 import { usePlayer } from "../lib/PlayerContext";
-import { isNative } from "../lib/native-bridge";
 import { fetchLanIp } from "../lib/api";
 import "./PairRemoteModal.css";
 
@@ -41,11 +40,7 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
       setRemoteUrl("");
       return;
     }
-    if (!isNative) {
-      setRemoteUrl(`${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
-      return;
-    }
-    // Native mode: QR must contain a LAN IP reachable by the phone
+    // QR must contain a LAN IP reachable by the phone
     fetchLanIp()
       .then(({ ip, port }) => {
         const origin = ip ? `http://${ip}:${port}` : window.location.origin;

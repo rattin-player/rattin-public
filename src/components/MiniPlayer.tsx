@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
-import { isNative } from "../lib/native-bridge";
 import { formatTime } from "../lib/utils";
 import "./MiniPlayer.css";
 
@@ -27,7 +26,7 @@ export default function MiniPlayer() {
     };
   }, [active, isOnPlayerPage]);
 
-  if (!active || isOnPlayerPage || isNative) return null;
+  if (!active || isOnPlayerPage) return null;
 
   function goFullscreen() {
     navigate(`/play/${active!.infoHash}/${active!.fileIndex}`, {
