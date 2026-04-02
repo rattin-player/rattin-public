@@ -66,6 +66,7 @@ export default function Remote() {
 
   // ── Last known good values ──
   const lastGood = useRef({ currentTime: 0, duration: 0 });
+  const hadPlayback = useRef(false);
 
   // ── Pending playback (navigated here after starting a stream) ──
   const [pending, setPending] = useState(!!pendingTitle);
@@ -142,7 +143,10 @@ export default function Remote() {
           setOptimisticSeekTime(null);
         }
         setState(parsed);
-        if (parsed.infoHash) setPending(false); // playback arrived, clear pending
+        if (parsed.infoHash) {
+          setPending(false);
+          hadPlayback.current = true;
+        }
         setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
       });
 
@@ -188,6 +192,13 @@ export default function Remote() {
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
   }, [sessionId, connectAttempt]);
+
+  // Auto-navigate to home when playback stops (skip the "Browse Content" intermediate)
+  useEffect(() => {
+    if (remoteState === S.CONNECTED_IDLE && hadPlayback.current) {
+      navigate(`/?session=${sessionId}`, { replace: true });
+    }
+  }, [remoteState, sessionId, navigate]);
 
   // ── Send command ──
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
