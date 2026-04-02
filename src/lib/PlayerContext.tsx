@@ -155,7 +155,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const navigateRef = useRef<NavigateFn | null>(null);
 
   // Stable refs for SSE command handler (avoid reconnecting SSE when callbacks change)
-  const startStreamRef = useRef<((...args: unknown[]) => void) | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const startStreamRef = useRef<((...args: any[]) => void) | null>(null);
   const stopStreamRef = useRef<(() => void) | null>(null);
   const togglePlayRef = useRef<(() => void) | null>(null);
 

@@ -24,8 +24,6 @@ interface UseSubtitlesDeps {
   subsRef: MutableRefObject<SubtitleOption[]>;
   activeSubRef: MutableRefObject<string>;
   preSelectedSub: string | null;
-  isLiveRef: MutableRefObject<boolean>;
-  seekOffsetRef: MutableRefObject<number>;
 }
 
 interface UseSubtitlesReturn {

@@ -27,7 +27,7 @@ export default function Player() {
   const preSelectedSub: string | null = state?.subtitle ?? null;
   const pageRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLDivElement>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,7 +36,7 @@ export default function Player() {
   const [showSources, setShowSources] = useState(false);
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
-  const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
+  const livePeerTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function Player() {
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
   const [showSlowWarning, setShowSlowWarning] = useState(false);
-  const stuckTimer = useRef<ReturnType<typeof setTimeout>>();
+  const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(stuckTimer.current);
     if (dlProgress >= 1 || dlSpeed > 0 || !active) {

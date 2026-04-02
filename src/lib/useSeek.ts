@@ -56,7 +56,7 @@ export function useSeek(deps: UseSeekDeps): UseSeekReturn {
   const [tooltipX, setTooltipX] = useState(0);
 
   const knownDurRef = useRef(0);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => { knownDurRef.current = knownDuration; }, [knownDuration]);
 
