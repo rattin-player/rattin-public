@@ -25,7 +25,6 @@ interface CreateAppOverrides {
 interface AppContext {
   app: ReturnType<typeof express>;
   client: ServerContext["client"];
-  transcodeJobs: ServerContext["transcodeJobs"];
   durationCache: ServerContext["durationCache"];
   seekIndexCache: ServerContext["seekIndexCache"];
   seekIndexPending: ServerContext["seekIndexPending"];
@@ -46,7 +45,7 @@ export function createApp(overrides: CreateAppOverrides = {}): AppContext {
   const app = express();
   const ctx = createContext(overrides);
   const {
-    client, transcodeJobs, durationCache, seekIndexCache, seekIndexPending,
+    client, durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
     availabilityCache, AVAIL_TTL, introCache, probeCache, pcAuthToken,
     log, cleanupTorrentCaches, rcSessions,
@@ -84,8 +83,6 @@ const idleTracker = createIdleTracker({
   },
   onHardIdle() {
     // Nuclear option: clear everything
-    for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
-    transcodeJobs.clear();
     durationCache.clear();
     seekIndexCache.clear();
     seekIndexPending.clear();
@@ -145,7 +142,7 @@ app.get("/{*splat}", (_req: Request, res: Response) => {
 });
 
   return {
-    app, client, transcodeJobs, durationCache, seekIndexCache, seekIndexPending,
+    app, client, durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes, availabilityCache,
     probeCache, introCache, rcSessions, idleTracker, pcAuthToken,
   };
@@ -191,7 +188,7 @@ function restoreSessions(client: ServerContext["client"], downloadPath: string):
 }
 
 if (isMain) {
-  const { app, client, transcodeJobs } = createApp();
+  const { app, client } = createApp();
 
   // Restore sessions from a previous VPN toggle restart
   restoreSessions(client, downloadDir());
@@ -199,7 +196,6 @@ if (isMain) {
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
     dumpSessions(client);
-    for (const [, job] of transcodeJobs) if (job.process && !job.done) job.process.kill();
     client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
       process.exit(0);

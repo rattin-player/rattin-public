@@ -8,7 +8,7 @@ import { registerCache, cleanupHash } from "./torrent-caches.js";
 import { downloadDir, transcodeDir } from "./paths.js";
 import type { Request, Response, NextFunction } from "express";
 import type {
-  TranscodeJob, CompletedFile, StreamEntry, ActiveTranscode,
+  CompletedFile, StreamEntry, ActiveTranscode,
   AvailEntry, IntroEntry, ProbeResult, RCSession, SeekEntry,
   Torrent, TorrentFile, TorrentClient, LogLevel, ServerContext,
 } from "./types.js";
@@ -23,7 +23,6 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
   const DOWNLOAD_PATH = downloadDir();
   const TRANSCODE_PATH = transcodeDir();
 
-  const transcodeJobs = new Map<string, TranscodeJob>();
   const durationCache = new Map<string, number>(); // "infoHash:fileIndex" -> seconds
   const seekIndexCache = new BoundedMap<SeekEntry[]>(20); // "infoHash:fileIndex" -> [{ time, offset }, ...]
   const seekIndexPending = new Set<string>(); // jobKeys currently being indexed (prevents duplicate attempts)
@@ -34,7 +33,6 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
   const availabilityCache = new Map<string, AvailEntry>(); // "title:year" -> { available: bool, ts: number }
   const AVAIL_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
-  registerCache("transcodeJobs", transcodeJobs as Map<string, unknown>, "hash:index");
   registerCache("durationCache", durationCache as Map<string, unknown>, "hash:index");
   registerCache("seekIndexCache", seekIndexCache as unknown as Map<string, unknown>, "hash:index");
   registerCache("seekIndexPending", seekIndexPending, "hash:index");
@@ -128,15 +126,6 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
     // If torrent has completed files on disk, just pause it instead of destroying
     // (destroying forces a slow re-add from peers next time the user plays it)
     entry.idleTimer = setTimeout(() => {
-      for (const [key, job] of transcodeJobs) {
-        if (key.startsWith(infoHash.toLowerCase() + ":")) {
-          if (job.process && !job.done) {
-            job.process.kill();
-            log("info", "Killed idle transcode", { jobKey: key });
-          }
-          transcodeJobs.delete(key);
-        }
-      }
       const torrent = client.torrents.find((t: Torrent) => t.infoHash === infoHash);
       if (torrent) {
         const hasCompleteFiles = torrent.files.some((f: TorrentFile) => {
@@ -170,7 +159,7 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
 
   return {
     client, DOWNLOAD_PATH, TRANSCODE_PATH,
-    transcodeJobs, durationCache, seekIndexCache, seekIndexPending,
+    durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
     availabilityCache, AVAIL_TTL, introCache, probeCache, pcAuthToken,
     rcSessions,

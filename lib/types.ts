@@ -262,7 +262,6 @@ export interface ServerContext {
   client: TorrentClient;
   DOWNLOAD_PATH: string;
   TRANSCODE_PATH: string;
-  transcodeJobs: Map<string, TranscodeJob>;
   durationCache: Map<string, number>;
   seekIndexCache: Map<string, SeekEntry[]>;
   seekIndexPending: Set<string>;
