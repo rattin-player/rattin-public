@@ -1,26 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  needsTranscode, isAllowedFile, srtToVtt, magnetToInfoHash, fmtBytes, throttle,
-  VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS, ALLOWED_EXTENSIONS, BROWSER_NATIVE,
+  isAllowedFile, srtToVtt, magnetToInfoHash, fmtBytes, throttle,
+  VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS, ALLOWED_EXTENSIONS,
 } from "../lib/media-utils.js";
-
-describe("needsTranscode", () => {
-  it("returns false for browser-native formats", () => {
-    assert.equal(needsTranscode(".mp4"), false);
-    assert.equal(needsTranscode(".m4v"), false);
-    assert.equal(needsTranscode(".webm"), false);
-  });
-
-  it("returns true for non-native formats", () => {
-    assert.equal(needsTranscode(".mkv"), true);
-    assert.equal(needsTranscode(".avi"), true);
-    assert.equal(needsTranscode(".mov"), true);
-    assert.equal(needsTranscode(".ts"), true);
-    assert.equal(needsTranscode(".flv"), true);
-    assert.equal(needsTranscode(".wmv"), true);
-  });
-});
 
 describe("isAllowedFile", () => {
   it("allows video files", () => {
@@ -195,12 +178,6 @@ describe("constants", () => {
     assert.ok(VIDEO_EXTENSIONS.includes(".mp4"));
     assert.ok(VIDEO_EXTENSIONS.includes(".mkv"));
     assert.ok(VIDEO_EXTENSIONS.includes(".avi"));
-  });
-
-  it("BROWSER_NATIVE is a subset of video extensions", () => {
-    for (const ext of BROWSER_NATIVE) {
-      assert.ok(VIDEO_EXTENSIONS.includes(ext), `${ext} should be in VIDEO_EXTENSIONS`);
-    }
   });
 
   it("ALLOWED_EXTENSIONS includes all media types", () => {

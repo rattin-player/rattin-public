@@ -4,11 +4,6 @@ export const VIDEO_EXTENSIONS: string[] = [".mp4", ".mkv", ".webm", ".avi", ".mo
 export const AUDIO_EXTENSIONS: string[] = [".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma"];
 export const SUBTITLE_EXTENSIONS: string[] = [".srt", ".ass", ".ssa", ".vtt", ".sub"];
 export const ALLOWED_EXTENSIONS: Set<string> = new Set([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS, ...SUBTITLE_EXTENSIONS]);
-export const BROWSER_NATIVE: Set<string> = new Set([".mp4", ".m4v", ".webm"]);
-
-export function needsTranscode(ext: string): boolean {
-  return !BROWSER_NATIVE.has(ext);
-}
 
 export function isAllowedFile(name: string): boolean {
   const ext = path.extname(name).toLowerCase();
