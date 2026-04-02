@@ -176,6 +176,12 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
+    // Save position of the current stream before switching (mirrors stopStream behavior)
+    if (active) {
+      const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
+      const t = effectiveTimeRef.current?.time || 0;
+      if (t > 0) sessionStorage.setItem(posKey, String(t));
+    }
     const ih = String(infoHash);
     const fi = String(fileIndex);
     fetch(`/api/set-active/${ih}`, { method: "POST" }).catch(() => {});
