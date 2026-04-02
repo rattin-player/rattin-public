@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type MutableRefObject } from "react";
-import { fetchStatus, fetchSubtitleTracks } from "./api";
+import { fetchStatus, fetchSubtitleTracks } from "./api.js";
 
 export const LANG_MAP: Record<string, string> = {
   eng: "English", en: "English", spa: "Spanish", es: "Spanish",
@@ -195,24 +195,20 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
 
   // Load external subtitle files — only those matching the current video
   useEffect(() => {
-    fetchStatus(infoHash).then((data) => {
+    fetchStatus(infoHash).then((data: { files?: Array<{ index: number; path?: string; name?: string; isSubtitle?: boolean }> }) => {
       if (!data.files) return;
       const fi = parseInt(fileIndex, 10);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const videoFile = data.files.find((f: any) => f.index === fi);
+      const videoFile = data.files.find((f) => f.index === fi);
       const videoPath = videoFile?.path || videoFile?.name || "";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allSubs = data.files.filter((f: any) => f.isSubtitle);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let matched = allSubs.filter((f: any) => subtitleMatchesVideo(f.path || f.name, videoPath));
+      const allSubs = data.files.filter((f) => f.isSubtitle);
+      let matched = allSubs.filter((f) => subtitleMatchesVideo(f.path || f.name || "", videoPath));
       // If no match (e.g. single video with loose subs), fall back to all
       if (matched.length === 0 && allSubs.length > 0) matched = allSubs;
       if (matched.length > 0) {
         setSubs((prev) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const external = matched.map((f: any) => ({
+          const external = matched.map((f) => ({
             value: `file:${f.index}`,
-            label: guessLabel(f.name) + " (external)",
+            label: guessLabel(f.name || "") + " (external)",
             fileIndex: f.index,
           }));
           const embedded = prev.filter((s) => s.value.startsWith("embedded:"));

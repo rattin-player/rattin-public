@@ -188,7 +188,7 @@ function restoreSessions(client: ServerContext["client"], downloadPath: string):
 }
 
 if (isMain) {
-  const { app, client } = createApp();
+  const { app, client, activeTranscodes } = createApp();
 
   // Restore sessions from a previous VPN toggle restart
   restoreSessions(client, downloadDir());
@@ -196,17 +196,25 @@ if (isMain) {
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
     dumpSessions(client);
+    // Kill any active ffmpeg transcode processes so they don't linger as orphans
+    for (const [key, entry] of activeTranscodes) {
+      entry.cleanup();
+      activeTranscodes.delete(key);
+    }
     client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
       process.exit(0);
     });
-    setTimeout(() => process.exit(1), 5000);
+    // Safety timeout must be shorter than Qt shell's 3s waitForFinished,
+    // otherwise Qt escalates to SIGKILL on tsx and this process becomes
+    // an orphan that lingers until this timeout fires.
+    setTimeout(() => process.exit(1), 2000);
   }
 
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   const HOST = process.env.HOST || "127.0.0.1";
   app.listen(PORT, HOST, () => {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://${HOST}:${PORT}`);

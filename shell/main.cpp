@@ -12,6 +12,9 @@
 #include <QFile>
 #include <QStandardPaths>
 #include <QtWebEngineQuick>
+#ifndef Q_OS_WIN
+#include <signal.h>
+#endif
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
@@ -198,13 +201,31 @@ int main(int argc, char *argv[])
     fprintf(stderr, "[shell] server: %s\n", serverScript.toUtf8().constData());
     fprintf(stderr, "[shell] port:   %d\n", port);
 
+    // Give the server its own process group so we can kill the entire tree
+    // (tsx spawns a child node process, and that spawns ffmpeg children).
+#ifndef Q_OS_WIN
+    serverProcess->setChildProcessModifier([]() { setsid(); });
+#endif
+
     serverProcess->start(runner, args);
 
-    // Clean up server on exit
+    // Clean up server on exit — kill the whole process group, not just
+    // the direct child, so tsx's child (the actual server) and any
+    // ffmpeg grandchildren are also terminated.
     QObject::connect(&app, &QGuiApplication::aboutToQuit, [serverProcess]() {
+#ifndef Q_OS_WIN
+        auto pid = serverProcess->processId();
+        if (pid > 0) ::kill(-pid, SIGTERM);   // negative PID = process group
+#else
         serverProcess->terminate();
+#endif
         if (!serverProcess->waitForFinished(3000)) {
+#ifndef Q_OS_WIN
+            auto pid2 = serverProcess->processId();
+            if (pid2 > 0) ::kill(-pid2, SIGKILL);
+#else
             serverProcess->kill();
+#endif
         }
     });
 
