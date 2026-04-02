@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packaging/linux/rattin.svg" alt="Rattin" width="128" height="128"/>
+  <img src="packaging/linux/rattin.svg" alt="Rattin" width="160" height="160"/>
 </p>
 <h1 align="center">Rattin</h1>
 
