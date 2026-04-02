@@ -118,13 +118,25 @@ jobs:
           # libmpv
           Copy-Item mpv-dev/libmpv-2.dll $dist/
 
-          # App code
-          foreach ($item in @("server.ts","tsconfig.json","package.json","package-lock.json")) {
+          # VC++ runtime DLLs (so users don't need to install the redist)
+          $vcDir = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+          foreach ($dll in @("vcruntime140.dll","vcruntime140_1.dll","msvcp140.dll")) {
+              $src = Join-Path $vcDir $dll
+              if (Test-Path $src) { Copy-Item $src "$dist/" }
+          }
+
+          # Compile TypeScript to JS (ship compiled code, not source)
+          npx tsc --outDir compiled --noEmit false
+
+          # App code (compiled JS, not raw TS)
+          foreach ($item in @("tsconfig.json","package.json","package-lock.json")) {
               if (Test-Path $item) { Copy-Item $item "$app/" }
           }
-          foreach ($dir in @("routes","lib","public")) {
-              if (Test-Path $dir) { Copy-Item $dir (Join-Path $app $dir) -Recurse }
+          Copy-Item compiled/server.js "$app/"
+          foreach ($dir in @("routes","lib")) {
+              Copy-Item (Join-Path compiled $dir) (Join-Path $app $dir) -Recurse
           }
+          Copy-Item public (Join-Path $app "public") -Recurse
 
           # Production dependencies
           Push-Location $app

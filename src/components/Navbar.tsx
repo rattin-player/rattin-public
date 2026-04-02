@@ -37,6 +37,7 @@ export default function Navbar() {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
 
+
   async function handleVpnToggle() {
     if (!vpn?.configured || vpnToggling) return;
     setVpnToggling(true);

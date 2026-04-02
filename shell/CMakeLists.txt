@@ -48,6 +48,7 @@ target_link_libraries(rattin-shell PRIVATE
 
 if(WIN32)
     target_link_libraries(rattin-shell PRIVATE dwmapi)
+    set_target_properties(rattin-shell PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
 # Install

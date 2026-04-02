@@ -8,6 +8,7 @@
 //   genres
 
 import type { StaleResult, CacheStats, LogFn } from "./types.js";
+import { loadTmdbKey } from "./tmdb-config.js";
 
 const DEFAULT_MAX_ENTRIES = 500;
 const EVICT_RATIO = 0.2;
@@ -96,7 +97,7 @@ export const CACHE_TTL: Record<string, number> = {
 };
 
 export async function fetchTMDB(path: string): Promise<unknown> {
-  const key = process.env.TMDB_API_KEY;
+  const key = loadTmdbKey();
   if (!key) throw new Error("TMDB_API_KEY not set");
   const url = `https://api.themoviedb.org/3${path}${path.includes("?") ? "&" : "?"}api_key=${key}`;
   const res = await fetch(url, {

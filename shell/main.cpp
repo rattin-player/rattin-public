@@ -12,7 +12,9 @@
 #include <QFile>
 #include <QStandardPaths>
 #include <QtWebEngineQuick>
-#ifndef Q_OS_WIN
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
 #include <signal.h>
 #endif
 
@@ -86,6 +88,13 @@ int main(int argc, char *argv[])
 
     // Spawn Express server as child process
     auto *serverProcess = new QProcess(&app);
+#ifdef Q_OS_WIN
+    // Hide the console window for the Node.js child process
+    serverProcess->setCreateProcessArgumentsModifier(
+        [](QProcess::CreateProcessArguments *args) {
+            args->flags |= CREATE_NO_WINDOW;
+        });
+#endif
     serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
 
     // Find the app directory (where server.ts and node_modules live).

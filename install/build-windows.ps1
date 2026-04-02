@@ -158,23 +158,34 @@ Copy-Item $NodeExe $DistDir
 # libmpv DLL
 Copy-Item $MpvDll $DistDir
 
-# App code
-$appItems = @(
-    "server.ts", "server.js",
-    "tsconfig.json", "package.json", "package-lock.json",
-    "routes", "lib", "public"
-)
-foreach ($item in $appItems) {
-    $src = Join-Path $RepoRoot $item
-    if (Test-Path $src) {
-        $dst = Join-Path $AppDir $item
-        if ((Get-Item $src).PSIsContainer) {
-            Copy-Item $src $dst -Recurse
-        } else {
-            Copy-Item $src $dst
-        }
+# VC++ runtime DLLs
+$vcDir = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+if (Test-Path $vcDir) {
+    foreach ($dll in @("vcruntime140.dll","vcruntime140_1.dll","msvcp140.dll")) {
+        $src = Join-Path $vcDir $dll
+        if (Test-Path $src) { Copy-Item $src $DistDir }
     }
+    Log "Bundled VC++ runtime DLLs"
+} else {
+    Warn "VCToolsRedistDir not found — VC++ runtime DLLs not bundled"
 }
+
+# Compile TypeScript to JS (ship compiled code, not source)
+Log "Compiling TypeScript"
+Push-Location $RepoRoot
+& npx tsc --outDir compiled --noEmit false
+Pop-Location
+
+# App code (compiled JS, not raw TS)
+foreach ($item in @("tsconfig.json", "package.json", "package-lock.json")) {
+    $src = Join-Path $RepoRoot $item
+    if (Test-Path $src) { Copy-Item $src (Join-Path $AppDir $item) }
+}
+Copy-Item (Join-Path $RepoRoot "compiled/server.js") (Join-Path $AppDir "server.js")
+foreach ($dir in @("routes", "lib")) {
+    Copy-Item (Join-Path $RepoRoot "compiled/$dir") (Join-Path $AppDir $dir) -Recurse
+}
+Copy-Item (Join-Path $RepoRoot "public") (Join-Path $AppDir "public") -Recurse
 
 # Production node_modules
 Log "Installing production dependencies"

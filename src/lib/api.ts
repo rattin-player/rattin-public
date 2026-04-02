@@ -191,6 +191,29 @@ export async function checkDebridCached(infoHashes: string[]): Promise<Record<st
   return data.cached || {};
 }
 
+// ── TMDB ──────────────────────────────────────────────────────────
+
+export function getTmdbStatus(): Promise<{ configured: boolean }> {
+  return get("/api/tmdb/status");
+}
+
+export async function setTmdbConfig(apiKey: string): Promise<void> {
+  const res = await fetch("/api/tmdb/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || "config_failed");
+  }
+}
+
+export async function deleteTmdbConfig(): Promise<void> {
+  const res = await fetch("/api/tmdb/config", { method: "DELETE" });
+  if (!res.ok) throw new Error("delete_failed");
+}
+
 // ── VPN ────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
