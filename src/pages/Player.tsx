@@ -139,6 +139,14 @@ export default function Player() {
     return () => clearTimeout(stuckTimer.current);
   }, [dlSpeed, dlProgress, active]);
 
+  // Sync PlayerContext.active with URL params (Detail.tsx navigates here without calling startStream)
+  useEffect(() => {
+    if (!infoHash || !fileIndex) return;
+    if (active?.infoHash !== infoHash || String(active?.fileIndex) !== String(fileIndex)) {
+      startStream(infoHash, fileIndex, mediaTitle, tags, state?.debridUrl);
+    }
+  }, [infoHash, fileIndex]);
+
   // Native mode: tell mpv to play
   useEffect(() => {
     if (!infoHash || !fileIndex) return;
