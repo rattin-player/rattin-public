@@ -233,9 +233,15 @@ export default function Player() {
         window.mpvEvents.onNativeVolumeChanged = null;
         window.mpvEvents.onNativeSubSizeChanged = null;
       }
-      mpvStop();
+      // Don't call mpvStop() here — mpv handles loadfile transitions natively.
+      // Stopping tears down the video surface and causes black screen on next play.
     };
   }, [infoHash, fileIndex]);
+
+  // Stop mpv only on actual unmount (leaving the player page)
+  useEffect(() => {
+    return () => { mpvStop(); };
+  }, []);
 
   // Register command handlers for remote control (assigned every render to avoid stale closures)
   if (commandRef) {
