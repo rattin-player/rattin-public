@@ -275,13 +275,14 @@ StartupWMClass=Rattin
 EOF
 
 # Extract the icon from the AppImage
-# AppImages support --appimage-extract to get contents without FUSE
+# AppImages support --appimage-extract to get contents without FUSE.
+# The root rattin.svg is a symlink, so extract the actual file.
 local extract_dir
 extract_dir="$(mktemp -d)"
 cd "$extract_dir"
-"$APP_DIR/$APPIMAGE_NAME" --appimage-extract rattin.svg >/dev/null 2>&1 || true
-if [ -f "squashfs-root/rattin.svg" ]; then
-    cp "squashfs-root/rattin.svg" "$ICON_DIR/rattin.svg"
+"$APP_DIR/$APPIMAGE_NAME" --appimage-extract usr/share/icons/hicolor/scalable/apps/rattin.svg >/dev/null 2>&1 || true
+if [ -f "squashfs-root/usr/share/icons/hicolor/scalable/apps/rattin.svg" ]; then
+    cp "squashfs-root/usr/share/icons/hicolor/scalable/apps/rattin.svg" "$ICON_DIR/rattin.svg"
 fi
 rm -rf "$extract_dir"
 
