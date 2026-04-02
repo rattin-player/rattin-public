@@ -107,6 +107,7 @@ jobs:
       - name: Assemble distribution
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $dist = "Rattin"
           $app  = "$dist/app"
           New-Item -ItemType Directory -Force -Path $app | Out-Null
@@ -133,7 +134,7 @@ jobs:
           Copy-Item mpv-dev/libmpv-2.dll $dist/
 
           # VC++ runtime DLLs (so users don't need to install the redist)
-          $vcCrt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          $vcCrt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($vcCrt) {
               foreach ($dll in @("vcruntime140.dll","vcruntime140_1.dll","msvcp140.dll")) {
                   $src = Join-Path $vcCrt.FullName $dll
@@ -141,7 +142,8 @@ jobs:
               }
               Write-Host "Bundled VC++ runtime from $($vcCrt.FullName)"
           } else {
-              Write-Host "WARNING: VC++ redist not found, DLLs not bundled"
+              Write-Error "VC++ redist not found — cannot bundle runtime DLLs"
+              exit 1
           }
 
           # Compile TypeScript to JS (ship compiled code, not source)
