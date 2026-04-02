@@ -124,8 +124,10 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
     for (const t of client.torrents) {
       if (t.infoHash === activeHash) {
         if (t.paused) t.resume();
-      } else if (t.progress < 1 && !t.paused) {
-        t.pause();
+      } else {
+        // Deselect all files to stop active piece transfers, then pause
+        t.files?.forEach((f) => { try { f.deselect(); } catch {} });
+        if (!t.paused) t.pause();
         log("info", "Paused inactive torrent", { name: t.name });
       }
     }
