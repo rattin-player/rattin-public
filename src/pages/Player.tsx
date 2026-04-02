@@ -7,7 +7,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import "./Player.css";
@@ -37,6 +37,14 @@ export default function Player() {
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
   const livePeerTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // Fetch sources if not passed via nav state (auto-play flow)
+  useEffect(() => {
+    if (sources.length > 0 || !state?.title) return;
+    searchStreams(state.title, state.year, state.type, state.season, state.episode, state.imdbId)
+      .then((results) => { if (results.length > 0) setSources(results); })
+      .catch(() => {});
+  }, [infoHash]);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {

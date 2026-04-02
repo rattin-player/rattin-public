@@ -98,7 +98,12 @@ export default function Detail() {
       setPlayState(null);
       // Go straight to player — audio/subtitle selection available in-player
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const navState: any = { tags: result.tags || stream.tags, title: data.title || data.name, tmdbId: id };
+      const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
+      const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
+      const navState: any = {
+        tags: result.tags || stream.tags, title: data.title || data.name, tmdbId: id,
+        year, type, imdbId, sources: streams,
+      };
       if (pickerSeason != null) {
         navState.season = pickerSeason;
         navState.episode = pickerEpisode;
@@ -124,7 +129,7 @@ export default function Detail() {
         sendRemoteStart(result, result.tags);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const navState: any = { tags: result.tags, title: data.title || data.name, tmdbId: id };
+        const navState: any = { tags: result.tags, title: data.title || data.name, tmdbId: id, year, type, imdbId };
         if (season != null) {
           navState.season = season;
           navState.episode = episode;
