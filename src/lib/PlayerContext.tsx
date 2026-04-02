@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize } from "./native-bridge";
+import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStopAndWait } from "./native-bridge";
 
 interface ActiveStream {
   infoHash: string;
@@ -63,6 +63,7 @@ interface PlayerContextValue {
   sourcesRef: MutableRefObject<any[]>;
   subSize: number;
   adjustSubSize: (delta: number) => void;
+  switching: boolean;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -131,6 +132,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [subSize, setSubSize] = useState(55);
   const subSizeRef = useRef(55);
   subSizeRef.current = subSize;
+  const [switching, setSwitching] = useState(false);
+  const switchingRef = useRef(false);
+  switchingRef.current = switching;
 
   // Remote control session (TV mode — not remote mode)
   // Persist in sessionStorage so PC page reload preserves the session
@@ -277,30 +281,24 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
             const wasOnPlayer = window.location.pathname.startsWith("/play/");
             console.log("[rc] start-stream", { infoHash: value.infoHash, title: value.title, wasOnPlayer, debridUrl: !!value.debridUrl });
 
-            if (wasOnPlayer && navigateRef.current) {
-              // Kill old player first — same as pressing Stop
-              stopStreamRef.current?.();
-              navigateRef.current("/", { replace: true });
-              // Give mpv time to fully tear down, then spawn new player
-              setTimeout(() => {
+            const navState = {
+              tags: value.tags, title: value.title, debridUrl: value.debridUrl,
+              year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
+            };
+
+            if (wasOnPlayer) {
+              // Kill old player: navigate away to unmount Player, wait for mpv
+              // to fully stop (same lifecycle as pressing Stop), then spawn new player
+              setSwitching(true);
+              navigateRef.current?.("/", { replace: true });
+              mpvStopAndWait().then(() => {
                 startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
-                navigateRef.current?.(`/play/${value.infoHash}/${value.fileIndex}`, {
-                  state: {
-                    tags: value.tags, title: value.title, debridUrl: value.debridUrl,
-                    year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
-                  },
-                });
-              }, 150);
+                navigateRef.current?.(`/play/${value.infoHash}/${value.fileIndex}`, { state: navState });
+                setSwitching(false);
+              });
             } else {
               startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
-              if (navigateRef.current) {
-                navigateRef.current(`/play/${value.infoHash}/${value.fileIndex}`, {
-                  state: {
-                    tags: value.tags, title: value.title, debridUrl: value.debridUrl,
-                    year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
-                  },
-                });
-              }
+              navigateRef.current?.(`/play/${value.infoHash}/${value.fileIndex}`, { state: navState });
             }
           }
           break;
@@ -384,6 +382,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         introEnd: introRangeRef.current?.end ?? null,
         subSize: subSizeRef.current,
         sources: sourcesRef.current,
+        switching: switchingRef.current,
         connected: true,
       };
 
@@ -423,7 +422,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
       introRangeRef, sourcesRef,
-      subSize, adjustSubSize,
+      subSize, adjustSubSize, switching,
     }}>
       {children}
     </PlayerContext.Provider>

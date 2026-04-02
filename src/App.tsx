@@ -25,7 +25,7 @@ function AppRoutes() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isRemote } = useRemoteMode();
-  const { navigateRef } = usePlayer();
+  const { navigateRef, switching } = usePlayer();
   const isPlayer = location.pathname.startsWith("/play/");
 
   // Wire up navigate for remote command handling
@@ -53,16 +53,26 @@ function AppRoutes() {
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/movie/:id" element={<Detail />} />
-        <Route path="/tv/:id" element={<Detail />} />
-        <Route path="/search" element={<Search />} />
-      </Routes>
-      {!isRemote && <MiniPlayer />}
-      {isRemote && <RemoteNowPlaying />}
-    </Layout>
+    <>
+      {switching && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "#000", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div className="player-loading-spinner" />
+        </div>
+      )}
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/movie/:id" element={<Detail />} />
+          <Route path="/tv/:id" element={<Detail />} />
+          <Route path="/search" element={<Search />} />
+        </Routes>
+        {!isRemote && <MiniPlayer />}
+        {isRemote && <RemoteNowPlaying />}
+      </Layout>
+    </>
   );
 }
 
