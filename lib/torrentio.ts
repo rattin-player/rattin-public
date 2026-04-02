@@ -102,8 +102,6 @@ export function parseTorrentioMeta(title: string): TorrentioMeta {
 const TORRENTIO_BASE = "https://search-provider-4.example";
 const TORRENTIO_TIMEOUT = 8000;
 
-const BROWSER_NATIVE_EXT = new Set([".mp4", ".m4v", ".webm"]);
-
 export interface TorrentioResult {
   name: string;
   infoHash: string;
@@ -113,7 +111,6 @@ export interface TorrentioResult {
   source: string;
   fileIdx?: number;
   seasonPack?: boolean;
-  native?: boolean;
   languages?: string[];
   hasSubs?: boolean;
   multiAudio?: boolean;
@@ -143,8 +140,6 @@ export async function searchTorrentio(
       .map((s) => {
         const parsed = parseTorrentioTitle(s.title || "");
         const meta = parseTorrentioMeta(s.title || "");
-        const filename = s.behaviorHints?.filename || "";
-        const ext = filename.includes(".") ? ("." + filename.split(".").pop()!.toLowerCase()) : "";
         return {
           name: parsed.torrentName,
           infoHash: s.infoHash.toLowerCase(),
@@ -156,7 +151,6 @@ export async function searchTorrentio(
           seasonPack:
             s.fileIdx !== undefined &&
             !/S\d{1,2}E\d{1,2}/i.test(parsed.torrentName),
-          native: BROWSER_NATIVE_EXT.has(ext),
           languages: meta.languages,
           hasSubs: meta.hasSubs,
           multiAudio: meta.multiAudio,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, type MutableRefObject } from "react";
 import { fetchIntroTimestamps } from "./api";
 
 interface IntroRange {
@@ -22,7 +22,7 @@ interface UseIntroReturn {
   handleSkipIntro: () => void;
 }
 
-export function useIntro(videoRef: RefObject<HTMLVideoElement | null>, deps: UseIntroDeps): UseIntroReturn {
+export function useIntro(deps: UseIntroDeps): UseIntroReturn {
   const { infoHash, fileIndex, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle } = deps;
 
   const [introRange, setIntroRange] = useState<IntroRange | null>(null);
@@ -76,28 +76,24 @@ export function useIntro(videoRef: RefObject<HTMLVideoElement | null>, deps: Use
   // Show/hide skip intro button based on current playback time
   useEffect(() => {
     if (!introRange) return;
-    const v = videoRef.current;
-    if (!v) return;
 
     function checkIntro() {
       const t = getEffectiveTime();
       const inRange = t >= introRange!.start && t < introRange!.end;
       if (inRange && !wasInIntroRange.current) {
-        // Entering intro range — show button and start auto-hide timer once
         setShowSkipIntro(true);
         if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
         skipIntroHideTimer.current = setTimeout(() => setShowSkipIntro(false), 10000);
       } else if (!inRange && wasInIntroRange.current) {
-        // Leaving intro range — hide button
         setShowSkipIntro(false);
         if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
       }
       wasInIntroRange.current = inRange;
     }
 
-    v.addEventListener("timeupdate", checkIntro);
+    const interval = setInterval(checkIntro, 500);
     return () => {
-      v.removeEventListener("timeupdate", checkIntro);
+      clearInterval(interval);
       if (skipIntroHideTimer.current) clearTimeout(skipIntroHideTimer.current);
     };
   }, [introRange, getEffectiveTime]);

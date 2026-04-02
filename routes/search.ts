@@ -1,9 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
-import { fmtBytes, throttle, needsTranscode } from "../lib/media-utils.js";
+import { fmtBytes, throttle } from "../lib/media-utils.js";
 import { searchTorrentio } from "../lib/torrentio.js";
 import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/debrid.js";
-import path from "path";
 import type { ServerContext, Torrent } from "../lib/types.js";
 
 interface SearchResult {
@@ -15,7 +14,6 @@ interface SearchResult {
   source: string;
   seasonPack?: boolean;
   fileIdx?: number;
-  native?: boolean;
   languages?: string[];
   hasSubs?: boolean;
   multiAudio?: boolean;
@@ -317,20 +315,6 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
     const scored = [...deduped.values()]
       .map((r) => {
         const tags = parseTags(r.name);
-        // Torrentio already tells us if the file is browser-native
-        if (r.native && !tags.includes("Native")) {
-          tags.push("Native");
-        }
-        // Fallback: check if torrent is already loaded
-        if (!tags.includes("Native")) {
-          const loaded = client.torrents.find((t) => t.infoHash === r.infoHash);
-          if (loaded && loaded.files.length > 0) {
-            const hasNativeFile = loaded.files.some((f) =>
-              !needsTranscode(path.extname(f.name).toLowerCase())
-            );
-            if (hasNativeFile) tags.push("Native");
-          }
-        }
         return {
           name: r.name,
           infoHash: r.infoHash,
@@ -387,7 +371,7 @@ app.post("/api/resolve-formats", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "infoHashes array required" });
   }
 
-  const results: Record<string, { native: boolean; files: string[]; numPeers: number }> = {};
+  const results: Record<string, { files: string[]; numPeers: number }> = {};
 
   await Promise.all(infoHashes.map((hash) => {
     return new Promise<void>((resolve) => {
@@ -395,8 +379,7 @@ app.post("/api/resolve-formats", async (req: Request, res: Response) => {
       const existing = client.torrents.find((t) => t.infoHash === hash);
       if (existing && existing.files.length > 0) {
         const files = existing.files.map((f) => f.name);
-        const native = files.some((name) => !needsTranscode(path.extname(name).toLowerCase()));
-        results[hash] = { native, files, numPeers: existing.numPeers };
+        results[hash] = { files, numPeers: existing.numPeers };
         resolve();
         return;
       }
@@ -417,8 +400,7 @@ app.post("/api/resolve-formats", async (req: Request, res: Response) => {
         t.on("ready", () => {
           clearTimeout(timeout);
           const files = t.files.map((f) => f.name);
-          const native = files.some((name) => !needsTranscode(path.extname(name).toLowerCase()));
-          results[hash] = { native, files, numPeers: t.numPeers };
+          results[hash] = { files, numPeers: t.numPeers };
           // Don't destroy — keep for potential playback
           t.files.forEach((f) => { try { f.deselect(); } catch {} });
           resolve();

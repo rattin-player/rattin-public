@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type RefObject, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, type MutableRefObject } from "react";
 
 const MESSAGES: Record<string, string[]> = {
   initial: [
@@ -40,7 +40,7 @@ interface UsePlayerLoadingReturn {
   MESSAGES: Record<string, string[]>;
 }
 
-export function usePlayerLoading(videoRef: RefObject<HTMLVideoElement | null>, deps: UsePlayerLoadingDeps): UsePlayerLoadingReturn {
+export function usePlayerLoading(deps: UsePlayerLoadingDeps): UsePlayerLoadingReturn {
   const { infoHash, fileIndex, reloadActiveSub: reloadActiveSubProp } = deps;
   const reloadActiveSubRef = useRef(reloadActiveSubProp);
   useEffect(() => { reloadActiveSubRef.current = reloadActiveSubProp; }, [reloadActiveSubProp]);
@@ -61,35 +61,20 @@ export function usePlayerLoading(videoRef: RefObject<HTMLVideoElement | null>, d
     return () => clearInterval(interval);
   }, [loading, loadingReason]);
 
-  // Detect when video is ready to play
+  // Reset loading state when stream changes
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
     setLoading(true);
     setLoadingReason("initial");
-    function onCanPlay() { setLoading(false); trySubs(); }
-    function onWaiting() { setLoading(true); }
-    function onPlaying() { setLoading(false); trySubs(); }
-    function onLoadedData() { trySubs(); }
-    function trySubs() {
-      if (pendingSubReload.current !== null) {
-        const offset = pendingSubReload.current;
-        pendingSubReload.current = null;
-        if (reloadActiveSubRef.current) reloadActiveSubRef.current(offset);
-      }
-    }
-    v.addEventListener("canplay", onCanPlay);
-    v.addEventListener("waiting", onWaiting);
-    v.addEventListener("playing", onPlaying);
-    v.addEventListener("loadeddata", onLoadedData);
-    if (v.readyState >= 3) setLoading(false);
-    return () => {
-      v.removeEventListener("canplay", onCanPlay);
-      v.removeEventListener("waiting", onWaiting);
-      v.removeEventListener("playing", onPlaying);
-      v.removeEventListener("loadeddata", onLoadedData);
-    };
   }, [infoHash, fileIndex]);
+
+  // Trigger pending subtitle reload when loading clears
+  useEffect(() => {
+    if (!loading && pendingSubReload.current !== null) {
+      const offset = pendingSubReload.current;
+      pendingSubReload.current = null;
+      if (reloadActiveSubRef.current) reloadActiveSubRef.current(offset);
+    }
+  }, [loading]);
 
   const msgs = MESSAGES[loadingReason] || MESSAGES.initial;
   const currentMessage = msgs[loadingMsg % msgs.length];

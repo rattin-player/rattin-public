@@ -1,7 +1,6 @@
 // src/lib/native-bridge.ts
-// Thin bridge between React UI and Qt shell's mpv player.
-// In web mode, all functions are no-ops. In native mode, they send
-// commands to the MpvBridge C++ object via QWebChannel.
+// Bridge between React UI and Qt shell's mpv player.
+// Commands are sent to the MpvBridge C++ object via QWebChannel.
 //
 // QWebChannel is imported from the npm package so it's available in
 // MainWorld as part of the React bundle. Qt's auto-injection of
@@ -39,18 +38,6 @@ declare global {
     mpvBridge?: MpvBridge;
     mpvEvents?: MpvEvents;
   }
-}
-
-/** True when running inside the Qt shell.
- * Detection via URL param `?native=1` set by the Qt shell in main.cpp.
- * This is evaluated at module load time and is reliable because the URL
- * is set before the page even starts loading. */
-export const isNative: boolean =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("native") === "1";
-
-if (isNative) {
-  console.log("[native-bridge] native mode detected via URL param");
 }
 
 /** Connect to the QWebChannel and wire up the mpv bridge.

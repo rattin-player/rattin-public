@@ -9,14 +9,14 @@ import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp } from "../lib/api";
 import { encode } from "uqr";
-import { isNative, waitForBridge, mpvPlay, mpvPause, mpvResume, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import "./Player.css";
 
 export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videoRef, startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize } = usePlayer();
+  const { startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize, togglePlay } = usePlayer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = location.state as any;
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
@@ -25,10 +25,9 @@ export default function Player() {
   const mediaTitle: string = currentTitle || active?.title || "";
   const preSelectedAudio: number | null = state?.audioTrack ?? null;
   const preSelectedSub: string | null = state?.subtitle ?? null;
-  const videoContainerRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLDivElement>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,7 +36,7 @@ export default function Player() {
   const [showSources, setShowSources] = useState(false);
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
-  const livePeerTimer = useRef<ReturnType<typeof setInterval>>();
+  const livePeerTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {
@@ -94,51 +93,43 @@ export default function Player() {
   const {
     loading, setLoading, loadingReason, setLoadingReason,
     loadingMsg, currentMessage, pendingSubReload, reloadActiveSubRef, MESSAGES: _MESSAGES,
-  } = usePlayerLoading(videoRef, { infoHash: infoHash!, fileIndex: fileIndex!, reloadActiveSub: null });
+  } = usePlayerLoading({ infoHash: infoHash!, fileIndex: fileIndex!, reloadActiveSub: null });
 
   const {
     currentTime, duration, playing,
-    isLiveTranscode: _isLiveTranscode, transcodeReady: _transcodeReady, knownDuration: _knownDuration,
     dlProgress, dlSpeed, numPeers, fileName,
     tooltipTime, tooltipX,
-    seekOffsetRef, isLiveRef, transcodeReadyRef: _transcodeReadyRef, knownDurRef: _knownDurRef,
-    getEffectiveTime, getEffectiveDuration: _getEffectiveDuration,
-    seekTo, handleSeekClick, handleSeekHover, switchToTranscoded: _switchToTranscoded,
-    togglePlay, setPlaying, setTooltipTime,
-  } = useSeek(videoRef, {
+    getEffectiveTime,
+    seekTo, handleSeekClick, handleSeekHover,
+    setPlaying, setTooltipTime,
+  } = useSeek({
     infoHash: infoHash!, fileIndex: fileIndex!,
     effectiveTimeRef, dlProgressRef, dlSpeedRef, dlPeersRef,
-    activeAudioRef, startStream, mediaTitle, tags,
-    setLoading, setLoadingReason, pendingSubReload,
     seekRef,
-    debridUrl: state?.debridUrl,
   });
 
   const {
-    subs, activeSub, switchSubtitle, reloadActiveSub, clearAllTracks: _clearAllTracks,
-  } = useSubtitles(videoRef, {
+    subs, activeSub, switchSubtitle, reloadActiveSub,
+  } = useSubtitles({
     infoHash: infoHash!, fileIndex: fileIndex!, subsRef, activeSubRef,
-    preSelectedSub, isLiveRef, seekOffsetRef,
+    preSelectedSub,
   });
 
   // Wire reloadActiveSub into usePlayerLoading now that it's available
   reloadActiveSubRef.current = reloadActiveSub;
 
-  const { audioTracks, activeAudio, switchAudio } = useAudioTracks(videoRef, {
+  const { audioTracks, activeAudio, switchAudio } = useAudioTracks({
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
-    preSelectedAudio, getEffectiveTime, isLiveRef,
-    setLoading, setLoadingReason, pendingSubReload,
-    debridUrl: state?.debridUrl,
+    preSelectedAudio,
   });
 
-  // seekTo is defined below but only used by handleSkipIntro (user-triggered callback)
-  const { introRange, showSkipIntro, handleSkipIntro } = useIntro(videoRef, {
+  const { introRange, showSkipIntro, handleSkipIntro } = useIntro({
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
   });
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
   const [showSlowWarning, setShowSlowWarning] = useState(false);
-  const stuckTimer = useRef<ReturnType<typeof setTimeout>>();
+  const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(stuckTimer.current);
     if (dlProgress >= 1 || dlSpeed > 0 || !active) {
@@ -150,21 +141,9 @@ export default function Player() {
     return () => clearTimeout(stuckTimer.current);
   }, [dlSpeed, dlProgress, active]);
 
-  // Move video element into the fullscreen container
+  // Native mode: tell mpv to play
   useEffect(() => {
-    const v = videoRef.current;
-    const container = videoContainerRef.current;
-    if (!v || !container) return;
-    v.style.display = "";
-    container.appendChild(v);
-    return () => {
-      // Don't hide — mini player will pick it up
-    };
-  }, []);
-
-  // Native mode: tell mpv to play instead of using <video> element
-  useEffect(() => {
-    if (!isNative || !infoHash || !fileIndex) return;
+    if (!infoHash || !fileIndex) return;
     let cancelled = false;
 
     waitForBridge().then(() => {
@@ -175,7 +154,7 @@ export default function Player() {
       const debridUrl = state?.debridUrl;
       const streamUrl = debridUrl
         ? debridUrl
-        : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}?native=1`;
+        : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
       try {
         mpvSetTitle(mediaTitle || "");
@@ -215,12 +194,10 @@ export default function Player() {
       });
       onNativeAudioChanged((mpvId) => {
         // Only update React state — mpv already switched the track.
-        // Don't call switchAudio() which reloads v.src in web mode.
         activeAudioRef.current = mpvId;
       });
       onNativeVolumeChanged((percent) => {
-        const v = videoRef.current;
-        if (v) v.volume = percent / 100;
+        if (percent > 0) setMuted(false);
       });
       onNativeSubSizeChanged((size) => {
         adjustSubSize(size - subSize);
@@ -247,37 +224,21 @@ export default function Player() {
   if (commandRef) {
     commandRef.current = {
       seek: (seconds: number) => {
-        if (isNative) mpvSeek(seconds);
-        else seekTo(seconds);
+        mpvSeek(seconds);
       },
       seekRelative: (delta: number) => {
-        const t = isNative ? (effectiveTimeRef.current?.time ?? 0) : getEffectiveTime();
-        if (isNative) mpvSeek(Math.max(0, t + delta));
-        else seekTo(Math.max(0, t + delta));
+        const t = effectiveTimeRef.current?.time ?? 0;
+        mpvSeek(Math.max(0, t + delta));
       },
       switchSubtitle: (val: string) => {
-        if (isNative) {
-          const idx = subs.findIndex(s => s.value === val);
-          mpvSetSubtitleTrack(idx);
-          // Update React state without loading tracks into the HTML video
-          activeSubRef.current = val;
-          return;
-        }
-        switchSubtitle(val);
+        const idx = subs.findIndex(s => s.value === val);
+        mpvSetSubtitleTrack(idx);
+        activeSubRef.current = val;
       },
       switchAudio: (streamIndex: string | number) => {
-        if (isNative) {
-          // streamIndex is the absolute container stream index from ffprobe.
-          // mpvSetAudioTrack expects a 0-based index into audio tracks only,
-          // so find the position in the audioTracks array.
-          const idx = audioTracks.findIndex(t => t.value === Number(streamIndex));
-          if (idx >= 0) mpvSetAudioTrack(idx);
-          // Don't call switchAudio — it reloads the HTML video src which causes
-          // double audio in native mode. Just update the ref.
-          activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
-          return;
-        }
-        switchAudio(streamIndex);
+        const idx = audioTracks.findIndex(t => t.value === Number(streamIndex));
+        if (idx >= 0) mpvSetAudioTrack(idx);
+        activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
       },
       switchSource: handleSwitchSource,
     };
@@ -287,6 +248,7 @@ export default function Player() {
   }, []);
 
   const [showControls, setShowControls] = useState(true);
+  const [muted, setMuted] = useState(false);
 
   function showControlsBriefly() {
     setShowControls(true);
@@ -314,23 +276,15 @@ export default function Player() {
     function onKey(e: KeyboardEvent) {
       if (loading) return;
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
-      const v = videoRef.current;
-      if (!v) return;
       switch (e.key) {
         case " ": e.preventDefault();
-          if (isNative) {
-            mpvTogglePause();
-          } else {
-            togglePlay();
-          }
+          mpvTogglePause();
           break;
         case "ArrowLeft":
-          if (isNative) mpvSeek(Math.max(0, getEffectiveTime() - 10));
-          else seekTo(Math.max(0, getEffectiveTime() - 10));
+          mpvSeek(Math.max(0, getEffectiveTime() - 10));
           break;
         case "ArrowRight":
-          if (isNative) mpvSeek(getEffectiveTime() + 10);
-          else seekTo(getEffectiveTime() + 10);
+          mpvSeek(getEffectiveTime() + 10);
           break;
         case "f": case "F":
           if (document.fullscreenElement) document.exitFullscreen();
@@ -407,7 +361,6 @@ export default function Player() {
   const [reconnectOrigin, setReconnectOrigin] = useState<string | null>(null);
   useEffect(() => {
     if (!showReconnectQr) { setReconnectOrigin(null); return; }
-    if (!isNative) { setReconnectOrigin(window.location.origin); return; }
     fetchLanIp()
       .then(({ ip, port }) => setReconnectOrigin(ip ? `http://${ip}:${port}` : window.location.origin))
       .catch(() => setReconnectOrigin(window.location.origin));
@@ -431,7 +384,6 @@ export default function Player() {
 
   return (
     <div className="player-page" ref={pageRef} onClick={handlePageClick}>
-      {!isNative && <div className="player-video-container" ref={videoContainerRef} />}
 
       {remoteToast && (
         <div className={`player-remote-toast ${remoteToast}`} key={remoteToast}>
@@ -533,8 +485,16 @@ export default function Player() {
             )}
             <div className="player-spacer" />
             <div className="player-volume">
-              <button className="player-volume-icon" onClick={() => { const v = videoRef.current; if (v) { v.muted = !v.muted; } }}>
-                {videoRef.current?.muted || volume === 0 ? (
+              <button className="player-volume-icon" onClick={() => {
+                if (muted) {
+                  mpvSetVolume(Math.round(volume * 100) || 50);
+                  setMuted(false);
+                } else {
+                  mpvSetVolume(0);
+                  setMuted(true);
+                }
+              }}>
+                {muted || volume === 0 ? (
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" /></svg>
                 ) : volume < 0.5 ? (
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" /></svg>
@@ -546,15 +506,11 @@ export default function Player() {
                 type="range"
                 className="player-volume-slider"
                 min="0" max="1" step="0.05"
-                value={videoRef.current?.muted ? 0 : volume}
+                value={muted ? 0 : volume}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  if (isNative) {
-                    mpvSetVolume(Math.round(val * 100));
-                  } else {
-                    const v = videoRef.current;
-                    if (v) { v.muted = false; v.volume = val; }
-                  }
+                  mpvSetVolume(Math.round(val * 100));
+                  if (val > 0) setMuted(false);
                 }}
               />
             </div>
@@ -570,7 +526,7 @@ export default function Player() {
                 ))}
               </select>
             )}
-            {isNative && subs.length > 0 && (
+            {subs.length > 0 && (
               <div className="player-sub-size">
                 <button className="player-sub-size-btn" onClick={() => adjustSubSize(-5)} title="Decrease subtitle size">A−</button>
                 <span className="player-sub-size-val">{subSize}</span>
@@ -639,8 +595,8 @@ export default function Player() {
                       <div className="player-source-item-tags">
                         {isCurrent && <span className="player-source-tag current">Playing</span>}
                         {s.seasonPack && <span className="player-source-tag season-pack">Season Pack</span>}
-                        {s.tags?.filter((t: string) => !(isNative && t === "Native")).map((t: string) => (
-                          <span key={t} className={`player-source-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
+                        {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
+                          <span key={t} className="player-source-tag">{t}</span>
                         ))}
                         {s.multiAudio && <span className="player-source-tag multi-audio">Multi Audio</span>}
                         {s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}

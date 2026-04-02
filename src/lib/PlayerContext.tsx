@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject, type RefObject } from "react";
+import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { isNative, mpvTogglePause, mpvSetVolume, mpvSetSubFontSize } from "./native-bridge";
+import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize } from "./native-bridge";
 
 interface ActiveStream {
   infoHash: string;
@@ -34,7 +34,6 @@ interface CommandHandlers {
 type NavigateFn = (...args: any[]) => void;
 
 interface PlayerContextValue {
-  videoRef: RefObject<HTMLVideoElement | null>;
   active: ActiveStream | null;
   playing: boolean;
   currentTime: number;
@@ -108,7 +107,6 @@ interface PlayerProviderProps {
 }
 
 export function PlayerProvider({ children }: PlayerProviderProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState<ActiveStream | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -157,68 +155,30 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const navigateRef = useRef<NavigateFn | null>(null);
 
   // Stable refs for SSE command handler (avoid reconnecting SSE when callbacks change)
-  const startStreamRef = useRef<((...args: unknown[]) => void) | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const startStreamRef = useRef<((...args: any[]) => void) | null>(null);
   const stopStreamRef = useRef<(() => void) | null>(null);
   const togglePlayRef = useRef<(() => void) | null>(null);
 
-  // Sync video state
+  // Sync React state from effectiveTimeRef (updated by mpv events in Player.tsx)
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    function sync() {
+    const interval = setInterval(() => {
       const eff = effectiveTimeRef.current;
       if (eff && Date.now() - eff.ts < 2000) {
         setCurrentTime(eff.time);
         setDuration(eff.duration);
-      } else {
-        setCurrentTime(v!.currentTime || 0);
-        if (v!.duration && isFinite(v!.duration)) setDuration(v!.duration);
       }
-      if (!isNative) setPlaying(!v!.paused);
-      if (!isNative) setVolume(v!.volume);
-    }
-    v.addEventListener("timeupdate", sync);
-    v.addEventListener("play", sync);
-    v.addEventListener("pause", sync);
-    const interval = setInterval(sync, 500);
-    return () => {
-      v.removeEventListener("timeupdate", sync);
-      v.removeEventListener("play", sync);
-      v.removeEventListener("pause", sync);
-      clearInterval(interval);
-    };
+    }, 500);
+    return () => clearInterval(interval);
   }, []);
 
-  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridUrl?: string) => {
-    const v = videoRef.current;
-    // Coerce to string for comparison — URL params are strings, API returns numbers
+  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], _debridUrl?: string) => {
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
     const ih = String(infoHash);
     const fi = String(fileIndex);
-    const posKey = `playback:${ih}:${fi}`;
-    const savedPos = parseFloat(sessionStorage.getItem(posKey) || "0") || 0;
     fetch(`/api/set-active/${ih}`, { method: "POST" }).catch(() => {});
-
-    // In native mode, mpv handles playback — don't set video.src (triggers transcode)
-    if (!isNative && v) {
-      v.src = debridUrl
-        ? `/api/debrid-stream?url=${encodeURIComponent(debridUrl)}`
-        : `/api/stream/${ih}/${fi}`;
-      if (savedPos > 0) {
-        v.addEventListener("loadedmetadata", function onMeta() {
-          v.removeEventListener("loadedmetadata", onMeta);
-          v.currentTime = savedPos;
-          v.play().catch(() => {});
-        });
-      } else {
-        v.play().catch(() => {});
-      }
-      // Remove any lingering subtitle tracks from the video element
-      for (const t of v.textTracks) t.mode = "disabled";
-      v.querySelectorAll("track").forEach((el) => el.remove());
-    }
 
     effectiveTimeRef.current = null;
     subsRef.current = [];
@@ -232,15 +192,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const stopStream = useCallback(() => {
     if (active) {
       const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
-      const t = effectiveTimeRef.current?.time || videoRef.current?.currentTime || 0;
+      const t = effectiveTimeRef.current?.time || 0;
       if (t > 0) sessionStorage.setItem(posKey, String(t));
-    }
-    const v = videoRef.current;
-    if (v) {
-      v.pause();
-      v.src = "";
-      for (const t of v.textTracks) t.mode = "disabled";
-      v.querySelectorAll("track").forEach((el) => el.remove());
     }
     introRangeRef.current = null;
     setActive(null);
@@ -249,21 +202,13 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   }, [active]);
 
   const togglePlay = useCallback(() => {
-    if (isNative) {
-      mpvTogglePause();
-      // Don't set playing optimistically — onMpvPauseChanged is the source of truth
-      return;
-    }
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) v.play().catch(() => {});
-    else v.pause();
+    mpvTogglePause();
   }, []);
 
   const adjustSubSize = useCallback((delta: number) => {
     setSubSize((prev) => {
       const next = Math.max(20, Math.min(100, prev + delta));
-      if (isNative) mpvSetSubFontSize(next);
+      mpvSetSubFontSize(next);
       return next;
     });
   }, []);
@@ -276,9 +221,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   useEffect(() => {
     if (!active) return;
     const interval = setInterval(() => {
-      const v = videoRef.current;
-      if (v && active) {
-        const t = effectiveTimeRef.current?.time || v.currentTime || 0;
+      if (active) {
+        const t = effectiveTimeRef.current?.time || 0;
         if (t > 0) sessionStorage.setItem(`playback:${active.infoHash}:${active.fileIndex}`, String(t));
       }
     }, 3000);
@@ -294,22 +238,18 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
     es.addEventListener("command", (e: MessageEvent) => {
       const { action, value } = JSON.parse(e.data);
-      const v = videoRef.current;
       switch (action) {
         case "toggle-play":
           togglePlayRef.current?.();
           break;
         case "seek":
           if (commandRef.current?.seek) commandRef.current.seek(value);
-          else if (v) v.currentTime = value;
           break;
         case "seek-relative":
           if (commandRef.current?.seekRelative) commandRef.current.seekRelative(value);
-          else if (v) v.currentTime = Math.max(0, v.currentTime + value);
           break;
         case "volume":
-          if (isNative) mpvSetVolume(value * 100);
-          else if (v) v.volume = value;
+          mpvSetVolume(value * 100);
           setVolume(value);
           break;
         case "subtitle":
@@ -323,11 +263,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
           break;
         case "skip-intro": {
           const range = introRangeRef.current;
-          if (range) {
-            const vid = videoRef.current;
-            if (commandRef.current?.seek) commandRef.current.seek(range.end);
-            else if (vid) vid.currentTime = range.end;
-          }
+          if (range && commandRef.current?.seek) commandRef.current.seek(range.end);
           break;
         }
         case "start-stream":
@@ -389,11 +325,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     const lkg = { ct: 0, dur: 0 };
 
     function reportState() {
-      const v = videoRef.current;
-      if (!v) return;
       const eff = effectiveTimeRef.current;
-      let ct = eff && Date.now() - eff.ts < 2000 ? eff.time : v.currentTime || 0;
-      let dur = eff && Date.now() - eff.ts < 2000 ? eff.duration : (v.duration && isFinite(v.duration) ? v.duration : 0);
+      let ct = eff && Date.now() - eff.ts < 2000 ? eff.time : 0;
+      let dur = eff && Date.now() - eff.ts < 2000 ? eff.duration : 0;
 
       // Hold last known good values during transient 0/0 states (seeking, rebuffering)
       if (dur > 0) lkg.dur = dur;
@@ -403,7 +337,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
       const state = {
         sessionId: rcSessionId,
-        playing: isNative ? playingRef.current : !v.paused,
+        playing: playingRef.current,
         currentTime: ct,
         duration: dur,
         title: active?.title || "",
@@ -414,7 +348,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         activeSub: activeSubRef.current,
         audioTracks: audioTracksRef.current,
         activeAudio: activeAudioRef.current,
-        volume: isNative ? volumeRef.current : v.volume,
+        volume: volumeRef.current,
         dlProgress: dlProgressRef.current,
         dlSpeed: dlSpeedRef.current,
         dlPeers: dlPeersRef.current,
@@ -439,38 +373,23 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
     reportStateRef.current = reportState;
 
-    // Report immediately on play/pause/seek events
-    const v = videoRef.current;
-    function onEvent() { reportState(); }
-    if (v) {
-      v.addEventListener("play", onEvent);
-      v.addEventListener("pause", onEvent);
-      v.addEventListener("seeked", onEvent);
-    }
-
     // Report every 1s during playback
     stateReportTimer.current = setInterval(reportState, 1000);
 
     return () => {
       reportStateRef.current = null;
       if (stateReportTimer.current) clearInterval(stateReportTimer.current);
-      if (v) {
-        v.removeEventListener("play", onEvent);
-        v.removeEventListener("pause", onEvent);
-        v.removeEventListener("seeked", onEvent);
-      }
     };
   }, [rcSessionId, active]);
 
-  // In native mode, immediately report state when playing changes (mpv events
-  // don't fire on the HTML video element, so the event listeners above miss it)
+  // Report immediately when playing state changes
   useEffect(() => {
-    if (isNative && rcSessionId) reportStateRef.current?.();
+    if (rcSessionId) reportStateRef.current?.();
   }, [playing, rcSessionId]);
 
   return (
     <PlayerContext.Provider value={{
-      videoRef, active, playing, currentTime, duration, volume,
+      active, playing, currentTime, duration, volume,
       startStream, stopStream, togglePlay,
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
@@ -478,7 +397,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       introRangeRef, sourcesRef,
       subSize, adjustSubSize,
     }}>
-      <video ref={videoRef} style={{ display: "none" }} />
       {children}
     </PlayerContext.Provider>
   );

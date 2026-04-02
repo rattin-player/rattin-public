@@ -1,33 +1,16 @@
-import { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
-import { isNative } from "../lib/native-bridge";
 import { formatTime } from "../lib/utils";
 import "./MiniPlayer.css";
 
 export default function MiniPlayer() {
-  const { active, playing, currentTime, duration, togglePlay, stopStream, videoRef } = usePlayer();
+  const { active, playing, currentTime, duration, togglePlay, stopStream } = usePlayer();
   const navigate = useNavigate();
   const location = useLocation();
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const isOnPlayerPage = location.pathname.startsWith("/play/");
 
-  // Move the video element into the mini player container when visible
-  useEffect(() => {
-    const v = videoRef.current;
-    const container = containerRef.current;
-    if (!v || !container || !active || isOnPlayerPage) return;
-    v.style.display = "";
-    container.prepend(v);
-    return () => {
-      v.style.display = "none";
-      // Move back to body to keep it alive
-      document.body.prepend(v);
-    };
-  }, [active, isOnPlayerPage]);
-
-  if (!active || isOnPlayerPage || isNative) return null;
+  if (!active || isOnPlayerPage) return null;
 
   function goFullscreen() {
     navigate(`/play/${active!.infoHash}/${active!.fileIndex}`, {
@@ -39,7 +22,7 @@ export default function MiniPlayer() {
 
   return (
     <div className="mini-player">
-      <div className="mini-player-video" ref={containerRef} onClick={goFullscreen} />
+      <div className="mini-player-video" onClick={goFullscreen} />
       <div className="mini-player-info">
         <span className="mini-player-title">{active.title || "Playing"}</span>
         <span className="mini-player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>

@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { formatBytes } from "../lib/utils";
-import { isNative } from "../lib/native-bridge";
 import "./SourcePicker.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,7 +41,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
 
     const resCounts = new Map<string, number>();
     const langSet = new Map<string, string>(); // label -> flag
-    let hasFullSeek = false;
+    // In native-only mode, all formats support full seek via mpv
     let hasSubs = false;
     let hasMultiAudio = false;
 
@@ -53,7 +52,6 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
         const label = FLAG_LABELS[flag] || flag;
         if (!langSet.has(label)) langSet.set(label, flag);
       }
-      if (!isNative && s.tags?.includes("Native")) hasFullSeek = true;
       if (s.hasSubs) hasSubs = true;
       if (s.multiAudio) hasMultiAudio = true;
     }
@@ -72,7 +70,6 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
       .map(([label, flag]) => ({ label, flag }));
 
     const features: { label: string; key: string }[] = [];
-    if (hasFullSeek) features.push({ label: "Full Seek", key: "fullseek" });
     if (hasSubs) features.push({ label: "Subs", key: "subs" });
     if (hasMultiAudio) features.push({ label: "Multi Audio", key: "multiaudio" });
 
@@ -218,7 +215,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                     <div className="picker-item-tags">
                       {s.cached && <span className="picker-tag cached">Cached</span>}
                       {s.seasonPack && <span className="picker-tag season-pack">Season Pack</span>}
-                      {s.tags.filter((t: string) => !(isNative && t === "Native")).map((t: string) => (
+                      {s.tags.filter((t: string) => t !== "Native").map((t: string) => (
                         <span key={t} className={`picker-tag${t === "Native" ? " native" : ""}`}>{t === "Native" ? "Full Seek" : t}</span>
                       ))}
                       {s.multiAudio && <span className="picker-tag multi-audio">Multi Audio</span>}
