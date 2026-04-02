@@ -3,7 +3,7 @@ import type { Express, Request, Response } from "express";
 import { jobKey } from "../lib/torrent-caches.js";
 import {
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
-  needsTranscode, isAllowedFile,
+  isAllowedFile,
 } from "../lib/media-utils.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
 import { getActiveDebridFiles } from "../lib/debrid.js";
@@ -11,7 +11,7 @@ import { getActiveDebridFiles } from "../lib/debrid.js";
 export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {
     client, log, diskPath,
-    transcodeJobs, durationCache, completedFiles,
+    durationCache, completedFiles,
   } = ctx;
 
   function torrentInfo(torrent: Torrent) {
@@ -105,14 +105,7 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
       files: torrent.files.map((f, i) => {
         const ext = path.extname(f.name).toLowerCase();
         const key = jobKey(torrent.infoHash, i);
-        const job = transcodeJobs.get(key);
-        let transcodeStatus: string | null = null;
-        if (needsTranscode(ext) && VIDEO_EXTENSIONS.includes(ext)) {
-          if (job && job.done && !job.error) transcodeStatus = "ready";
-          else if (job && job.error) transcodeStatus = "error";
-          else if (job) transcodeStatus = "transcoding";
-          else transcodeStatus = "pending";
-        }
+        const transcodeStatus: string | null = null;
         return {
           index: i, name: f.name, path: f.path, length: f.length,
           downloaded: f.downloaded,
