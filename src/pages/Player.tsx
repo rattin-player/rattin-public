@@ -180,10 +180,13 @@ export default function Player() {
 
       // Register event handlers AFTER bridge is ready (window.mpvEvents
       // doesn't exist until waitForBridge resolves)
+      // Track when playback actually starts to ignore stale EOF from previous mpvStop
+      let playbackStarted = false;
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
         setLoading(false);
+        playbackStarted = true;
       });
       onMpvDurationChanged((d) => {
         const prev = effectiveTimeRef.current;
@@ -191,7 +194,7 @@ export default function Player() {
         setLoading(false);
       });
       onMpvEofReached(() => {
-        navigate(-1);
+        if (playbackStarted) navigate(-1);
       });
       onMpvPauseChanged((paused) => {
         setPlaying(!paused);
