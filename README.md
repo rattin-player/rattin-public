@@ -175,15 +175,17 @@ The React app runs inside Qt's WebEngineView. When a video plays, React sends th
 The phone remote uses Server-Sent Events (SSE) for real-time communication:
 
 1. PC creates an RC session and generates a QR code containing `http://<lan-ip>:9630/api/rc/auth?session=X&token=Y`
-2. Phone scans QR, authenticates, and connects to the SSE stream
+2. Phone scans QR, authenticates once, receives session cookies, and connects to the SSE stream
 3. PC reports playback state every second; phone sends commands via POST
 4. Commands route through the mpv bridge (play/pause/seek/volume/subtitles)
 
 The app binds to `0.0.0.0` so phones on the same LAN can reach it. Firewall port 9630 is opened by the install script.
 
+Non-local API access is now scoped to an authenticated paired remote session. Browsing and playback-control routes are available to the phone after pairing, while config, VPN, and media-stream endpoints stay local-only on the desktop.
+
 ### Privacy Architecture
 
-**Debrid path:** Magnet link → Real-Debrid API → HTTPS download URL → stream to player. User's IP only visible to RD (encrypted HTTPS), never to the torrent swarm.
+**Debrid path:** Magnet link → Real-Debrid API → server-held HTTPS download URL → internal stream handle → player. User's IP only visible to RD (encrypted HTTPS), never to the torrent swarm, and raw debrid URLs are not exposed as public API input.
 
 **VPN path:** `rattin-vpn` supervisor creates a Linux network namespace with a WireGuard tunnel. Node.js runs inside the namespace. All torrent traffic (peers, DHT, trackers) goes through the VPN. The browser connects to the API via a veth bridge (`10.199.199.0/24`). If the WireGuard tunnel drops, there's no fallback route — connections fail instead of leaking the real IP.
 

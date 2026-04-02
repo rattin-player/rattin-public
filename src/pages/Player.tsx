@@ -81,13 +81,13 @@ export default function Player() {
       // Kill old player, wait for mpv to fully stop, then spawn new player
       navigate("/", { replace: true });
       await mpvStopAndWait();
-      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridUrl);
+      startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridStreamKey);
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
         state: {
           ...state,
           tags: newTags,
           sources,
-          debridUrl: result.debridUrl,
+          debridStreamKey: result.debridStreamKey,
         },
       });
     } catch {
@@ -152,7 +152,7 @@ export default function Player() {
   useEffect(() => {
     if (!infoHash || !fileIndex) return;
     if (active?.infoHash !== infoHash || String(active?.fileIndex) !== String(fileIndex)) {
-      startStream(infoHash, fileIndex, mediaTitle, tags, state?.debridUrl);
+      startStream(infoHash, fileIndex, mediaTitle, tags, state?.debridStreamKey);
     }
   }, [infoHash, fileIndex]);
 
@@ -166,9 +166,9 @@ export default function Player() {
       // Use 127.0.0.1 instead of localhost — mpv is a separate process and
       // localhost may resolve to ::1 (IPv6) while the server binds to 127.0.0.1
       const port = window.location.port;
-      const debridUrl = state?.debridUrl;
-      const streamUrl = debridUrl
-        ? debridUrl
+      const debridStreamKey = state?.debridStreamKey;
+      const streamUrl = debridStreamKey
+        ? `http://127.0.0.1:${port}/api/debrid-stream?streamKey=${encodeURIComponent(debridStreamKey)}`
         : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
       try {
@@ -337,9 +337,9 @@ export default function Player() {
     if (!hadRemote.current) return;
     // Check if existing session is still valid, if not create a new one
     async function ensureSession() {
-      if (rcSessionId) {
+      if (rcSessionId && rcAuthToken) {
         try {
-          const res = await fetch(`/api/rc/session/${rcSessionId}`);
+          const res = await fetch(`/api/rc/session/${rcSessionId}?token=${encodeURIComponent(rcAuthToken)}`);
           if (res.ok) return; // session still alive, QR will show
         } catch {}
       }
@@ -352,7 +352,7 @@ export default function Player() {
       } catch {}
     }
     ensureSession();
-  }, [rcRemoteConnected]);
+  }, [rcAuthToken, rcRemoteConnected, rcSessionId, setRcAuthToken, setRcSessionId]);
 
   // Auto-fullscreen when a remote reconnects
   useEffect(() => {

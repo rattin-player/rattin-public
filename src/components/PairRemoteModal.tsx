@@ -19,9 +19,9 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
 
   // On open, if we have a session, validate it's still alive on the server
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !authToken) return;
     setValidating(true);
-    fetch(`/api/rc/session/${sessionId}`)
+    fetch(`/api/rc/session/${sessionId}?token=${encodeURIComponent(authToken)}`)
       .then((res) => {
         if (!res.ok) {
           // Session expired on server — clear it
@@ -33,7 +33,7 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
       })
       .catch(() => {})
       .finally(() => setValidating(false));
-  }, []);
+  }, [authToken, sessionId, setRcAuthToken, setRcSessionId]);
 
   useEffect(() => {
     if (!sessionId || !authToken) {
@@ -67,8 +67,8 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
   }
 
   async function endSession() {
-    if (sessionId) {
-      await fetch(`/api/rc/session/${sessionId}`, { method: "DELETE" }).catch(() => {});
+    if (sessionId && authToken) {
+      await fetch(`/api/rc/session/${sessionId}?token=${encodeURIComponent(authToken)}`, { method: "DELETE" }).catch(() => {});
     }
     setSessionId(null);
     setAuthToken(null);

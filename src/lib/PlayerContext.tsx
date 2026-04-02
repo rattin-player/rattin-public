@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, ty
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
 import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStopAndWait } from "./native-bridge";
+import { getRemoteSessionId, REMOTE_SESSION_EVENT } from "./remote-session";
 
 interface ActiveStream {
   infoHash: string;
@@ -39,7 +40,7 @@ interface PlayerContextValue {
   currentTime: number;
   duration: number;
   volume: number;
-  startStream: (infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridUrl?: string) => void;
+  startStream: (infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridStreamKey?: string) => void;
   stopStream: () => void;
   togglePlay: () => void;
   effectiveTimeRef: MutableRefObject<EffectiveTime | null>;
@@ -72,32 +73,25 @@ export function usePlayer(): PlayerContextValue {
   return useContext(PlayerContext)!;
 }
 
-// Remote mode detection: URL has ?session=<id> or localStorage has rc-session
+// Remote mode detection is cookie-backed so the phone never needs auth data in the URL.
 export function useRemoteMode(): { isRemote: boolean; sessionId: string | null } {
   const [state, setState] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get("session") || localStorage.getItem("rc-session") || null;
+    const sessionId = getRemoteSessionId();
     return { isRemote: !!sessionId, sessionId };
   });
 
-  // Ensure rc_token cookie stays alive from localStorage (survives page refresh)
   useEffect(() => {
-    if (state.isRemote) {
-      const token = localStorage.getItem("rc-token");
-      if (token && !document.cookie.includes("rc_token=")) {
-        document.cookie = `rc_token=${token}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
-      }
-    }
-  }, [state.isRemote]);
-
-  useEffect(() => {
-    function check() {
-      const params = new URLSearchParams(window.location.search);
-      const sessionId = params.get("session") || localStorage.getItem("rc-session") || null;
+    function sync() {
+      const sessionId = getRemoteSessionId();
       setState({ isRemote: !!sessionId, sessionId });
     }
-    window.addEventListener("popstate", check);
-    return () => window.removeEventListener("popstate", check);
+
+    window.addEventListener("popstate", sync);
+    window.addEventListener(REMOTE_SESSION_EVENT, sync);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener(REMOTE_SESSION_EVENT, sync);
+    };
   }, []);
 
   return state;
@@ -176,7 +170,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], _debridUrl?: string) => {
+  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], _debridStreamKey?: string) => {
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
@@ -243,7 +237,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   useEffect(() => {
     if (!rcSessionId) return;
 
-    const es = new EventSource(`/api/rc/events?session=${rcSessionId}&role=player`);
+    const query = new URLSearchParams({ session: rcSessionId, role: "player" });
+    if (rcAuthToken) query.set("token", rcAuthToken);
+    const es = new EventSource(`/api/rc/events?${query.toString()}`);
     rcEventSourceRef.current = es;
 
     es.addEventListener("command", (e: MessageEvent) => {
@@ -279,10 +275,10 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         case "start-stream":
           if (value) {
             const wasOnPlayer = window.location.pathname.startsWith("/play/");
-            console.log("[rc] start-stream", { infoHash: value.infoHash, title: value.title, wasOnPlayer, debridUrl: !!value.debridUrl });
+            console.log("[rc] start-stream", { infoHash: value.infoHash, title: value.title, wasOnPlayer, debridStreamKey: !!value.debridStreamKey });
 
             const navState = {
-              tags: value.tags, title: value.title, debridUrl: value.debridUrl,
+              tags: value.tags, title: value.title, debridStreamKey: value.debridStreamKey,
               year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
             };
 
@@ -292,12 +288,12 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
               setSwitching(true);
               navigateRef.current?.("/", { replace: true });
               mpvStopAndWait().then(() => {
-                startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
+                startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridStreamKey);
                 navigateRef.current?.(`/play/${value.infoHash}/${value.fileIndex}`, { state: navState });
                 setSwitching(false);
               });
             } else {
-              startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
+              startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridStreamKey);
               navigateRef.current?.(`/play/${value.infoHash}/${value.fileIndex}`, { state: navState });
             }
           }
@@ -341,7 +337,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       rcEventSourceRef.current = null;
       setRcRemoteConnected(false);
     };
-  }, [rcSessionId]);
+  }, [rcAuthToken, rcSessionId]);
 
   // ── TV Mode: Report state to remotes ──
   useEffect(() => {
@@ -363,6 +359,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
       const state = {
         sessionId: rcSessionId,
+        authToken: rcAuthToken,
         playing: playingRef.current,
         currentTime: ct,
         duration: dur,
@@ -407,7 +404,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       reportStateRef.current = null;
       if (stateReportTimer.current) clearInterval(stateReportTimer.current);
     };
-  }, [rcSessionId, active]);
+  }, [rcAuthToken, rcSessionId, active]);
 
   // Report immediately when playing state changes
   useEffect(() => {

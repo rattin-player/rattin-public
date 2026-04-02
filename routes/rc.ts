@@ -1,15 +1,37 @@
 import crypto from "crypto";
 import os from "os";
 import type { Express, Request, Response } from "express";
+import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
 import type { ServerContext, RCSession, RCClient } from "../lib/types.js";
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
   const { log, pcAuthToken, rcSessions } = ctx;
 
-  function rcSession(id: string): RCSession | null {
-    const s = rcSessions.get(id);
-    if (s) s.lastActivity = Date.now();
-    return s || null;
+  function authorizeSession(
+    req: Request,
+    res: Response,
+    options: { notFoundError: string },
+  ): { sessionId: string; session: RCSession } | null {
+    const sessionId = getRcSessionId(req);
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return null;
+    }
+
+    const session = rcSessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: options.notFoundError });
+      return null;
+    }
+
+    const token = getRcAuthToken(req);
+    if (!token || !session.authToken || session.authToken !== token) {
+      res.status(401).json({ error: "invalid_token" });
+      return null;
+    }
+
+    session.lastActivity = Date.now();
+    return { sessionId, session };
   }
 
   function sseWrite(res: RCClient, event: string, data: unknown): void {
@@ -23,8 +45,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
   app.get("/api/auth/persist", (req: Request, res: Response) => {
     // Only reachable after nginx basic auth succeeded (or a valid token).
     // Set a long-lived cookie — nginx skips basic auth when rc_auth cookie exists.
-    res.setHeader("Set-Cookie",
-      `rc_auth=${pcAuthToken}; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`);
+    res.setHeader("Set-Cookie", buildCookie("rc_auth", pcAuthToken, 30 * 24 * 60 * 60, { httpOnly: true }));
     res.json({ ok: true });
   });
 
@@ -59,11 +80,9 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
 
   // Session status probe (used by phone to detect expired sessions)
   app.get("/api/rc/session/:sessionId", (req: Request, res: Response) => {
-    const { sessionId } = req.params as Record<string, string>;
-    const s = rcSessions.get(sessionId);
-    if (!s) return res.status(404).json({ error: "session_expired" });
-    s.lastActivity = Date.now();
-    res.json({ exists: true, playerOnline: !!s.playerClient });
+    const auth = authorizeSession(req, res, { notFoundError: "session_expired" });
+    if (!auth) return;
+    res.json({ exists: true, playerOnline: !!auth.session.playerClient });
   });
 
   // Phone remote auth — validates token, sets cookie, redirects to /remote
@@ -77,29 +96,35 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     s.lastActivity = Date.now();
     // Set a long-lived cookie that nginx checks to skip basic auth
     res.setHeader("Set-Cookie", [
-      `rc_auth=${token}; Path=/; Max-Age=${60 * 60 * 24}; SameSite=Lax`,
-      `rc_token=${token}; Path=/; Max-Age=${60 * 60 * 24}; SameSite=Lax`,
+      buildCookie("rc_auth", token, 60 * 60 * 24, { httpOnly: true }),
+      buildCookie("rc_token", token, 60 * 60 * 24, { httpOnly: true }),
+      buildCookie("rc_session", session, 60 * 60 * 24),
     ]);
-    res.redirect(`/remote?session=${session}`);
+    res.redirect("/remote");
   });
 
   // Delete session
   app.delete("/api/rc/session/:sessionId", (req: Request, res: Response) => {
-    const { sessionId } = req.params as Record<string, string>;
-    const s = rcSessions.get(sessionId);
-    if (!s) return res.status(404).json({ error: "session not found" });
-    if (s.playerClient) s.playerClient.end();
-    for (const c of s.remoteClients) c.end();
-    rcSessions.delete(sessionId);
-    log("info", "RC session deleted", { sessionId });
+    const auth = authorizeSession(req, res, { notFoundError: "session not found" });
+    if (!auth) return;
+    if (auth.session.playerClient) auth.session.playerClient.end();
+    for (const c of auth.session.remoteClients) c.end();
+    rcSessions.delete(auth.sessionId);
+    log("info", "RC session deleted", { sessionId: auth.sessionId });
+    res.setHeader("Set-Cookie", [
+      clearCookie("rc_auth", { httpOnly: true }),
+      clearCookie("rc_token", { httpOnly: true }),
+      clearCookie("rc_session"),
+    ]);
     res.json({ ok: true });
   });
 
   // SSE event stream
   app.get("/api/rc/events", (req: Request, res: Response) => {
-    const { session, role } = req.query as { session?: string; role?: string };
-    const s = rcSession(session || "");
-    if (!s) return res.status(404).json({ error: "session not found" });
+    const { role } = req.query as { role?: string };
+    const auth = authorizeSession(req, res, { notFoundError: "session not found" });
+    if (!auth) return;
+    const s = auth.session;
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -148,31 +173,34 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
 
   // Command (phone → PC)
   app.post("/api/rc/command", (req: Request, res: Response) => {
-    const { sessionId, action, value } = req.body as { sessionId: string; action: string; value?: unknown };
-    const s = rcSession(sessionId);
-    if (!s) return res.status(404).json({ error: "session not found" });
-    if (s.playerClient) {
-      sseWrite(s.playerClient, "command", { action, value });
+    const { action, value } = req.body as { action: string; value?: unknown };
+    const auth = authorizeSession(req, res, { notFoundError: "session not found" });
+    if (!auth) return;
+    if (auth.session.playerClient) {
+      sseWrite(auth.session.playerClient, "command", { action, value });
     }
     res.json({ ok: true });
   });
 
-  // Phone requests player to show QR for reconnection
-  // Broadcasts to ALL active player SSE connections (phone doesn't know which session is current)
-  app.post("/api/rc/request-qr", (_req: Request, res: Response) => {
-    for (const [, s] of rcSessions) {
-      if (s.playerClient) sseWrite(s.playerClient, "show-qr", {});
-    }
+  // Phone requests the paired player to show its QR again.
+  app.post("/api/rc/request-qr", (req: Request, res: Response) => {
+    const auth = authorizeSession(req, res, { notFoundError: "session not found" });
+    if (!auth) return;
+    if (auth.session.playerClient) sseWrite(auth.session.playerClient, "show-qr", {});
     res.json({ ok: true });
   });
 
   // State (PC → phone)
   app.post("/api/rc/state", (req: Request, res: Response) => {
-    const { sessionId, ...state } = req.body as { sessionId: string; [key: string]: unknown };
-    const s = rcSession(sessionId);
-    if (!s) return res.status(404).json({ error: "session not found" });
-    s.playbackState = state as RCSession["playbackState"];
-    for (const c of s.remoteClients) sseWrite(c, "state", state);
+    const { sessionId: _sessionId, authToken: _authToken, ...state } = req.body as {
+      sessionId: string;
+      authToken?: string;
+      [key: string]: unknown;
+    };
+    const auth = authorizeSession(req, res, { notFoundError: "session not found" });
+    if (!auth) return;
+    auth.session.playbackState = state as RCSession["playbackState"];
+    for (const c of auth.session.remoteClients) sseWrite(c, "state", state);
     res.json({ ok: true });
   });
 }

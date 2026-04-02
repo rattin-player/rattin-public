@@ -87,11 +87,11 @@ export default function Detail() {
         action: "start-stream",
         value: {
           infoHash: result.infoHash, fileIndex: result.fileIndex, title, tags,
-          debridUrl: result.debridUrl, year, type, season, episode, imdbId,
+          debridStreamKey: result.debridStreamKey, year, type, season, episode, imdbId,
         },
       }),
     }).catch(() => {});
-    navigate(`/remote?session=${sessionId}`, {
+    navigate("/remote", {
       state: { pendingTitle: title },
     });
   }
@@ -120,7 +120,7 @@ export default function Detail() {
         navState.season = pickerSeason;
         navState.episode = pickerEpisode;
       }
-      if (result.debridUrl) navState.debridUrl = result.debridUrl;
+      if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
       setPlayState("error");
@@ -146,7 +146,7 @@ export default function Detail() {
           navState.season = season;
           navState.episode = episode;
         }
-        if (result.debridUrl) navState.debridUrl = result.debridUrl;
+        if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
         navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err: unknown) {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useRemoteMode } from "../lib/PlayerContext";
+import { clearRemoteSession } from "../lib/remote-session";
 import { formatTime } from "../lib/utils";
 import "../pages/Remote.css";
 
@@ -46,8 +47,7 @@ export default function RemoteNowPlaying() {
           .then((res) => {
             if (res.status === 404) {
               // Session expired — clear remote mode
-              localStorage.removeItem("rc-session");
-              localStorage.removeItem("rc-token");
+              clearRemoteSession();
               es.close();
               setState(null);
             }
@@ -82,7 +82,7 @@ export default function RemoteNowPlaying() {
   const dur = state.duration > 0 ? state.duration : lastGood.current.duration;
 
   return (
-    <div className="remote-now-playing" onClick={() => navigate(`/remote?session=${sessionId}`)}>
+    <div className="remote-now-playing" onClick={() => navigate("/remote")}>
       <div className="remote-now-playing-info">
         <div className="remote-now-playing-title">{state.title || "Now Playing"}</div>
         <div className="remote-now-playing-meta">

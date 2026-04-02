@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
+import { clearRemoteSession, getRemoteSessionId } from "../lib/remote-session";
 import { formatTime, formatBytes } from "../lib/utils";
 import QrScanner from "../components/QrScanner";
 import "./Remote.css";
@@ -31,18 +32,17 @@ export default function Remote() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const sessionId = searchParams.get("session") || localStorage.getItem("rc-session");
-  const token = searchParams.get("token");
+  const sessionId = getRemoteSessionId();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingTitle = (location.state as any)?.pendingTitle || null;
 
-  // Set auth token as cookie so nginx bypasses basic auth for the phone
   useEffect(() => {
-    if (token) {
-      document.cookie = `rc_token=${token}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
-      localStorage.setItem("rc-token", token);
-    }
-  }, [token]);
+    const legacySession = searchParams.get("session");
+    const legacyToken = searchParams.get("token");
+    if (!legacySession || !legacyToken) return;
+    const params = new URLSearchParams({ session: legacySession, token: legacyToken });
+    window.location.replace(`/api/rc/auth?${params.toString()}`);
+  }, [searchParams]);
 
   // ── Core state ──
   const [remoteState, setRemoteState] = useState(sessionId ? S.CONNECTING : S.NO_SESSION);
@@ -86,32 +86,20 @@ export default function Remote() {
 
   function openScanner() {
     // Tell the player to show its QR code on screen
-    fetch("/api/rc/request-qr", { method: "POST" }).catch(() => {});
+    if (sessionId) {
+      fetch("/api/rc/request-qr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch(() => {});
+    }
     setShowScanner(true);
   }
 
   function handleQrScan(url: string) {
     setShowScanner(false);
-    // Parse session and token from the URL: /api/rc/auth?session=X&token=Y
-    try {
-      const parsed = new URL(url);
-      const newSession = parsed.searchParams.get("session");
-      const newToken = parsed.searchParams.get("token");
-      if (newSession && newToken) {
-        // Set cookie + localStorage, then navigate to the new session
-        document.cookie = `rc_token=${newToken}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
-        localStorage.setItem("rc-session", newSession);
-        localStorage.setItem("rc-token", newToken);
-        // Navigate — this triggers a fresh SSE connection via the useEffect
-        navigate(`/remote?session=${newSession}&token=${newToken}`, { replace: true });
-      }
-    } catch {}
+    window.location.assign(url);
   }
-
-  // Persist session
-  useEffect(() => {
-    if (sessionId) localStorage.setItem("rc-session", sessionId);
-  }, [sessionId]);
 
   // ── SSE connection with probe-based expiry detection ──
   useEffect(() => {
@@ -199,7 +187,7 @@ export default function Remote() {
   // Don't navigate during switching — the idle state is transient
   useEffect(() => {
     if (remoteState === S.CONNECTED_IDLE && hadPlayback.current && !state?.switching) {
-      navigate(`/?session=${sessionId}`, { replace: true });
+      navigate("/", { replace: true });
     }
   }, [remoteState, sessionId, navigate, state?.switching]);
 
@@ -223,8 +211,7 @@ export default function Remote() {
   }
 
   function clearSession() {
-    localStorage.removeItem("rc-session");
-    localStorage.removeItem("rc-token");
+    clearRemoteSession();
     if (esRef.current) { esRef.current.close(); esRef.current = null; }
     setRemoteState(S.NO_SESSION);
     setState(null);

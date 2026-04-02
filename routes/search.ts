@@ -439,7 +439,7 @@ interface TorrentPlayResult {
   torrentName: string;
   totalSize: number;
   tags: string[];
-  debridUrl?: string;
+  debridStreamKey?: string;
 }
 
 function respondWithTorrent(torrent: Torrent, season: number | undefined, episode: number | undefined, tags: string[], preferredFileIdx?: number): TorrentPlayResult | null {
@@ -535,7 +535,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
           if (cached.get(best.infoHash.toLowerCase())) {
             const stream = await debrid.unrestrict(magnet, best.fileIdx);
             log("info", "Auto-play via debrid (cached)", { name: best.name, filename: stream.filename });
-            setActiveDebridStream(best.infoHash, stream.url, stream.files);
+            const debridStreamKey = setActiveDebridStream(best.infoHash, stream.url, stream.files);
             return res.json({
               infoHash: best.infoHash,
               fileIndex: stream.fileIndex,
@@ -543,7 +543,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
               torrentName: best.name,
               totalSize: stream.filesize,
               tags,
-              debridUrl: stream.url,
+              debridStreamKey,
             } satisfies TorrentPlayResult);
           }
           log("info", "Debrid not cached, using WebTorrent", { name: best.name });
@@ -551,7 +551,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
           // Always wait for debrid — no fallback
           const stream = await debrid.unrestrict(magnet, best.fileIdx);
           log("info", "Auto-play via debrid", { name: best.name, filename: stream.filename });
-          setActiveDebridStream(best.infoHash, stream.url, stream.files);
+          const debridStreamKey = setActiveDebridStream(best.infoHash, stream.url, stream.files);
           return res.json({
             infoHash: best.infoHash,
             fileIndex: stream.fileIndex,
@@ -559,7 +559,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
             torrentName: best.name,
             totalSize: stream.filesize,
             tags,
-            debridUrl: stream.url,
+            debridStreamKey,
           } satisfies TorrentPlayResult);
         }
       } catch (err) {
@@ -675,7 +675,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
         if (cached.get(infoHash.toLowerCase())) {
           const stream = await debrid.unrestrict(magnet, fileIdx);
           log("info", "Play-torrent via debrid (cached)", { infoHash, filename: stream.filename });
-          setActiveDebridStream(infoHash, stream.url, stream.files);
+          const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
           return res.json({
             infoHash,
             fileIndex: stream.fileIndex,
@@ -683,14 +683,14 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
             torrentName: name || stream.filename,
             totalSize: stream.filesize,
             tags,
-            debridUrl: stream.url,
+            debridStreamKey,
           } satisfies TorrentPlayResult);
         }
         log("info", "Debrid not cached, using WebTorrent", { infoHash });
       } else {
         const stream = await debrid.unrestrict(magnet, fileIdx);
         log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
-        setActiveDebridStream(infoHash, stream.url, stream.files);
+        const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
         return res.json({
           infoHash,
           fileIndex: stream.fileIndex,
@@ -698,7 +698,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
           torrentName: name || stream.filename,
           totalSize: stream.filesize,
           tags,
-          debridUrl: stream.url,
+          debridStreamKey,
         } satisfies TorrentPlayResult);
       }
     } catch (err) {

@@ -1,6 +1,7 @@
 import path from "path";
 import { statSync } from "fs";
 import type { Express, Request, Response, NextFunction } from "express";
+import { getActiveDebridStreamByKey } from "../lib/debrid.js";
 import { jobKey } from "../lib/torrent-caches.js";
 import { isAllowedFile, SUBTITLE_EXTENSIONS } from "../lib/media-utils.js";
 import {
@@ -126,10 +127,15 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
   });
 
   // ── Debrid stream proxy ──────────────────────────────────────────
-  // Proxies a debrid direct download URL with range request support.
+  // Proxies an already-authorized debrid direct download URL with range request support.
   app.get("/api/debrid-stream", async (req: Request, res: Response) => {
-    const url = req.query.url as string;
-    if (!url) return res.status(400).json({ error: "url required" });
+    const streamKey = req.query.streamKey as string;
+    if (!streamKey) return res.status(400).json({ error: "streamKey required" });
+
+    const activeStream = getActiveDebridStreamByKey(streamKey);
+    if (!activeStream) return res.status(404).json({ error: "stream not found" });
+
+    const { url } = activeStream;
 
     const seekTo = parseFloat(req.query.t as string) || 0;
     const audioStreamIdx = req.query.audio ? parseInt(req.query.audio as string, 10) : null;

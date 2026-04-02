@@ -5,6 +5,11 @@ import { startTestServer } from "../helpers/mock-app.js";
 describe("RC routes", () => {
   let baseUrl: string, close: () => Promise<void>;
 
+  async function createSession(): Promise<{ sessionId: string; authToken: string }> {
+    const res = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
+    return res.json() as Promise<{ sessionId: string; authToken: string }>;
+  }
+
   before(async () => {
     ({ baseUrl, close } = await startTestServer());
   });
@@ -38,10 +43,9 @@ describe("RC routes", () => {
     });
 
     it("returns 200 for a valid session", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId } = await createRes.json() as { sessionId: string };
+      const { sessionId, authToken } = await createSession();
 
-      const res = await fetch(`${baseUrl}/api/rc/session/${sessionId}`);
+      const res = await fetch(`${baseUrl}/api/rc/session/${sessionId}?token=${authToken}`);
       assert.equal(res.status, 200);
       const body = await res.json() as { exists: boolean; playerOnline: boolean };
       assert.equal(body.exists, true);
@@ -58,10 +62,9 @@ describe("RC routes", () => {
     });
 
     it("deletes an existing session", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId } = await createRes.json() as { sessionId: string };
+      const { sessionId, authToken } = await createSession();
 
-      const delRes = await fetch(`${baseUrl}/api/rc/session/${sessionId}`, { method: "DELETE" });
+      const delRes = await fetch(`${baseUrl}/api/rc/session/${sessionId}?token=${authToken}`, { method: "DELETE" });
       assert.equal(delRes.status, 200);
       const body = await delRes.json() as { ok: boolean };
       assert.equal(body.ok, true);
@@ -85,13 +88,12 @@ describe("RC routes", () => {
     });
 
     it("returns 200 for valid session", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId } = await createRes.json() as { sessionId: string };
+      const { sessionId, authToken } = await createSession();
 
       const res = await fetch(`${baseUrl}/api/rc/command`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, action: "togglePlay" }),
+        body: JSON.stringify({ sessionId, authToken, action: "togglePlay" }),
       });
       assert.equal(res.status, 200);
       const body = await res.json() as { ok: boolean };
@@ -112,13 +114,12 @@ describe("RC routes", () => {
     });
 
     it("returns 200 for valid session", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId } = await createRes.json() as { sessionId: string };
+      const { sessionId, authToken } = await createSession();
 
       const res = await fetch(`${baseUrl}/api/rc/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, playing: true, currentTime: 42 }),
+        body: JSON.stringify({ sessionId, authToken, playing: true, currentTime: 42 }),
       });
       assert.equal(res.status, 200);
       const body = await res.json() as { ok: boolean };
@@ -135,12 +136,11 @@ describe("RC routes", () => {
     });
 
     it("returns SSE stream with correct content-type for valid session", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId } = await createRes.json() as { sessionId: string };
+      const { sessionId, authToken } = await createSession();
 
       const controller = new AbortController();
       const res = await fetch(
-        `${baseUrl}/api/rc/events?session=${sessionId}&role=player`,
+        `${baseUrl}/api/rc/events?session=${sessionId}&role=player&token=${authToken}`,
         { signal: controller.signal }
       );
       assert.equal(res.status, 200);
@@ -178,8 +178,7 @@ describe("RC routes", () => {
     });
 
     it("returns 302 redirect with valid token", async () => {
-      const createRes = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
-      const { sessionId, authToken } = await createRes.json() as { sessionId: string; authToken: string };
+      const { sessionId, authToken } = await createSession();
 
       const res = await fetch(
         `${baseUrl}/api/rc/auth?token=${authToken}&session=${sessionId}`,
@@ -187,7 +186,7 @@ describe("RC routes", () => {
       );
       assert.equal(res.status, 302);
       const location = res.headers.get("location")!;
-      assert.ok(location.includes(`/remote?session=${sessionId}`), "should redirect to /remote");
+      assert.equal(location, "/remote");
       const setCookie = res.headers.get("set-cookie")!;
       assert.ok(setCookie, "should set cookies");
       assert.ok(setCookie.includes("rc_auth="), "should set rc_auth cookie");

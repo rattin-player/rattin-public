@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
+import crypto from "crypto";
 import path from "path";
 import { configDir } from "./paths.js";
 
@@ -480,12 +481,21 @@ function isVideoFile(filePath: string): boolean {
 interface ActiveDebridStream {
   url: string;
   files: DebridFileInfo[];
+  streamKey: string;
 }
 
 const _activeDebridStreams = new Map<string, ActiveDebridStream>();
+const _activeDebridKeys = new Map<string, string>();
 
-export function setActiveDebridStream(infoHash: string, url: string, files: DebridFileInfo[]): void {
-  _activeDebridStreams.set(infoHash.toLowerCase(), { url, files });
+export function setActiveDebridStream(infoHash: string, url: string, files: DebridFileInfo[]): string {
+  const normalized = infoHash.toLowerCase();
+  const previous = _activeDebridStreams.get(normalized);
+  if (previous) _activeDebridKeys.delete(previous.streamKey);
+
+  const streamKey = crypto.randomBytes(16).toString("hex");
+  _activeDebridStreams.set(normalized, { url, files, streamKey });
+  _activeDebridKeys.set(streamKey, normalized);
+  return streamKey;
 }
 
 export function getActiveDebridUrl(infoHash: string, fileIndex: number): string | null {
@@ -494,6 +504,12 @@ export function getActiveDebridUrl(infoHash: string, fileIndex: number): string 
 
 export function getActiveDebridFiles(infoHash: string): DebridFileInfo[] {
   return _activeDebridStreams.get(infoHash.toLowerCase())?.files || [];
+}
+
+export function getActiveDebridStreamByKey(streamKey: string): ActiveDebridStream | null {
+  const infoHash = _activeDebridKeys.get(streamKey);
+  if (!infoHash) return null;
+  return _activeDebridStreams.get(infoHash) || null;
 }
 
 let _provider: DebridProvider | null | undefined; // undefined = not loaded yet

@@ -1,6 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, type TestServerResult } from "../helpers/mock-app.js";
+import { setActiveDebridStream } from "../../lib/debrid.js";
 
 describe("Pipeline consistency", () => {
   let baseUrl: string, close: () => Promise<void>, ctx: TestServerResult;
@@ -45,25 +46,26 @@ describe("Pipeline consistency", () => {
   // ── /api/debrid-stream audio param forwarding ────────────────────
 
   describe("GET /api/debrid-stream", () => {
-    it("returns 400 when url is missing", async () => {
+    it("returns 400 when streamKey is missing", async () => {
       const res = await fetch(`${baseUrl}/api/debrid-stream`);
       assert.equal(res.status, 400);
       const body = await res.json() as { error: string };
-      assert.ok(body.error.includes("url"));
+      assert.ok(body.error.includes("streamKey"));
     });
 
-    it("returns 400 for invalid URL", async () => {
-      const res = await fetch(`${baseUrl}/api/debrid-stream?url=not-a-url`);
-      assert.equal(res.status, 400);
+    it("returns 404 for invalid stream key", async () => {
+      const res = await fetch(`${baseUrl}/api/debrid-stream?streamKey=not-a-key`);
+      assert.equal(res.status, 404);
       const body = await res.json() as { error: string };
-      assert.ok(body.error.includes("Invalid"));
+      assert.ok(body.error.includes("stream"));
     });
 
     it("accepts audio query param without crashing", async () => {
       // Will fail to connect but shouldn't crash on the audio param.
       // The transcode path sends headers before ffmpeg fails, so status may be 200.
       // The key assertion is that the server doesn't crash.
-      const res = await fetch(`${baseUrl}/api/debrid-stream?url=${encodeURIComponent("http://127.0.0.1:1/fake.mkv")}&audio=1`);
+      const streamKey = setActiveDebridStream("feedface", "http://127.0.0.1:1/fake.mkv", []);
+      const res = await fetch(`${baseUrl}/api/debrid-stream?streamKey=${streamKey}&audio=1`);
       assert.ok(typeof res.status === "number", "Server responded without crashing");
     });
   });

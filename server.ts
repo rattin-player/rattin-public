@@ -6,6 +6,7 @@ import { sessionsPath, downloadDir } from "./lib/paths.js";
 import { tmdbCache } from "./lib/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
+import { createApiAccessControl } from "./lib/access-control.js";
 import { createContext } from "./lib/server-context.js";
 import rcRoutes from "./routes/rc.js";
 import tmdbRoutes from "./routes/tmdb.js";
@@ -62,6 +63,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/api", createApiAccessControl(ctx));
 
 // ── Idle detection — escalating cleanup when app is unused ──
 const idleTracker = createIdleTracker({
