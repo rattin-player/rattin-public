@@ -1,9 +1,10 @@
 import path from "path";
 import { statSync } from "fs";
 import type { Express, Request, Response, NextFunction } from "express";
+import { jobKey } from "../lib/torrent-caches.js";
 import { isAllowedFile, SUBTITLE_EXTENSIONS } from "../lib/media-utils.js";
 import {
-  serveFile, serveFromTorrent,
+  probeMedia as _probeMedia, serveFile, serveFromTorrent,
   serveLiveTranscode as _serveLiveTranscode,
 } from "../lib/transcode.js";
 import type { ServerContext } from "../lib/types.js";
@@ -15,7 +16,7 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
     completedFiles, activeTranscodes, probeCache,
   } = ctx;
 
-  const probeMedia = (filePath: string) => import("../lib/transcode.js").then(m => m.probeMedia(filePath, probeCache, log));
+  const probeMedia = (filePath: string) => _probeMedia(filePath, probeCache, log);
 
   app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req: Request, res: Response) => {
     const { infoHash, fileIndex } = req.params as Record<string, string>;
@@ -84,7 +85,6 @@ export default function streamRoutes(app: Express, ctx: ServerContext): void {
     const filePath = diskPath(torrent, file);
 
     // Verify file is real media — only when complete.
-    const { jobKey } = await import("../lib/torrent-caches.js");
     const cacheKey = jobKey(torrent.infoHash, fileIndex);
 
     if (complete) {

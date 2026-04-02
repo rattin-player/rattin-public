@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import { startTestServer, mockClient } from "../helpers/mock-app.js";
 import type { MockClient } from "../helpers/mock-app.js";
 
-describe("GET /api/stream/:infoHash/:fileIndex?native=1", () => {
+describe("GET /api/stream/:infoHash/:fileIndex (legacy native=1 param is ignored)", () => {
   let baseUrl: string, close: () => Promise<void>, client: MockClient;
 
   before(async () => {
