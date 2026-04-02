@@ -50,6 +50,14 @@ jobs:
         with:
           node-version: 20
 
+      - name: Extract version from package.json
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
         with:
@@ -76,6 +84,11 @@ jobs:
           Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip" -OutFile node.zip
           Expand-Archive node.zip -DestinationPath node-build -Force
 
+      - name: Download rcedit
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile rcedit.exe
+
       - name: Build frontend
         run: npm ci && npm run build
 
@@ -94,6 +107,7 @@ jobs:
       - name: Assemble distribution
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $dist = "Rattin"
           $app  = "$dist/app"
           New-Item -ItemType Directory -Force -Path $app | Out-Null
@@ -120,7 +134,7 @@ jobs:
           Copy-Item mpv-dev/libmpv-2.dll $dist/
 
           # VC++ runtime DLLs (so users don't need to install the redist)
-          $vcCrt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          $vcCrt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($vcCrt) {
               foreach ($dll in @("vcruntime140.dll","vcruntime140_1.dll","msvcp140.dll")) {
                   $src = Join-Path $vcCrt.FullName $dll
@@ -128,7 +142,8 @@ jobs:
               }
               Write-Host "Bundled VC++ runtime from $($vcCrt.FullName)"
           } else {
-              Write-Host "WARNING: VC++ redist not found, DLLs not bundled"
+              Write-Error "VC++ redist not found — cannot bundle runtime DLLs"
+              exit 1
           }
 
           # Compile TypeScript to JS (ship compiled code, not source)
@@ -149,6 +164,21 @@ jobs:
           & "$env:GITHUB_WORKSPACE/$dist/node.exe" "$($nodeDir.FullName)/node_modules/npm/bin/npm-cli.js" ci --omit=dev
           Pop-Location
 
+      - name: Brand rattin-runtime
+        shell: pwsh
+        run: |
+          $dist = "Rattin"
+          Rename-Item "$dist\node.exe" "rattin-runtime.exe"
+          $version = "${{ steps.version.outputs.VERSION }}"
+          & .\rcedit.exe "$dist\rattin-runtime.exe" `
+            --set-icon "$dist\rattin.ico" `
+            --set-version-string "ProductName" "RattinRuntime" `
+            --set-version-string "FileDescription" "Rattin Server Runtime" `
+            --set-version-string "OriginalFilename" "rattin-runtime.exe" `
+            --set-version-string "InternalName" "rattin-runtime" `
+            --set-version-string "FileVersion" "$version" `
+            --set-version-string "ProductVersion" "$version"
+
       - name: Create portable ZIP
         shell: pwsh
         run: Compress-Archive -Path Rattin -DestinationPath Rattin-x64-Portable.zip
@@ -162,10 +192,12 @@ jobs:
         run: |
           $distDir = "$env:GITHUB_WORKSPACE/Rattin"
           $output  = "$env:GITHUB_WORKSPACE/Rattin-x64-Setup.exe"
+          $pluginDir = "$env:GITHUB_WORKSPACE/packaging/windows/Plugins"
           & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            /DVERSION="2.0.0" `
+            /DVERSION="${{ steps.version.outputs.VERSION }}" `
             /DDIST_DIR="$distDir" `
             /DOUTPUT="$output" `
+            /X"!addplugindir /x86-unicode $pluginDir\x86-unicode" `
             packaging/windows/rattin.nsi
 
       - name: Upload portable ZIP
