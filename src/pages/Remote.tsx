@@ -118,6 +118,7 @@ export default function Remote() {
     if (!sessionId) { setRemoteState(S.NO_SESSION); return; }
     let closed = false;
     failCount.current = 0;
+    hadPlayback.current = false;
 
     async function connect() {
       if (closed) return;
