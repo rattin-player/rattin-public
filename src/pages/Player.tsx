@@ -61,8 +61,6 @@ export default function Player() {
     }
     setSwitchingSource(source.infoHash);
     try {
-      // Stop current stream (saves position, kills ffmpeg, cleans up)
-      stopStream();
       // Start the new torrent
       const result = await playTorrent(
         source.infoHash, source.name,
@@ -88,7 +86,7 @@ export default function Player() {
     } finally {
       setSwitchingSource(null);
     }
-  }, [active, stopStream, startStream, navigate, state, sources, mediaTitle]);
+  }, [active, startStream, navigate, state, sources, mediaTitle]);
 
   const {
     loading, setLoading, loadingReason, setLoadingReason,
