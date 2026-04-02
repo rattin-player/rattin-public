@@ -17,6 +17,7 @@ import streamRoutes from "./routes/stream.js";
 import debridRoutes from "./routes/debrid.js";
 import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
+import { sweepOldFiles } from "./lib/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 
 interface CreateAppOverrides {
@@ -194,8 +195,19 @@ function restoreSessions(client: ServerContext["client"], downloadPath: string):
 if (isMain) {
   const { app, client, activeTranscodes } = createApp();
 
+  // Sweep stale cache files (>24h) before restoring sessions
+  const dlDir = downloadDir();
+  sweepOldFiles(dlDir, (level, msg, data) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    const prefix = ({ info: "INFO", warn: "WARN", err: " ERR" } as Record<string, string>)[level] || level;
+    const extra = data ? " " + JSON.stringify(data) : "";
+    console.log(`[${ts}] ${prefix}  ${msg}${extra}`);
+  }).then((n) => {
+    if (n > 0) console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Swept ${n} stale cache entries`);
+  });
+
   // Restore sessions from a previous VPN toggle restart
-  restoreSessions(client, downloadDir());
+  restoreSessions(client, dlDir);
 
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
