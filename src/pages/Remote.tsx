@@ -82,6 +82,7 @@ export default function Remote() {
 
   // ── QR scanner ──
   const [showScanner, setShowScanner] = useState(false);
+  const [showSources, setShowSources] = useState(false);
 
   function openScanner() {
     // Tell the player to show its QR code on screen
@@ -607,23 +608,50 @@ export default function Remote() {
       )}
 
       {state?.sources?.length > 1 && (
-        <div className="remote-sub-row">
-          <select
-            className="remote-sub-select"
-            value={state.infoHash || ""}
-            onChange={(e) => {
-              const source = state.sources.find((s: { infoHash: string }) => s.infoHash === e.target.value);
-              if (source) sendCommand("switch-source", source);
-            }}
-            disabled={isReconnecting}
-          >
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.sources.map((s: any) => (
-              <option key={s.infoHash} value={s.infoHash}>
-                {s.name?.slice(0, 50)}{s.name?.length > 50 ? "..." : ""} ({s.seeders ?? "?"} seeds)
-              </option>
-            ))}
-          </select>
+        <button
+          className="remote-source-toggle"
+          onClick={() => setShowSources((v) => !v)}
+          disabled={isReconnecting}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+          </svg>
+          Sources ({state.sources.length})
+        </button>
+      )}
+
+      {showSources && state?.sources?.length > 1 && (
+        <div className="remote-sources-panel">
+          {state.sources.map((s: any) => {
+            const isCurrent = s.infoHash === state.infoHash;
+            return (
+              <button
+                key={s.infoHash}
+                className={`remote-source-item${isCurrent ? " active" : ""}`}
+                onClick={() => {
+                  if (!isCurrent) {
+                    sendCommand("switch-source", s);
+                    setShowSources(false);
+                  }
+                }}
+              >
+                <div className="remote-source-item-name">
+                  {s.name}
+                </div>
+                <div className="remote-source-item-meta">
+                  {isCurrent && <span className="remote-source-tag current">Playing</span>}
+                  {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
+                    <span key={t} className="remote-source-tag">{t}</span>
+                  ))}
+                  <span className="remote-source-seeds">
+                    <span className="remote-source-seed-dot" />
+                    {s.seeders ?? "?"}
+                  </span>
+                  {s.size > 0 && <span className="remote-source-size">{formatBytes(s.size)}</span>}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
