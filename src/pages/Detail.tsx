@@ -68,19 +68,31 @@ export default function Detail() {
     }
   }
 
+  function displayTitle(season?: number, episode?: number): string {
+    const name = data.title || data.name;
+    if (season != null && episode != null) return `${name} — S${season}E${episode}`;
+    return name;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function sendRemoteStart(result: any, tags: string[]) {
+  function sendRemoteStart(result: any, tags: string[], season?: number, episode?: number) {
+    const title = displayTitle(season, episode);
+    const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
+    const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
     fetch("/api/rc/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId,
         action: "start-stream",
-        value: { infoHash: result.infoHash, fileIndex: result.fileIndex, title: data.title || data.name, tags, debridUrl: result.debridUrl },
+        value: {
+          infoHash: result.infoHash, fileIndex: result.fileIndex, title, tags,
+          debridUrl: result.debridUrl, year, type, season, episode, imdbId,
+        },
       }),
     }).catch(() => {});
     navigate(`/remote?session=${sessionId}`, {
-      state: { pendingTitle: data.title || data.name },
+      state: { pendingTitle: title },
     });
   }
 
@@ -92,13 +104,18 @@ export default function Detail() {
     try {
       const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode, stream.fileIdx);
       if (isRemote) {
-        sendRemoteStart(result, result.tags || stream.tags);
+        sendRemoteStart(result, result.tags || stream.tags, pickerSeason, pickerEpisode);
         return;
       }
       setPlayState(null);
       // Go straight to player — audio/subtitle selection available in-player
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const navState: any = { tags: result.tags || stream.tags, title: data.title || data.name, tmdbId: id };
+      const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
+      const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
+      const navState: any = {
+        tags: result.tags || stream.tags, title: displayTitle(pickerSeason, pickerEpisode), tmdbId: id,
+        year, type, imdbId, sources: streams,
+      };
       if (pickerSeason != null) {
         navState.season = pickerSeason;
         navState.episode = pickerEpisode;
@@ -121,10 +138,10 @@ export default function Detail() {
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const result = await autoPlay(title, year, type, season, episode, imdbId);
       if (isRemote) {
-        sendRemoteStart(result, result.tags);
+        sendRemoteStart(result, result.tags, season, episode);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const navState: any = { tags: result.tags, title: data.title || data.name, tmdbId: id };
+        const navState: any = { tags: result.tags, title: displayTitle(season, episode), tmdbId: id, year, type, imdbId };
         if (season != null) {
           navState.season = season;
           navState.episode = episode;

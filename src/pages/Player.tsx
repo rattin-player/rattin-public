@@ -7,7 +7,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import "./Player.css";
@@ -20,9 +20,8 @@ export default function Player() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const state = location.state as any;
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
-  const [currentTitle, setCurrentTitle] = useState<string>(state?.title || "");
   const tags: string[] = currentTags.length > 0 ? currentTags : (active?.tags || []);
-  const mediaTitle: string = currentTitle || active?.title || "";
+  const mediaTitle: string = state?.title || active?.title || "";
   const preSelectedAudio: number | null = state?.audioTrack ?? null;
   const preSelectedSub: string | null = state?.subtitle ?? null;
   const pageRef = useRef<HTMLDivElement>(null);
@@ -37,6 +36,17 @@ export default function Player() {
   const [switchingSource, setSwitchingSource] = useState<string | null>(null);
   const [livePeers, setLivePeers] = useState<Record<string, { numPeers: number; downloadSpeed: number }>>({});
   const livePeerTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // Fetch sources for current content (enables source picker on desktop + remote)
+  useEffect(() => {
+    if (!state?.title) return;
+    // Clear stale sources from previous video, then fetch fresh ones
+    setSources(state?.sources || []);
+    if (state?.sources?.length > 0) return;
+    searchStreams(state.title, state.year, state.type, state.season, state.episode, state.imdbId)
+      .then((results) => { if (results.length > 0) setSources(results); })
+      .catch(() => {});
+  }, [infoHash]);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {
@@ -61,8 +71,6 @@ export default function Player() {
     }
     setSwitchingSource(source.infoHash);
     try {
-      // Stop current stream (saves position, kills ffmpeg, cleans up)
-      stopStream();
       // Start the new torrent
       const result = await playTorrent(
         source.infoHash, source.name,
@@ -88,7 +96,7 @@ export default function Player() {
     } finally {
       setSwitchingSource(null);
     }
-  }, [active, stopStream, startStream, navigate, state, sources, mediaTitle]);
+  }, [active, startStream, navigate, state, sources, mediaTitle]);
 
   const {
     loading, setLoading, loadingReason, setLoadingReason,
@@ -141,6 +149,14 @@ export default function Player() {
     return () => clearTimeout(stuckTimer.current);
   }, [dlSpeed, dlProgress, active]);
 
+  // Sync PlayerContext.active with URL params (Detail.tsx navigates here without calling startStream)
+  useEffect(() => {
+    if (!infoHash || !fileIndex) return;
+    if (active?.infoHash !== infoHash || String(active?.fileIndex) !== String(fileIndex)) {
+      startStream(infoHash, fileIndex, mediaTitle, tags, state?.debridUrl);
+    }
+  }, [infoHash, fileIndex]);
+
   // Native mode: tell mpv to play
   useEffect(() => {
     if (!infoHash || !fileIndex) return;
@@ -166,10 +182,13 @@ export default function Player() {
 
       // Register event handlers AFTER bridge is ready (window.mpvEvents
       // doesn't exist until waitForBridge resolves)
+      // Track when playback actually starts to ignore stale EOF from previous mpvStop
+      let playbackStarted = false;
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
         setLoading(false);
+        playbackStarted = true;
       });
       onMpvDurationChanged((d) => {
         const prev = effectiveTimeRef.current;
@@ -177,7 +196,7 @@ export default function Player() {
         setLoading(false);
       });
       onMpvEofReached(() => {
-        navigate(-1);
+        if (playbackStarted) navigate(-1);
       });
       onMpvPauseChanged((paused) => {
         setPlaying(!paused);
@@ -216,9 +235,15 @@ export default function Player() {
         window.mpvEvents.onNativeVolumeChanged = null;
         window.mpvEvents.onNativeSubSizeChanged = null;
       }
-      mpvStop();
+      // Don't call mpvStop() here — mpv handles loadfile transitions natively.
+      // Stopping tears down the video surface and causes black screen on next play.
     };
   }, [infoHash, fileIndex]);
+
+  // Stop mpv only on actual unmount (leaving the player page)
+  useEffect(() => {
+    return () => { mpvStop(); };
+  }, []);
 
   // Register command handlers for remote control (assigned every render to avoid stale closures)
   if (commandRef) {

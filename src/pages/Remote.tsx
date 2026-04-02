@@ -66,6 +66,7 @@ export default function Remote() {
 
   // ── Last known good values ──
   const lastGood = useRef({ currentTime: 0, duration: 0 });
+  const hadPlayback = useRef(false);
 
   // ── Pending playback (navigated here after starting a stream) ──
   const [pending, setPending] = useState(!!pendingTitle);
@@ -81,6 +82,7 @@ export default function Remote() {
 
   // ── QR scanner ──
   const [showScanner, setShowScanner] = useState(false);
+  const [showSources, setShowSources] = useState(false);
 
   function openScanner() {
     // Tell the player to show its QR code on screen
@@ -116,6 +118,7 @@ export default function Remote() {
     if (!sessionId) { setRemoteState(S.NO_SESSION); return; }
     let closed = false;
     failCount.current = 0;
+    hadPlayback.current = false;
 
     async function connect() {
       if (closed) return;
@@ -142,7 +145,10 @@ export default function Remote() {
           setOptimisticSeekTime(null);
         }
         setState(parsed);
-        if (parsed.infoHash) setPending(false); // playback arrived, clear pending
+        if (parsed.infoHash) {
+          setPending(false);
+          hadPlayback.current = true;
+        }
         setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
       });
 
@@ -188,6 +194,13 @@ export default function Remote() {
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
   }, [sessionId, connectAttempt]);
+
+  // Auto-navigate to home when playback stops (skip the "Browse Content" intermediate)
+  useEffect(() => {
+    if (remoteState === S.CONNECTED_IDLE && hadPlayback.current) {
+      navigate(`/?session=${sessionId}`, { replace: true });
+    }
+  }, [remoteState, sessionId, navigate]);
 
   // ── Send command ──
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -596,27 +609,59 @@ export default function Remote() {
       )}
 
       {state?.sources?.length > 1 && (
-        <div className="remote-sub-row">
-          <select
-            className="remote-sub-select"
-            value={state.infoHash || ""}
-            onChange={(e) => {
-              const source = state.sources.find((s: { infoHash: string }) => s.infoHash === e.target.value);
-              if (source) sendCommand("switch-source", source);
-            }}
-            disabled={isReconnecting}
-          >
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.sources.map((s: any) => (
-              <option key={s.infoHash} value={s.infoHash}>
-                {s.name?.slice(0, 50)}{s.name?.length > 50 ? "..." : ""} ({s.seeders ?? "?"} seeds)
-              </option>
-            ))}
-          </select>
+        <button
+          className="remote-source-toggle"
+          onClick={() => setShowSources((v) => !v)}
+          disabled={isReconnecting}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+          </svg>
+          Sources ({state.sources.length})
+        </button>
+      )}
+
+      {showSources && state?.sources?.length > 1 && (
+        <div className="remote-sources-panel">
+          {state.sources.map((s: any) => {
+            const isCurrent = s.infoHash === state.infoHash;
+            return (
+              <button
+                key={s.infoHash}
+                className={`remote-source-item${isCurrent ? " active" : ""}`}
+                onClick={() => {
+                  if (!isCurrent) {
+                    sendCommand("switch-source", s);
+                    setShowSources(false);
+                  }
+                }}
+              >
+                <div className="remote-source-item-name">
+                  {s.name}
+                </div>
+                <div className="remote-source-item-meta">
+                  {isCurrent && <span className="remote-source-tag current">Playing</span>}
+                  {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
+                    <span key={t} className="remote-source-tag">{t}</span>
+                  ))}
+                  <span className="remote-source-seeds">
+                    <span className="remote-source-seed-dot" />
+                    {s.seeders ?? "?"}
+                  </span>
+                  {s.size > 0 && <span className="remote-source-size">{formatBytes(s.size)}</span>}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
       <div className="remote-bottom-row">
+        <button className="remote-back-btn" onClick={() => navigate(-1)} disabled={isReconnecting}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+          </svg>
+        </button>
         <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isReconnecting}>
           Browse
         </button>

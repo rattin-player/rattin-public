@@ -176,6 +176,12 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
+    // Save position of the current stream before switching (mirrors stopStream behavior)
+    if (active) {
+      const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
+      const t = effectiveTimeRef.current?.time || 0;
+      if (t > 0) sessionStorage.setItem(posKey, String(t));
+    }
     const ih = String(infoHash);
     const fi = String(fileIndex);
     fetch(`/api/set-active/${ih}`, { method: "POST" }).catch(() => {});
@@ -268,10 +274,16 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         }
         case "start-stream":
           if (value) {
+            const wasOnPlayer = window.location.pathname.startsWith("/play/");
+            console.log("[rc] start-stream", { infoHash: value.infoHash, title: value.title, wasOnPlayer, debridUrl: !!value.debridUrl });
             startStreamRef.current?.(value.infoHash, value.fileIndex, value.title, value.tags, value.debridUrl);
             if (navigateRef.current) {
               navigateRef.current(`/play/${value.infoHash}/${value.fileIndex}`, {
-                state: { tags: value.tags, title: value.title, debridUrl: value.debridUrl },
+                replace: wasOnPlayer,
+                state: {
+                  tags: value.tags, title: value.title, debridUrl: value.debridUrl,
+                  year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
+                },
               });
             }
           }

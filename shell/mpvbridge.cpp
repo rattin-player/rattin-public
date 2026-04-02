@@ -23,7 +23,8 @@ void MpvBridge::play(const QString &url)
         fprintf(stderr, "[bridge] play() called but m_mpv is null!\n");
         return;
     }
-    fprintf(stderr, "[bridge] loadfile: %s\n", url.toUtf8().constData());
+    fprintf(stderr, "[bridge] loadfile: %s (wasPlaying=%d)\n", url.toUtf8().constData(), m_isPlaying);
+    m_loadPending = true;  // Suppress stale EOF until new file produces time updates
     m_mpv->command(QVariantList{"loadfile", url});
     m_isPlaying = true;
     emit isPlayingChanged(true);
@@ -72,6 +73,8 @@ void MpvBridge::setSubtitleTrack(int index)
 void MpvBridge::stop()
 {
     if (!m_mpv) return;
+    fprintf(stderr, "[bridge] stop()\n");
+    m_loadPending = false;
     m_mpv->command(QVariantList{"stop"});
     m_isPlaying = false;
     emit isPlayingChanged(false);
@@ -97,14 +100,20 @@ void MpvBridge::setProperty(const QString &name, const QVariant &value)
 void MpvBridge::onMpvEvent(const QString &eventName, const QVariant &value)
 {
     if (eventName == "time-pos" && value.canConvert<double>()) {
+        m_loadPending = false;  // New file is producing frames — EOF is real from now on
         emit timeChanged(value.toDouble());
     } else if (eventName == "duration" && value.canConvert<double>()) {
         emit durationChanged(value.toDouble());
     } else if (eventName == "pause" && value.canConvert<bool>()) {
         emit pauseChanged(value.toBool());
     } else if (eventName == "eof") {
-        m_isPlaying = false;
-        emit isPlayingChanged(false);
-        emit eofReached();
+        if (m_loadPending) {
+            // Stale EOF from the previous file during a loadfile transition — suppress it.
+            // Without this, the JS eofReached handler would navigate(-1) back to home.
+            fprintf(stderr, "[bridge] eof suppressed (loadPending)\n");
+        } else {
+            fprintf(stderr, "[bridge] eof\n");
+            emit eofReached();
+        }
     }
 }

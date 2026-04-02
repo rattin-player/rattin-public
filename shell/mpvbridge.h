@@ -40,4 +40,5 @@ private slots:
 private:
     MpvObject *m_mpv;
     bool m_isPlaying = false;
+    bool m_loadPending = false;  // true after play() until first time-pos arrives
 };
