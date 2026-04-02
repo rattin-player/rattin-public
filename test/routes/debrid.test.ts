@@ -73,6 +73,22 @@ describe("Debrid routes", () => {
       assert.equal(statusBody.configured, true);
       assert.equal(statusBody.provider, "realdebrid");
     });
+
+    it("saves config for torbox provider", async () => {
+      const res = await fetch(`${baseUrl}/api/debrid/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: "tb-key", provider: "torbox" }),
+      });
+      assert.equal(res.status, 200);
+      const body = await res.json() as { ok: boolean };
+      assert.equal(body.ok, true);
+
+      const status = await fetch(`${baseUrl}/api/debrid/status`);
+      const statusBody = await status.json() as { configured: boolean; provider: string };
+      assert.equal(statusBody.configured, true);
+      assert.equal(statusBody.provider, "torbox");
+    });
   });
 
   // ── DELETE /api/debrid/config ───────────────────────────────────────
