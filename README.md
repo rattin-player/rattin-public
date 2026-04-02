@@ -5,12 +5,11 @@
 </h1>
 
 <p align="center">
-  <strong>Self-hosted streaming from magnet links.</strong><br>
+  <strong>Desktop streaming from magnet links.</strong><br>
   Browse. Click. Watch. No downloads. No waiting.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/web-any%20browser-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web" />
   <img src="https://img.shields.io/badge/desktop-linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux" />
   <img src="https://img.shields.io/badge/remote-phone-34A853?style=for-the-badge&logo=android&logoColor=white" alt="Remote" />
 </p>
@@ -21,31 +20,15 @@
 
 Most tools in this space make you choose. Torrent clients that stream but can't browse. Media servers that browse but can't stream from torrents without bolting on five extra tools. Apps that do both but choke on MKV or HEVC unless you pay for transcoding. And none of them touch privacy — you're on your own for that.
 
-Rattin is a single self-hosted process that does all of it — browse TMDB, click play, watch — with optional debrid integration and per-app VPN isolation built in.
+Rattin is a single desktop app that does all of it — browse TMDB, click play, watch — with optional debrid integration and per-app VPN isolation built in.
 
-🎬 Every codec, every container, every format — transcoded on the fly for browsers, hardware-accelerated natively on desktop<br>
+🎬 Every codec, every container, every format — played natively through libmpv with hardware decoding<br>
 ⏩ Smart seeking in incomplete files — jump anywhere, even before it's downloaded<br>
 🔍 TMDB discovery — trending, genres, search, trailers, cast, one-click play<br>
 📱 Phone remote via QR scan — no app install, just point your camera<br>
 🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine<br>
 ⚡ Optional Real-Debrid — instant streaming via HTTPS, full seeking, no swarm exposure<br>
 🛡️ Optional per-app VPN *(WIP)* — WireGuard isolation for torrent traffic only, built-in kill switch
-
-### Web vs Native
-
-| Feature | Web | Native |
-|---------|:---:|:------:|
-| Plays while downloading | ✅ | ✅ |
-| Seek in incomplete files | ⚠️ native formats only | ✅ |
-| Every format (MKV, AVI, HEVC, AV1, HDR, DV) | ✅ transcoded | ✅ native |
-| Hardware decoding (VAAPI, NVDEC) | ❌ | ✅ |
-| 4K HDR / Dolby Atmos | ❌ | ✅ |
-| Subtitles (SRT, ASS, SSA, VTT) | ✅ | ✅ |
-| Multiple audio tracks | ✅ | ✅ |
-| Source switching mid-playback | ✅ | 🔜 |
-| Mini player | ✅ | ✅ |
-| Phone remote | ✅ | ✅ |
-| Accessible from other devices | ✅ | ❌ |
 
 ### :mag: Discovery
 
@@ -56,11 +39,13 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 
 ### :zap: Player
 
+- **Every format natively** - MKV, AVI, HEVC, AV1, HDR, Dolby Vision — zero transcoding, powered by libmpv
+- **Hardware decoding** - VAAPI, NVDEC, VideoToolbox — your GPU does the work
 - **Seek anywhere** - Even in files that haven't fully downloaded yet
 - **Skip intro** *(WIP)* - Detects TV show intros via audio fingerprinting
-- **Subtitles** - Embedded and external, with language detection (SRT, ASS, SSA, VTT)
+- **Subtitles** - Embedded and external, with language detection and resizable text (SRT, ASS, SSA, VTT)
 - **Multiple audio tracks** - Switch languages and surround formats on the fly
-- **Source switching** - Swap between different torrents mid-playback if one is slow (web only)
+- **Source switching** - Swap between different torrents mid-playback if one is slow
 - **Mini player** - Keep watching while browsing other content
 
 ### :iphone: Phone Remote
@@ -69,13 +54,6 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 - **Full control** - Play, pause, seek, volume, subtitles, audio tracks
 - **Browse from your phone** - Search and start content from the couch
 - **Real-time sync** - Player and remote stay in lockstep
-
-### :desktop_computer: Native Desktop Extras
-
-- **Hardware decoding** - VAAPI, NVDEC, VideoToolbox - your GPU does the work
-- **Zero transcoding** - Every format plays natively through libmpv
-- **Subtitle controls** - Pick tracks and resize text from the player overlay
-- **Instant seeking** - Jump to any point without waiting for the file to download
 
 ### :shield: Privacy
 
@@ -87,7 +65,7 @@ Rattin is a single self-hosted process that does all of it — browse TMDB, clic
 
 ## Install
 
-### :desktop_computer: Desktop App (Linux)
+### :desktop_computer: Linux
 
 One command:
 
@@ -101,20 +79,7 @@ To update, rerun the same command. To uninstall: add `--uninstall`.
 
 You can also grab the AppImage directly from the [latest release](https://github.com/rattin-player/rattin-public/releases/latest) and run it manually.
 
-### :globe_with_meridians: Web Mode (self-hosted server)
-
-For running as a web server accessible from any browser on your network:
-
-```bash
-git clone https://github.com/rattin-player/rattin-public.git && cd rattin-public
-npm install && npm run build
-echo "TMDB_API_KEY=your_key" > .env
-npm start
-```
-
-Open `http://<your-ip>:3000` from any device. Requires Node.js 20+ and ffmpeg.
-
-### :window: Desktop App (Windows)
+### :window: Windows
 
 Coming soon.
 
@@ -125,7 +90,7 @@ Coming soon.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TMDB_API_KEY` | Yes | Free API key from [themoviedb.org](https://www.themoviedb.org/settings/api) |
-| `PORT` | No | Server port (default: 3000, native mode uses 9630) |
+| `PORT` | No | Server port (default: 9630) |
 
 ### Debrid Setup
 
@@ -139,11 +104,11 @@ Coming soon.
 | **Always use debrid** | Every play goes through Real-Debrid. Waits for RD to download if not cached. Best seeking, full privacy, but uncached content has a cold start delay. |
 | **Cached only** | Uses debrid when content is already cached on RD (instant). Falls back to WebTorrent for uncached content (zero delay). |
 
-### VPN Setup (optional)
+### VPN Setup (optional, Linux only)
 
 1. Get a WireGuard config from your VPN provider (Mullvad, ProtonVPN, IVPN, etc.)
 2. Place it at `~/.config/rattin/wg/wg0.conf`
-3. Start Rattin via the VPN supervisor: `./rattin-vpn` instead of `node server.ts`
+3. Start Rattin via the VPN supervisor: `./rattin-vpn` instead of the AppImage
 4. Toggle VPN on/off from the shield icon in the navbar
 
 The VPN isolates only Rattin's traffic in a Linux network namespace. Your browser, other apps, and system traffic stay on your normal connection.
@@ -156,42 +121,38 @@ The VPN isolates only Rattin's traffic in a Linux network namespace. Your browse
 ### Architecture
 
 ```
-                    Native Mode                          Web Mode
-               +-------------------+              +-------------------+
-               |    Qt6 Window     |              |      Browser      |
-               |  +-------------+  |              |                   |
-               |  |   libmpv    |  |              |    React App      |
-               |  |   (video)   |  |              |  + HTML5 <video>  |
-               |  +-------------+  |              |                   |
-               |  | QML Controls|  |              +--------+----------+
-               |  +-------------+  |                       |
-               |  | WebEngine   |  |                       |
-               |  | (React App) |  |                       |
-               |  +------+------+  |                       |
-               +---------+---------+                       |
-                         |                                 |
-            -------------+---------------------------------+
-                              Express API
-            ------------------------------------------------
+               +-------------------+
+               |    Qt6 Window     |
+               |  +-------------+  |
+               |  |   libmpv    |  |
+               |  |   (video)   |  |
+               |  +-------------+  |
+               |  | QML Controls|  |
+               |  +-------------+  |
+               |  | WebEngine   |  |
+               |  | (React App) |  |
+               |  +------+------+  |
+               +---------+---------+
+                         |
+            -------------+-------------
+                   Express API
+            ---------------------------
                |           |           |           |
          +-----+-----+ +--+---+ +-----+------+ +--+------+
          | WebTorrent| |ffmpeg| |TMDB + Search| |Real-Debrid|
          +-----------+ +------+ +-------------+ +-----------+
 ```
 
-In native mode, the React app runs inside Qt's WebEngineView. When a video plays, React sends the stream URL to mpv via QWebChannel instead of setting `<video>.src`. mpv renders the video in an OpenGL framebuffer object layered above the webview, with a QML controls overlay on top.
+The React app runs inside Qt's WebEngineView. When a video plays, React sends the stream URL to mpv via QWebChannel. mpv renders the video in an OpenGL framebuffer object layered above the webview, with a QML controls overlay on top. Every format plays natively — no transcoding needed.
 
 ### How Streaming Works
 
 | Scenario | Strategy |
 |----------|----------|
-| Complete file, browser-native (MP4/WebM) | Direct HTTP range requests |
-| Complete file, non-native (MKV/AVI) | Live ffmpeg transcode to fragmented MP4 |
-| Incomplete file, browser-native | WebTorrent stream + piece prioritization |
-| Incomplete file, non-native | ffmpeg transcode from torrent stream |
+| Complete file on disk | Direct HTTP range requests to mpv |
+| Incomplete file | WebTorrent stream + piece prioritization to mpv |
 | Seeking in incomplete file | Keyframe index + prioritize pieces at target |
-| **Native mode (any file)** | **Raw bytes to mpv - no transcode** |
-| **Debrid (any file)** | **HTTPS stream from Real-Debrid — full range support** |
+| Debrid | HTTPS stream from Real-Debrid — full range support |
 
 ### Native Shell
 
@@ -211,9 +172,9 @@ The phone remote uses Server-Sent Events (SSE) for real-time communication:
 1. PC creates an RC session and generates a QR code containing `http://<lan-ip>:9630/api/rc/auth?session=X&token=Y`
 2. Phone scans QR, authenticates, and connects to the SSE stream
 3. PC reports playback state every second; phone sends commands via POST
-4. In native mode, commands route through the mpv bridge (play/pause/seek/volume/subtitles)
+4. Commands route through the mpv bridge (play/pause/seek/volume/subtitles)
 
-The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Firewall port 9630 is opened automatically on start and closed on exit.
+The app binds to `0.0.0.0` so phones on the same LAN can reach it. Firewall port 9630 is opened by the install script.
 
 ### Privacy Architecture
 
@@ -230,7 +191,6 @@ The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Fire
 | Torrents | WebTorrent |
 | Debrid | Real-Debrid REST API |
 | Native Shell | Qt6, libmpv, QWebChannel, CMake |
-| Transcoding | ffmpeg / ffprobe |
 | Intro Detection | Chromaprint (fpcalc) + AniSkip API |
 | Metadata | TMDB API |
 | Remote | Server-Sent Events + QR (uqr) |
@@ -240,7 +200,7 @@ The native shell binds to `0.0.0.0` so phones on the same LAN can reach it. Fire
 
 ```bash
 npm run dev     # Vite dev server with hot reload (port 5173)
-npm start       # Backend (port 3000, proxied by Vite)
+npm start       # Backend (port 9630, proxied by Vite)
 ```
 
 </details>
