@@ -39,6 +39,10 @@ $NodeVersion = "20.18.1"
 $AppName     = "Rattin"
 $Arch        = "x64"
 
+# Read version from package.json
+$Version = (Get-Content (Join-Path $RepoRoot "package.json") | ConvertFrom-Json).version
+Log "Building Rattin v$Version"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -91,6 +95,15 @@ if (Test-Path $MpvDll) {
     New-Item -ItemType Directory -Force -Path $MpvDir | Out-Null
     & 7z x $mpv7z -o"$MpvDir" -y
     Remove-Item $mpv7z
+}
+
+# rcedit (for branding node.exe)
+$RceditExe = Join-Path $ToolsDir "rcedit.exe"
+if (Test-Path $RceditExe) {
+    Skip "rcedit already downloaded"
+} else {
+    Log "Downloading rcedit"
+    Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile $RceditExe
 }
 
 # ---------------------------------------------------------------------------
@@ -153,8 +166,17 @@ if ($windeployqt) {
     Warn "windeployqt not found — Qt DLLs must be copied manually"
 }
 
-# Node.js
+# Node.js → branded as rattin-runtime.exe
 Copy-Item $NodeExe $DistDir
+$RuntimeExe = Join-Path $DistDir "rattin-runtime.exe"
+Rename-Item (Join-Path $DistDir "node.exe") $RuntimeExe
+Log "Branding rattin-runtime.exe"
+& $RceditExe $RuntimeExe `
+    --set-icon (Join-Path $DistDir "rattin.ico") `
+    --set-version-string "ProductName" "RattinRuntime" `
+    --set-version-string "FileDescription" "Rattin Server Runtime" `
+    --set-version-string "OriginalFilename" "rattin-runtime.exe" `
+    --set-version-string "InternalName" "rattin-runtime"
 
 # libmpv DLL
 Copy-Item $MpvDll $DistDir
@@ -191,7 +213,7 @@ Copy-Item (Join-Path $RepoRoot "public") (Join-Path $AppDir "public") -Recurse
 # Production node_modules
 Log "Installing production dependencies"
 Push-Location $AppDir
-& (Join-Path $DistDir "node.exe") (Join-Path $NodeDir "node_modules/npm/bin/npm-cli.js") ci --omit=dev
+& $RuntimeExe (Join-Path $NodeDir "node_modules/npm/bin/npm-cli.js") ci --omit=dev
 Pop-Location
 
 # ---------------------------------------------------------------------------
@@ -210,7 +232,10 @@ $nsiScript = Join-Path $RepoRoot "packaging/windows/rattin.nsi"
 if ($makensis -and (Test-Path $nsiScript)) {
     Log "Building NSIS installer"
     $setupOutput = Join-Path $RepoRoot "$AppName-$Arch-Setup.exe"
-    & makensis /DVERSION="2.0.0" /DDIST_DIR="$DistDir" /DOUTPUT="$setupOutput" $nsiScript
+    $pluginDir = Join-Path $RepoRoot "packaging/windows/Plugins"
+    & makensis /DVERSION="$Version" /DDIST_DIR="$DistDir" /DOUTPUT="$setupOutput" `
+        /X"!addplugindir /x86-unicode $pluginDir\x86-unicode" `
+        $nsiScript
     Log "Installer: $setupOutput"
 } else {
     if (-not $makensis) { Warn "makensis not found — skipping NSIS installer" }
