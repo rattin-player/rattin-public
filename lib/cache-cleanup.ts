@@ -51,7 +51,7 @@ export async function dirSize(dir: string): Promise<number> {
       if (s.isDirectory()) {
         total += await dirSize(fullPath);
       } else {
-        total += s.size;
+        total += s.blocks !== undefined ? s.blocks * 512 : s.size;
       }
     } catch {
       // skip unreadable entries
