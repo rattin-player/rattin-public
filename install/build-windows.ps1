@@ -39,10 +39,6 @@ $NodeVersion = "20.18.1"
 $AppName     = "Rattin"
 $Arch        = "x64"
 
-# Read version from package.json
-$Version = (Get-Content (Join-Path $RepoRoot "package.json") | ConvertFrom-Json).version
-Log "Building Rattin v$Version"
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -50,6 +46,10 @@ function Log($msg)  { Write-Host "[INFO]  $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
 function Skip($msg) { Write-Host "[SKIP]  $msg" -ForegroundColor Cyan }
 function Die($msg)  { Write-Host "[ERROR] $msg" -ForegroundColor Red; exit 1 }
+
+# Read version from package.json
+$Version = (Get-Content (Join-Path $RepoRoot "package.json") | ConvertFrom-Json).version
+Log "Building Rattin v$Version"
 
 # ---------------------------------------------------------------------------
 # Clean
@@ -176,7 +176,9 @@ Log "Branding rattin-runtime.exe"
     --set-version-string "ProductName" "RattinRuntime" `
     --set-version-string "FileDescription" "Rattin Server Runtime" `
     --set-version-string "OriginalFilename" "rattin-runtime.exe" `
-    --set-version-string "InternalName" "rattin-runtime"
+    --set-version-string "InternalName" "rattin-runtime" `
+    --set-version-string "FileVersion" "$Version" `
+    --set-version-string "ProductVersion" "$Version"
 
 # libmpv DLL
 Copy-Item $MpvDll $DistDir

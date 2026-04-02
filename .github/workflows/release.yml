@@ -169,12 +169,15 @@ jobs:
         run: |
           $dist = "Rattin"
           Rename-Item "$dist\node.exe" "rattin-runtime.exe"
+          $version = "${{ steps.version.outputs.VERSION }}"
           & .\rcedit.exe "$dist\rattin-runtime.exe" `
             --set-icon "$dist\rattin.ico" `
             --set-version-string "ProductName" "RattinRuntime" `
             --set-version-string "FileDescription" "Rattin Server Runtime" `
             --set-version-string "OriginalFilename" "rattin-runtime.exe" `
-            --set-version-string "InternalName" "rattin-runtime"
+            --set-version-string "InternalName" "rattin-runtime" `
+            --set-version-string "FileVersion" "$version" `
+            --set-version-string "ProductVersion" "$version"
 
       - name: Create portable ZIP
         shell: pwsh

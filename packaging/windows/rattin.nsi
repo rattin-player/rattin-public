@@ -103,6 +103,8 @@ Var TorrentCheckboxValue
         Goto done
         killapp:
         ${nsProcess::KillProcess} "${APP_EXE}" $R0
+        ; Also kill the Node.js runtime child process to release file locks
+        ${nsProcess::KillProcess} "rattin-runtime.exe" $R0
         Sleep 2000
     ${EndIf}
     done:
