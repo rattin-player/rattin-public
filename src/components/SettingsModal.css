@@ -175,6 +175,41 @@
   50% { opacity: 0.8; }
 }
 
+.settings-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
+.settings-badge-muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+}
+
+.settings-clear-btn {
+  padding: 9px;
+  background: rgba(251, 113, 133, 0.08);
+  border: 1px solid rgba(251, 113, 133, 0.2);
+  color: var(--red);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all var(--transition);
+}
+
+.settings-clear-btn:hover:not(:disabled) {
+  background: rgba(251, 113, 133, 0.15);
+  border-color: rgba(251, 113, 133, 0.35);
+}
+
+.settings-clear-btn:disabled {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--border);
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* TMDB Setup — full-screen blocking overlay */
 .tmdb-setup-overlay {
   position: fixed;

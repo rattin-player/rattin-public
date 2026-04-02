@@ -1,6 +1,6 @@
 // Audio fingerprint extraction (via fpcalc) and cross-correlation for intro detection.
 import { execFile } from "child_process";
-import { mkdtempSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import type { CrossCorrelationResult, FingerprintResult } from "./types.js";
@@ -111,14 +111,13 @@ export function extractFingerprint(filePath: string, durationSec: number = 300):
       ["-i", filePath, "-t", String(durationSec), "-ac", "1", "-ar", "16000", "-f", "wav", tmpWav, "-y", "-loglevel", "error"],
       { timeout: FPCALC_TIMEOUT },
       (ffErr) => {
-        if (ffErr) return reject(ffErr);
+        if (ffErr) { rmSync(tmpDir, { recursive: true, force: true }); return reject(ffErr); }
         execFile(
           "fpcalc",
           ["-raw", "-json", tmpWav],
           { timeout: FPCALC_TIMEOUT },
           (err, stdout) => {
-            // Clean up temp dir
-            import("fs").then(fs => fs.rm(tmpDir, { recursive: true, force: true }, () => {}));
+            rmSync(tmpDir, { recursive: true, force: true });
             if (err) return reject(err);
             try {
               const data = JSON.parse(stdout);

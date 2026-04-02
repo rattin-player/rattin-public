@@ -146,6 +146,17 @@ export function fetchIntroTimestamps(infoHash: string, fileIndex: string | numbe
   return get(`/api/intro/${infoHash}/${fileIndex}${qs ? `?${qs}` : ""}`);
 }
 
+// ── Cache ─────────────────────────────────────────────────────────
+
+export function getCacheSize(): Promise<{ bytes: number; formatted: string }> {
+  return get("/api/cache/size");
+}
+
+export async function clearCache(): Promise<void> {
+  const res = await fetch("/api/cache", { method: "DELETE" });
+  if (!res.ok) throw new Error("clear_failed");
+}
+
 // ── Debrid ─────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

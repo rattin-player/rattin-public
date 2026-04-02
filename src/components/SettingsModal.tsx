@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache } from "../lib/api";
 import "./SettingsModal.css";
 
 interface SettingsModalProps {
@@ -22,9 +22,12 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [cacheSize, setCacheSize] = useState<{ bytes: number; formatted: string } | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     loadStatus();
+    loadCacheSize();
   }, []);
 
   async function loadStatus() {
@@ -41,6 +44,23 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     } catch {
       setStatus({ configured: false });
     }
+  }
+
+  async function loadCacheSize() {
+    try {
+      setCacheSize(await getCacheSize());
+    } catch {
+      setCacheSize({ bytes: 0, formatted: "0 B" });
+    }
+  }
+
+  async function handleClearCache() {
+    setClearing(true);
+    try {
+      await clearCache();
+      await loadCacheSize();
+    } catch {}
+    setClearing(false);
   }
 
   async function handleSave() {
@@ -194,6 +214,26 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             {verifying && <p className="settings-status">Verifying...</p>}
             {error && <p className="settings-error">{error}</p>}
             {success && <p className="settings-success">{success}</p>}
+          </div>
+
+          <div className="settings-divider" />
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4>Storage</h4>
+              {cacheSize && (
+                <span className="settings-badge settings-badge-muted">{cacheSize.formatted}</span>
+              )}
+            </div>
+            <p className="pair-desc">
+              Streamed video files are cached locally for faster replay. Files older than 24 hours are automatically cleaned on startup.
+            </p>
+            <button
+              className="settings-clear-btn"
+              onClick={handleClearCache}
+              disabled={clearing || !cacheSize || cacheSize.bytes === 0}
+            >
+              {clearing ? "Clearing..." : "Clear cache"}
+            </button>
           </div>
         </div>
       </div>
