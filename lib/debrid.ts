@@ -345,10 +345,10 @@ class TorBoxProvider implements DebridProvider {
     const result = new Map<string, boolean>();
     if (infoHashes.length === 0) return result;
 
-    // Batch up to 100 hashes per request
+    // Batch up to 50 hashes per request (keep URL under ~2048 chars)
     const batches: string[][] = [];
-    for (let i = 0; i < infoHashes.length; i += 100) {
-      batches.push(infoHashes.slice(i, i + 100));
+    for (let i = 0; i < infoHashes.length; i += 50) {
+      batches.push(infoHashes.slice(i, i + 50));
     }
 
     for (const batch of batches) {
@@ -437,7 +437,7 @@ class TorBoxProvider implements DebridProvider {
 
   private pickFile(files: TBFileInfo[], preferredIdx?: number): TBFileInfo | null {
     if (preferredIdx !== undefined) {
-      const target = files[preferredIdx];
+      const target = files.find((f) => f.id === preferredIdx);
       if (target && isVideoFile(target.name)) return target;
     }
     const videoFiles = files.filter((f) => isVideoFile(f.name));
@@ -457,11 +457,12 @@ class TorBoxProvider implements DebridProvider {
       if (data.download_finished) return data;
 
       const state = data.download_state;
-      if (state === "stalled (no seeds)" || state === "paused") {
+      const errorStates = ["stalled (no seeds)", "paused", "error", "failed"];
+      if (errorStates.includes(state)) {
         throw new Error(`debrid_torrent_${state.replace(/\s+/g, "_")}`);
       }
 
-      await new Promise((r) => setTimeout(r, timeoutMs <= 30000 ? 1000 : 2000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     throw new Error("debrid_timeout");
