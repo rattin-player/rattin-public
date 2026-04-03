@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { backdrop } from "../lib/api";
 import "./HeroSection.css";
@@ -7,7 +8,7 @@ interface HeroSectionProps {
   item: any;
 }
 
-export default function HeroSection({ item }: HeroSectionProps) {
+export default memo(function HeroSection({ item }: HeroSectionProps) {
   const navigate = useNavigate();
   if (!item) return <div className="hero skeleton" style={{ height: "70vh" }} />;
 
@@ -39,4 +40,4 @@ export default function HeroSection({ item }: HeroSectionProps) {
       </div>
     </div>
   );
-}
+})

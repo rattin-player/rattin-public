@@ -39,7 +39,7 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
       })
       .catch(() => { if (!cancelled) setItems([]); });
     return () => { cancelled = true; };
-  }, []);
+  }, [fetchFn]);
 
   function scroll(dir: number) {
     const el = scrollRef.current;

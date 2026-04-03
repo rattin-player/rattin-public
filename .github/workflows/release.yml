@@ -222,10 +222,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          PRERELEASE=""
+          if [[ "${{ github.ref_name }}" == *"-rc"* ]]; then
+            PRERELEASE="--prerelease"
+          fi
           gh release create "${{ github.ref_name }}" \
             --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
+            $PRERELEASE \
             Rattin-x86_64.AppImage/Rattin-x86_64.AppImage \
             Rattin-x64-Portable.zip/Rattin-x64-Portable.zip \
             Rattin-x64-Setup.exe/Rattin-x64-Setup.exe

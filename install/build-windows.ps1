@@ -124,17 +124,28 @@ if (Test-Path $PublicIndex) {
 # Step 3: Build Qt shell
 # ---------------------------------------------------------------------------
 $ShellExe = Join-Path $RepoRoot "shell/build/Release/rattin-shell.exe"
-if (Test-Path $ShellExe) {
+$ShellExeNinja = Join-Path $RepoRoot "shell/build/rattin-shell.exe"
+if ((Test-Path $ShellExe) -or (Test-Path $ShellExeNinja)) {
     Skip "Qt shell already built"
+    # Normalize path for later steps
+    if (Test-Path $ShellExeNinja) { $ShellExe = $ShellExeNinja }
 } else {
     Log "Building Qt shell"
     $shellBuild = Join-Path $RepoRoot "shell/build"
     New-Item -ItemType Directory -Force -Path $shellBuild | Out-Null
     Push-Location $shellBuild
-    & cmake -G "Visual Studio 17 2022" -A x64 `
-        -DMPV_PREFIX="$MpvDir" `
-        ..
-    & cmake --build . --config Release
+    # Use Ninja if available (works with BuildTools), fall back to VS generator
+    $ninja = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($ninja) {
+        & cmake -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DMPV_PREFIX="$MpvDir" ..
+        & cmake --build .
+        $ShellExe = $ShellExeNinja
+    } else {
+        & cmake -G "Visual Studio 17 2022" -A x64 `
+            -DMPV_PREFIX="$MpvDir" ..
+        & cmake --build . --config Release
+    }
     Pop-Location
 }
 
