@@ -21,7 +21,9 @@ interface SearchResult {
 }
 
 export default function searchRoutes(app: Express, ctx: ServerContext): void {
-  const { client, log, DOWNLOAD_PATH, availabilityCache, AVAIL_TTL } = ctx;
+  const { log, DOWNLOAD_PATH, availabilityCache, AVAIL_TTL } = ctx;
+  // Access ctx.client via getter (not destructured) so deferred init is visible
+  const client = () => ctx.client;
 
 const TRACKERS = [
   "udp://tracker.opentrackr.org:1337/announce",
@@ -376,7 +378,7 @@ app.post("/api/resolve-formats", async (req: Request, res: Response) => {
   await Promise.all(infoHashes.map((hash) => {
     return new Promise<void>((resolve) => {
       // Already loaded?
-      const existing = client.torrents.find((t) => t.infoHash === hash);
+      const existing = client().torrents.find((t) => t.infoHash === hash);
       if (existing && existing.files.length > 0) {
         const files = existing.files.map((f) => f.name);
         results[hash] = { files, numPeers: existing.numPeers };
@@ -389,14 +391,14 @@ app.post("/api/resolve-formats", async (req: Request, res: Response) => {
       const timeout = setTimeout(() => {
         // Timed out — remove if we added it just for metadata
         if (!existing) {
-          const t = client.torrents.find((t) => t.infoHash === hash);
+          const t = client().torrents.find((t) => t.infoHash === hash);
           if (t) try { t.destroy({ destroyStore: true }); } catch {}
         }
         resolve();
       }, 8000);
 
       try {
-        const t = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+        const t = client().add(magnet, { path: DOWNLOAD_PATH, deselect: true });
         t.on("ready", () => {
           clearTimeout(timeout);
           const files = t.files.map((f) => f.name);
@@ -424,7 +426,7 @@ app.post("/api/live-peers", (req: Request, res: Response) => {
   }
   const results: Record<string, { numPeers: number; downloadSpeed: number }> = {};
   for (const hash of infoHashes) {
-    const t = client.torrents.find((t) => t.infoHash === hash);
+    const t = client().torrents.find((t) => t.infoHash === hash);
     if (t) {
       results[hash] = { numPeers: t.numPeers, downloadSpeed: t.downloadSpeed };
     }
@@ -568,7 +570,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     }
 
     // Reuse existing torrent if already in client
-    const existing = client.torrents.find(
+    const existing = client().torrents.find(
       (t) => t.infoHash === best.infoHash || t.infoHash === best.infoHash.toLowerCase()
     );
 
@@ -605,7 +607,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
       const timeout = setTimeout(() => reject(new Error("Timed out waiting for metadata")), 30000);
       let torrent: Torrent;
       try {
-        torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+        torrent = client().add(magnet, { path: DOWNLOAD_PATH, deselect: true });
       } catch (err) {
         clearTimeout(timeout);
         reject(err);
@@ -706,7 +708,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
     }
   }
 
-  const existing = client.torrents.find(
+  const existing = client().torrents.find(
     (t) => t.infoHash === infoHash || t.infoHash === infoHash.toLowerCase()
   );
 
@@ -734,7 +736,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
       const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
       let torrent: Torrent;
       try {
-        torrent = client.add(magnet, { path: DOWNLOAD_PATH, deselect: true });
+        torrent = client().add(magnet, { path: DOWNLOAD_PATH, deselect: true });
       } catch (err) {
         clearTimeout(timeout);
         reject(err);

@@ -12,16 +12,18 @@ import type { ServerContext } from "../lib/types.js";
 
 export default function streamRoutes(app: Express, ctx: ServerContext): void {
   const {
-    client, log, diskPath, isFileComplete, streamTracking,
+    log, diskPath, isFileComplete, streamTracking,
     durationCache,
     completedFiles, activeTranscodes, probeCache,
   } = ctx;
+  // Access ctx.client via getter (not destructured) so deferred init is visible
+  const client = () => ctx.client;
 
   const probeMedia = (filePath: string) => _probeMedia(filePath, probeCache, log);
 
   app.get("/api/stream/:infoHash/:fileIndex", streamTracking, async (req: Request, res: Response) => {
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     // Torrent removed but file still on disk — serve directly
     if (!torrent) {

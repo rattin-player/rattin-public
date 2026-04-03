@@ -13,9 +13,11 @@ import { getActiveDebridUrl } from "../lib/debrid.js";
 
 export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   const {
-    client, log, diskPath, isFileComplete, DOWNLOAD_PATH,
+    log, diskPath, isFileComplete, DOWNLOAD_PATH,
     durationCache, introCache,
   } = ctx;
+  // Access ctx.client via getter (not destructured) so deferred init is visible
+  const client = () => ctx.client;
 
   // Duration endpoint - ffprobe the video to get total duration
   app.get("/api/duration/:infoHash/:fileIndex", (req: Request, res: Response) => {
@@ -25,7 +27,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
       return res.json({ duration: durationCache.get(cacheKey) });
     }
 
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     let filePath: string;
 
     if (torrent) {
@@ -66,7 +68,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   // Subtitle endpoint - converts any subtitle format to WebVTT
   app.get("/api/subtitle/:infoHash/:fileIndex", (req: Request, res: Response) => {
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
     const file = torrent.files[parseInt(fileIndex, 10)];
@@ -160,7 +162,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     res.removeHeader("ETag");
     res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     let filePath: string;
     let complete: boolean;
@@ -213,7 +215,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   app.get("/api/audio-tracks/:infoHash/:fileIndex", (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     let filePath: string;
     let complete: boolean;
@@ -282,7 +284,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     // Collect sibling video files for fingerprinting
     const siblingPaths: string[] = [];
     let currentPath: string | null = null;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     if (torrent) {
       // Torrent is active — scan its file list
@@ -380,7 +382,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   // Extract an embedded subtitle stream as WebVTT
   app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req: Request, res: Response) => {
     const params = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === params.infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === params.infoHash);
 
     let filePath: string;
 
