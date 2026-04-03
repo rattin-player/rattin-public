@@ -282,4 +282,5 @@ export interface ServerContext {
   trackStreamOpen(infoHash: string): void;
   trackStreamClose(infoHash: string): void;
   streamTracking(req: Request, res: Response, next: NextFunction): void;
+  initClient(): TorrentClient;
 }

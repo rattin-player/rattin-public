@@ -24,6 +24,7 @@ import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 interface CreateAppOverrides {
   __dirname?: string;
   client?: TorrentClient;
+  deferClient?: boolean;
 }
 
 interface AppContext {
@@ -42,6 +43,7 @@ interface AppContext {
   rcSessions: ServerContext["rcSessions"];
   idleTracker: IdleTracker;
   pcAuthToken: string;
+  initClient: ServerContext["initClient"];
 }
 
 export function createApp(overrides: CreateAppOverrides = {}): AppContext {
@@ -49,7 +51,7 @@ export function createApp(overrides: CreateAppOverrides = {}): AppContext {
   const app = express();
   const ctx = createContext(overrides);
   const {
-    client, durationCache, seekIndexCache, seekIndexPending,
+    durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
     availabilityCache, AVAIL_TTL, introCache, probeCache, pcAuthToken,
     log, cleanupTorrentCaches, rcSessions,
@@ -75,7 +77,7 @@ const idleTracker = createIdleTracker({
     // Purge expired TMDB entries
     tmdbCache.purgeExpired();
     // Destroy torrents that have no active streams
-    for (const torrent of [...client.torrents]) {
+    for (const torrent of [...ctx.client.torrents]) {
       const st = streamTracker.get(torrent.infoHash);
       if (!st || st.count === 0) {
         cleanupTorrentCaches(torrent.infoHash, torrent);
@@ -98,7 +100,7 @@ const idleTracker = createIdleTracker({
     streamTracker.clear();
     probeCache.clear();
     introCache.clear();
-    for (const torrent of [...client.torrents]) {
+    for (const torrent of [...ctx.client.torrents]) {
       log("info", "Hard idle: removing torrent", { name: torrent.name });
       torrent.destroy({ destroyStore: false });
     }
@@ -132,7 +134,7 @@ openUrlRoutes(app, ctx);
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {
-  const activeHashes = new Set(client.torrents.map((t) => t.infoHash));
+  const activeHashes = new Set(ctx.client.torrents.map((t) => t.infoHash));
   let pruned = pruneOrphans(activeHashes, statSync);
   // Availability cache has its own TTL — prune separately
   const now = Date.now();
@@ -149,7 +151,8 @@ app.get("/{*splat}", (_req: Request, res: Response) => {
 });
 
   return {
-    app, client, durationCache, seekIndexCache, seekIndexPending,
+    app, get client() { return ctx.client; }, initClient: ctx.initClient,
+    durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes, availabilityCache,
     probeCache, introCache, rcSessions, idleTracker, pcAuthToken,
   };
@@ -195,31 +198,18 @@ function restoreSessions(client: ServerContext["client"], downloadPath: string):
 }
 
 if (isMain) {
-  const { app, client, activeTranscodes } = createApp();
-
-  // Sweep stale cache files (>24h) before restoring sessions
-  const dlDir = downloadDir();
-  sweepOldFiles(dlDir, (level, msg, data) => {
-    const ts = new Date().toISOString().slice(11, 23);
-    const prefix = ({ info: "INFO", warn: "WARN", err: " ERR" } as Record<string, string>)[level] || level;
-    const extra = data ? " " + JSON.stringify(data) : "";
-    console.log(`[${ts}] ${prefix}  ${msg}${extra}`);
-  }).then((n) => {
-    if (n > 0) console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Swept ${n} stale cache entries`);
-  });
-
-  // Restore sessions from a previous VPN toggle restart
-  restoreSessions(client, dlDir);
+  const ctx = createApp({ deferClient: true });
+  const { app, activeTranscodes } = ctx;
 
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
-    dumpSessions(client);
+    dumpSessions(ctx.client);
     // Kill any active ffmpeg transcode processes so they don't linger as orphans
     for (const [key, entry] of activeTranscodes) {
       entry.cleanup();
       activeTranscodes.delete(key);
     }
-    client.destroy(() => {
+    ctx.client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
       process.exit(0);
     });
@@ -236,5 +226,21 @@ if (isMain) {
   const HOST = process.env.HOST || "127.0.0.1";
   app.listen(PORT, HOST, () => {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://${HOST}:${PORT}`);
+
+    // Phase 2: heavy init — runs after server is listening so the
+    // Qt shell's health-check poll succeeds immediately.
+    const client = ctx.initClient();
+
+    const dlDir = downloadDir();
+    sweepOldFiles(dlDir, (level, msg, data) => {
+      const ts = new Date().toISOString().slice(11, 23);
+      const prefix = ({ info: "INFO", warn: "WARN", err: " ERR" } as Record<string, string>)[level] || level;
+      const extra = data ? " " + JSON.stringify(data) : "";
+      console.log(`[${ts}] ${prefix}  ${msg}${extra}`);
+    }).then((n) => {
+      if (n > 0) console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Swept ${n} stale cache entries`);
+    });
+
+    restoreSessions(client, dlDir);
   });
 }
