@@ -1,6 +1,6 @@
 {
   "name": "rattin",
-  "version": "2.5.2",
+  "version": "2.5.2-rc.2",
   "description": "",
   "type": "module",
   "main": "server.ts",
@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "bundle": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:utp-native --external:node-datachannel --external:bufferutil --external:utf-8-validate --target=node20 --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
     "test": "node --import tsx/esm --test test/*.test.ts test/lib/*.test.ts test/routes/*.test.ts"
   },
   "keywords": [],
@@ -31,6 +32,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.5.2",
+    "esbuild": "^0.28.0",
     "typescript": "^6.0.2",
     "vite": "^6.3.5"
   }

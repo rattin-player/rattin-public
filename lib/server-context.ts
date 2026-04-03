@@ -15,10 +15,23 @@ import type {
 
 interface CreateContextOverrides {
   client?: TorrentClient;
+  deferClient?: boolean;
 }
 
 export function createContext(overrides: CreateContextOverrides = {}): ServerContext {
-  const client = overrides.client || new WebTorrent() as unknown as TorrentClient;
+  let clientReady = !overrides.deferClient;
+  let client: TorrentClient = overrides.client || (overrides.deferClient
+    ? { torrents: [], destroy(cb?: (err?: Error) => void) { cb?.(); } } as unknown as TorrentClient
+    : new WebTorrent() as unknown as TorrentClient);
+
+  function initClient(): TorrentClient {
+    if (clientReady) return client;
+    clientReady = true;
+    if (!overrides.client) {
+      client = new WebTorrent() as unknown as TorrentClient;
+    }
+    return client;
+  }
 
   const DOWNLOAD_PATH = downloadDir();
   const TRANSCODE_PATH = transcodeDir();
@@ -158,7 +171,9 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
   }
 
   return {
-    client, DOWNLOAD_PATH, TRANSCODE_PATH,
+    get client() { return client; },
+    initClient,
+    DOWNLOAD_PATH, TRANSCODE_PATH,
     durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
     availabilityCache, AVAIL_TTL, introCache, probeCache, pcAuthToken,

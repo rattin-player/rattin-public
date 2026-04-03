@@ -199,19 +199,27 @@ assemble_appdir() {
     mkdir -p "$APPDIR/usr/share/rattin/node/bin"
     cp "$TOOLS_DIR/node/bin/node" "$APPDIR/usr/share/rattin/node/bin/"
 
-    # App code
+    # Bundle server into single JS file
     local app_dest="$APPDIR/usr/share/rattin/app"
-    cp "$REPO_ROOT/server.ts" "$app_dest/"
-    cp -r "$REPO_ROOT/routes" "$app_dest/"
-    cp -r "$REPO_ROOT/lib" "$app_dest/"
+    log "Bundling server with esbuild..."
+    cd "$REPO_ROOT"
+    npx esbuild server.ts --bundle --platform=node --format=esm \
+        --outfile="$app_dest/server.js" \
+        --external:utp-native --external:node-datachannel \
+        --external:bufferutil --external:utf-8-validate \
+        --target=node20 \
+        "--banner:js=import{createRequire}from'module';const require=createRequire(import.meta.url);" \
+        2>&1 | tail -5
+
+    # App assets
     cp -r "$REPO_ROOT/public" "$app_dest/"
     cp "$REPO_ROOT/package.json" "$app_dest/"
     cp "$REPO_ROOT/package-lock.json" "$app_dest/"
-    cp "$REPO_ROOT/tsconfig.json" "$app_dest/"
     cp "$REPO_ROOT/.env.example" "$app_dest/"
 
-    # Production node_modules — use bundled node+npm so native addons
-    # compile against the same Node.js version that ships in the AppImage
+    # Production node_modules — only needed for native addons now.
+    # Use bundled node+npm so native addons compile against the same
+    # Node.js version that ships in the AppImage.
     log "Installing production dependencies..."
     cd "$app_dest"
     local bundled_node="$APPDIR/usr/share/rattin/node/bin/node"
