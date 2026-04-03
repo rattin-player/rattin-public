@@ -261,38 +261,35 @@ int main(int argc, char *argv[])
         }
     });
 
-    // Wait for server, then launch QML UI.
-    // IMPORTANT: waitForServer uses QTimer which needs the event loop.
-    // We call it before app.exec() — the timer starts but only fires
-    // once the event loop is running.
-    waitForServer(port, &app, [&app, port]() {
-        fprintf(stderr, "[shell] server ready, loading QML\n");
+    // Load QML immediately so the user sees a window right away.
+    // The WebView URL is set later once the server responds.
+    auto *bridge = new MpvBridge(&app);
 
-        auto *bridge = new MpvBridge(&app);
+    auto *engine = new QQmlApplicationEngine(&app);
+    engine->rootContext()->setContextProperty("serverPort", port);
+    engine->rootContext()->setContextProperty("initialUrl",
+        QString("http://127.0.0.1:%1?native=1").arg(port));
+    engine->rootContext()->setContextProperty("serverReady", false);
+    engine->rootContext()->setContextProperty("bridge", bridge);
 
-        auto *engine = new QQmlApplicationEngine(&app);
-        engine->rootContext()->setContextProperty("serverPort", port);
-        engine->rootContext()->setContextProperty("initialUrl",
-            QString("http://127.0.0.1:%1?native=1").arg(port));
-        engine->rootContext()->setContextProperty("bridge", bridge);
-
-        // Connect BEFORE load — load() is synchronous for qrc: URLs,
-        // so objectCreated fires during load() and would be missed otherwise.
-        QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [bridge](QObject *obj) {
-            if (!obj) return;
-            auto *mpvObj = obj->findChild<MpvObject *>();
-            if (mpvObj) {
-                bridge->attachMpv(mpvObj);
-                fprintf(stderr, "[shell] bridge attached to mpv\n");
-            } else {
-                fprintf(stderr, "[shell] WARNING: MpvObject not found in QML\n");
-            }
-        });
-
-        engine->load(QUrl("qrc:/main.qml"));
+    QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [bridge](QObject *obj) {
+        if (!obj) return;
+        auto *mpvObj = obj->findChild<MpvObject *>();
+        if (mpvObj) {
+            bridge->attachMpv(mpvObj);
+            fprintf(stderr, "[shell] bridge attached to mpv\n");
+        } else {
+            fprintf(stderr, "[shell] WARNING: MpvObject not found in QML\n");
+        }
     });
 
-    // app.exec() starts the event loop — this is when waitForServer's
-    // QTimer actually begins firing.
+    engine->load(QUrl("qrc:/main.qml"));
+
+    // Poll for server readiness. When ready, tell QML to show the WebView.
+    waitForServer(port, &app, [engine]() {
+        fprintf(stderr, "[shell] server ready\n");
+        engine->rootContext()->setContextProperty("serverReady", true);
+    });
+
     return app.exec();
 }
