@@ -75,6 +75,7 @@
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 600;
+  line-height: 1;
   letter-spacing: 0.5px;
   color: var(--accent-bright);
   transition: color var(--transition-slow), text-shadow var(--transition-slow);

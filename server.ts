@@ -17,6 +17,7 @@ import streamRoutes from "./routes/stream.js";
 import debridRoutes from "./routes/debrid.js";
 import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
+import openUrlRoutes from "./routes/open-url.js";
 import { sweepOldFiles } from "./lib/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 
@@ -127,6 +128,7 @@ streamRoutes(app, ctx);
 debridRoutes(app, ctx);
 vpnRoutes(app, ctx);
 cacheRoutes(app, ctx);
+openUrlRoutes(app, ctx);
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {

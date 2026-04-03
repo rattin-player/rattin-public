@@ -1,14 +1,16 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStopAndWait } from "./native-bridge";
+import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStop, mpvStopAndWait } from "./native-bridge";
 import { getRemoteSessionId, REMOTE_SESSION_EVENT } from "./remote-session";
+import { playbackKey } from "./playback-position";
 
 interface ActiveStream {
   infoHash: string;
   fileIndex: string;
   title: string;
   tags: string[];
+  debridStreamKey?: string;
 }
 
 interface EffectiveTime {
@@ -170,15 +172,14 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], _debridStreamKey?: string) => {
+  const startStream = useCallback((infoHash: string | number, fileIndex: string | number, title: string, tags: string[], debridStreamKey?: string) => {
     if (active?.infoHash === String(infoHash) && String(active?.fileIndex) === String(fileIndex)) {
       return;
     }
     // Save position of the current stream before switching (mirrors stopStream behavior)
     if (active) {
-      const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
       const t = effectiveTimeRef.current?.time || 0;
-      if (t > 0) sessionStorage.setItem(posKey, String(t));
+      if (t > 0) sessionStorage.setItem(playbackKey(active.infoHash, active.fileIndex), String(t));
     }
     const ih = String(infoHash);
     const fi = String(fileIndex);
@@ -190,15 +191,15 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     audioTracksRef.current = [];
     activeAudioRef.current = null;
     introRangeRef.current = null;
-    setActive({ infoHash: ih, fileIndex: fi, title, tags });
+    setActive({ infoHash: ih, fileIndex: fi, title, tags, debridStreamKey });
   }, [active]);
 
   const stopStream = useCallback(() => {
     if (active) {
-      const posKey = `playback:${active.infoHash}:${active.fileIndex}`;
       const t = effectiveTimeRef.current?.time || 0;
-      if (t > 0) sessionStorage.setItem(posKey, String(t));
+      if (t > 0) sessionStorage.setItem(playbackKey(active.infoHash, active.fileIndex), String(t));
     }
+    mpvStop();
     introRangeRef.current = null;
     setActive(null);
     setPlaying(false);
@@ -227,7 +228,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     const interval = setInterval(() => {
       if (active) {
         const t = effectiveTimeRef.current?.time || 0;
-        if (t > 0) sessionStorage.setItem(`playback:${active.infoHash}:${active.fileIndex}`, String(t));
+        if (t > 0) sessionStorage.setItem(playbackKey(active.infoHash, active.fileIndex), String(t));
       }
     }, 3000);
     return () => clearInterval(interval);

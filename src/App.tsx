@@ -11,6 +11,7 @@ import Player from "./pages/Player";
 import Search from "./pages/Search";
 import Remote from "./pages/Remote";
 import { getTmdbStatus } from "./lib/api";
+import { setupExternalLinkInterceptor } from "./lib/external-links";
 
 function Layout({ children }: { children: ReactNode }) {
   return (
@@ -27,6 +28,22 @@ function AppRoutes() {
   const { isRemote } = useRemoteMode();
   const { navigateRef, switching } = usePlayer();
   const isPlayer = location.pathname.startsWith("/play/");
+
+  // Smooth scroll to top on route changes (JS fallback for Qt WebEngine)
+  useEffect(() => {
+    const start = document.documentElement.scrollTop || document.body.scrollTop;
+    if (start === 0) return;
+    const duration = 300;
+    const startTime = performance.now();
+    function step(now: number) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      window.scrollTo(0, start * (1 - ease));
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }, [location.pathname]);
 
   // Wire up navigate for remote command handling
   useEffect(() => {
@@ -82,6 +99,10 @@ export default function App() {
   useEffect(() => {
     getTmdbStatus().then((s) => setTmdbReady(s.configured)).catch(() => setTmdbReady(false));
   }, []);
+
+  // Intercept external links so they open in the system browser
+  // (Qt WebEngine ignores target="_blank" by default)
+  useEffect(() => setupExternalLinkInterceptor(), []);
 
   // After first successful basic auth, set a 30-day cookie so the browser
   // doesn't prompt again. Fire-and-forget, runs once per page load.

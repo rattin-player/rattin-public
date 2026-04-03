@@ -71,7 +71,7 @@ export default function Navbar() {
       <Link to="/" className="navbar-brand">
         <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
           <rect x="2" y="2" width="28" height="28" rx="6" stroke="var(--accent)" strokeWidth="1.5" />
-          <text x="16" y="22" textAnchor="middle" fontFamily="Georgia,serif" fontSize="18" fontWeight="700" fill="var(--accent-bright)">R</text>
+          <text x="16" y="16" textAnchor="middle" dominantBaseline="central" fontFamily="Georgia,serif" fontSize="18" fontWeight="700" fill="var(--accent-bright)">R</text>
         </svg>
         <span>rattin</span>
       </Link>

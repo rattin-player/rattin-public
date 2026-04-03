@@ -16,6 +16,10 @@ export function fetchLanIp(): Promise<{ ip: string | null; port: number }> {
   return get("/api/rc/lan-ip");
 }
 
+export function fetchGenres(): Promise<{ genres: { id: number; name: string }[] }> {
+  return get("/api/tmdb/genres");
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fetchTrending(page = 1): Promise<any> {
   return get(`/api/tmdb/trending?page=${page}`);

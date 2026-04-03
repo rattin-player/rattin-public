@@ -119,6 +119,7 @@
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   transition: border-color var(--transition), color var(--transition);
+  cursor: pointer;
 }
 
 .detail-genre-pill:hover {
