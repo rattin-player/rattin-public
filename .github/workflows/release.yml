@@ -55,8 +55,11 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
+          # NSIS VIProductVersion requires numeric X.X.X format — strip pre-release suffix
+          $numericVersion = ($version -replace '-.*$', '')
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Version: $version"
+          echo "NUMERIC_VERSION=$numericVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version (numeric: $numericVersion)"
 
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
@@ -196,7 +199,7 @@ jobs:
           $output  = "$env:GITHUB_WORKSPACE/Rattin-x64-Setup.exe"
           $pluginDir = "$env:GITHUB_WORKSPACE/packaging/windows/Plugins"
           & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            /DVERSION="${{ steps.version.outputs.VERSION }}" `
+            /DVERSION="${{ steps.version.outputs.NUMERIC_VERSION }}" `
             /DDIST_DIR="$distDir" `
             /DOUTPUT="$output" `
             /X"!addplugindir /x86-unicode $pluginDir\x86-unicode" `
