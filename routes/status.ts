@@ -10,9 +10,11 @@ import { getActiveDebridFiles } from "../lib/debrid.js";
 
 export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {
-    client, log, diskPath,
+    log, diskPath,
     durationCache, completedFiles,
   } = ctx;
+  // Access ctx.client via getter (not destructured) so deferred init is visible
+  const client = () => ctx.client;
 
   function torrentInfo(torrent: Torrent) {
     const blocked: string[] = [];
@@ -36,7 +38,7 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
 
   app.get("/api/status/:infoHash", (req: Request, res: Response) => {
     const { infoHash } = req.params as Record<string, string>;
-    const torrent = client.torrents.find((t) => t.infoHash === infoHash);
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) {
       const diskFiles: Array<Record<string, unknown>> = [];
       for (const [key, info] of completedFiles) {
@@ -121,7 +123,7 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
   // Pause all other torrents, resume this one
   app.post("/api/set-active/:infoHash", (req: Request, res: Response) => {
     const { infoHash: activeHash } = req.params as Record<string, string>;
-    for (const t of client.torrents) {
+    for (const t of client().torrents) {
       if (t.infoHash === activeHash) {
         if (t.paused) t.resume();
       } else {
