@@ -137,12 +137,15 @@ Window {
         z: 3
     }
 
+    property bool pageLoaded: false
+
     WebEngineView {
         id: webView
         anchors.fill: parent
         url: serverReady ? initialUrl : "about:blank"
         z: 2
         webChannel: wChannel
+        backgroundColor: "#000000"
 
         onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceId) {
             console.log("[js]", message)
@@ -152,6 +155,7 @@ Window {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
                 webView.webChannel.registerObject("bridge", transport)
                 console.log("[shell] bridge registered on channel")
+                if (serverReady) root.pageLoaded = true
             }
         }
     }
@@ -160,11 +164,11 @@ Window {
         id: wChannel
     }
 
-    // Loading splash — shown until server is ready
+    // Loading splash — shown until the actual page has loaded
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        visible: !serverReady
+        visible: !root.pageLoaded
         z: 5
     }
 
