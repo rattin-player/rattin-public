@@ -13,6 +13,8 @@
 #include <QIcon>
 #include <QStandardPaths>
 #include <QtWebEngineQuick>
+#include <QWebEngineProfile>
+#include <QWebEngineSettings>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #else
@@ -72,6 +74,18 @@ int main(int argc, char *argv[])
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
+#ifdef Q_OS_WIN
+    // QWebEngine is forced into OpenGL mode (above) because mpv needs it,
+    // but Chromium on Windows is optimised for ANGLE/DirectX.  These flags
+    // reduce the performance gap by disabling the slow GL compositor and
+    // letting Chromium rasterise on the GPU instead.
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
+        "--disable-gpu-compositing "
+        "--enable-gpu-rasterization "
+        "--ignore-gpu-blocklist");
+#endif
+
+    // Must come after QTWEBENGINE_CHROMIUM_FLAGS is set (Windows, above).
     QtWebEngineQuick::initialize();
 
     QGuiApplication app(argc, argv);
@@ -269,6 +283,13 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[shell] server ready, loading QML\n");
 
         auto *bridge = new MpvBridge(&app);
+
+        // Configure QWebEngine disk cache so images/assets persist across navigations.
+        auto *profile = QWebEngineProfile::defaultProfile();
+        QString cachePath = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        profile->setCachePath(cachePath + "/webengine");
+        profile->setHttpCacheMaximumSize(200 * 1024 * 1024);  // 200 MB
+        profile->setHttpCacheType(QWebEngineProfile::DiskHttpCache);
 
         auto *engine = new QQmlApplicationEngine(&app);
         engine->rootContext()->setContextProperty("serverPort", port);
