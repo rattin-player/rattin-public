@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { poster } from "../lib/api";
 import { ratingColor } from "../lib/utils";
@@ -9,7 +10,7 @@ interface MovieCardProps {
   item: any;
 }
 
-export default function MovieCard({ item }: MovieCardProps) {
+export default memo(function MovieCard({ item }: MovieCardProps) {
   const navigate = useNavigate();
   const type = item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
@@ -36,4 +37,4 @@ export default function MovieCard({ item }: MovieCardProps) {
       </div>
     </div>
   );
-}
+})

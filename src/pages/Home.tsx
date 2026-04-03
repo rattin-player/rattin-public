@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
@@ -20,7 +20,7 @@ export default function Home() {
   const [hero, setHero] = useState<any>(null);
   const [genres, setGenres] = useState<{ id: number; name: string }[]>([]);
   const [genreFilter, setGenreFilter] = useState("");
-  const { from, to } = recentDateRange();
+  const { from, to } = useMemo(() => recentDateRange(), []);
 
   const filteredGenres = genreFilter
     ? genres.filter((g) => g.name.toLowerCase().includes(genreFilter.toLowerCase()))
@@ -60,30 +60,35 @@ export default function Home() {
           </button>
         ))}
       </div>
-      <div className="home-rows">
-        <ContentRow title="Trending This Week" fetchFn={() => fetchTrending()} filterAvailability />
-        <ContentRow
-          title="New Releases"
-          fetchFn={() => fetchDiscover("movie", "", 1, "popularity.desc", `&primary_release_date.gte=${from}&primary_release_date.lte=${to}`)}
-          filterAvailability
-        />
-        <ContentRow title="Popular Movies" fetchFn={() => fetchDiscover("movie", "", 1, "popularity.desc")} filterAvailability />
-        <ContentRow title="Popular TV Shows" fetchFn={() => fetchDiscover("tv", "", 1, "popularity.desc")} filterAvailability />
-        <ContentRow
-          title="Top Rated Movies"
-          fetchFn={() => fetchDiscover("movie", "", 1, "vote_average.desc", "&vote_count.gte=5000")}
-          filterAvailability
-        />
-        <ContentRow
-          title="Top Rated TV"
-          fetchFn={() => fetchDiscover("tv", "", 1, "vote_average.desc", "&vote_count.gte=2000")}
-          filterAvailability
-        />
-        <ContentRow title="Action" fetchFn={() => fetchDiscover("movie", 28)} filterAvailability />
-        <ContentRow title="Comedy" fetchFn={() => fetchDiscover("movie", 35)} filterAvailability />
-        <ContentRow title="Sci-Fi" fetchFn={() => fetchDiscover("movie", 878)} filterAvailability />
-        <ContentRow title="Horror" fetchFn={() => fetchDiscover("movie", 27)} filterAvailability />
-      </div>
+      <ContentRows from={from} to={to} />
     </div>
   );
 }
+
+const ContentRows = memo(function ContentRows({ from, to }: { from: string; to: string }) {
+  const fetchTrendingCb = useCallback(() => fetchTrending(), []);
+  const fetchNewReleases = useCallback(() => fetchDiscover("movie", "", 1, "popularity.desc", `&primary_release_date.gte=${from}&primary_release_date.lte=${to}`), [from, to]);
+  const fetchPopularMovies = useCallback(() => fetchDiscover("movie", "", 1, "popularity.desc"), []);
+  const fetchPopularTV = useCallback(() => fetchDiscover("tv", "", 1, "popularity.desc"), []);
+  const fetchTopMovies = useCallback(() => fetchDiscover("movie", "", 1, "vote_average.desc", "&vote_count.gte=5000"), []);
+  const fetchTopTV = useCallback(() => fetchDiscover("tv", "", 1, "vote_average.desc", "&vote_count.gte=2000"), []);
+  const fetchAction = useCallback(() => fetchDiscover("movie", 28), []);
+  const fetchComedy = useCallback(() => fetchDiscover("movie", 35), []);
+  const fetchSciFi = useCallback(() => fetchDiscover("movie", 878), []);
+  const fetchHorror = useCallback(() => fetchDiscover("movie", 27), []);
+
+  return (
+    <div className="home-rows">
+      <ContentRow title="Trending This Week" fetchFn={fetchTrendingCb} filterAvailability />
+      <ContentRow title="New Releases" fetchFn={fetchNewReleases} filterAvailability />
+      <ContentRow title="Popular Movies" fetchFn={fetchPopularMovies} filterAvailability />
+      <ContentRow title="Popular TV Shows" fetchFn={fetchPopularTV} filterAvailability />
+      <ContentRow title="Top Rated Movies" fetchFn={fetchTopMovies} filterAvailability />
+      <ContentRow title="Top Rated TV" fetchFn={fetchTopTV} filterAvailability />
+      <ContentRow title="Action" fetchFn={fetchAction} filterAvailability />
+      <ContentRow title="Comedy" fetchFn={fetchComedy} filterAvailability />
+      <ContentRow title="Sci-Fi" fetchFn={fetchSciFi} filterAvailability />
+      <ContentRow title="Horror" fetchFn={fetchHorror} filterAvailability />
+    </div>
+  );
+})
