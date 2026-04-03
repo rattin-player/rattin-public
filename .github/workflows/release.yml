@@ -129,9 +129,18 @@ jobs:
               exit 1
           }
 
-          # Node.js
+          # Node.js — copy, rename, and brand before npm ci uses it
           $nodeDir = Get-ChildItem node-build -Directory | Select-Object -First 1
-          Copy-Item "$($nodeDir.FullName)/node.exe" $dist/
+          Copy-Item "$($nodeDir.FullName)/node.exe" "$dist/rattin-runtime.exe"
+          $numVer = "${{ steps.version.outputs.NUMERIC_VERSION }}"
+          & .\rcedit.exe "$dist\rattin-runtime.exe" `
+            --set-icon "$dist\rattin.ico" `
+            --set-version-string "ProductName" "RattinRuntime" `
+            --set-version-string "FileDescription" "Rattin Server Runtime" `
+            --set-version-string "OriginalFilename" "rattin-runtime.exe" `
+            --set-version-string "InternalName" "rattin-runtime" `
+            --set-version-string "FileVersion" "$numVer" `
+            --set-version-string "ProductVersion" "$numVer"
 
           # libmpv
           Copy-Item mpv-dev/libmpv-2.dll $dist/
@@ -166,23 +175,8 @@ jobs:
 
           # Production dependencies
           Push-Location $app
-          & "$env:GITHUB_WORKSPACE/$dist/node.exe" "$($nodeDir.FullName)/node_modules/npm/bin/npm-cli.js" ci --omit=dev
+          & "$env:GITHUB_WORKSPACE/$dist/rattin-runtime.exe" "$($nodeDir.FullName)/node_modules/npm/bin/npm-cli.js" ci --omit=dev
           Pop-Location
-
-      - name: Brand rattin-runtime
-        shell: pwsh
-        run: |
-          $dist = "Rattin"
-          Rename-Item "$dist\node.exe" "rattin-runtime.exe"
-          $version = "${{ steps.version.outputs.VERSION }}"
-          & .\rcedit.exe "$dist\rattin-runtime.exe" `
-            --set-icon "$dist\rattin.ico" `
-            --set-version-string "ProductName" "RattinRuntime" `
-            --set-version-string "FileDescription" "Rattin Server Runtime" `
-            --set-version-string "OriginalFilename" "rattin-runtime.exe" `
-            --set-version-string "InternalName" "rattin-runtime" `
-            --set-version-string "FileVersion" "$version" `
-            --set-version-string "ProductVersion" "$version"
 
       - name: Create portable ZIP
         shell: pwsh
