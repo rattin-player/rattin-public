@@ -1,27 +1,78 @@
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import MovieCard from "../components/MovieCard";
-import { searchTMDB } from "../lib/api";
+import { searchTMDB, fetchDiscover } from "../lib/api";
 import "./Search.css";
 
 export default function Search() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const q = params.get("q") || "";
+  const genre = params.get("genre") || "";
+  const genreName = params.get("genreName") || "";
+  const mediaType = params.get("type") || "movie";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [results, setResults] = useState<any[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const queryKey = useRef("");
 
+  // Reset on query/genre change
   useEffect(() => {
+    const key = `${q}:${genre}:${mediaType}`;
+    if (key === queryKey.current) return;
+    queryKey.current = key;
+    setPage(1);
+    setHasMore(false);
+
+    if (genre) {
+      setResults(null);
+      fetchDiscover(mediaType, genre, 1).then((data) => {
+        setResults(data.results || []);
+        setHasMore((data.page || 1) < (data.total_pages || 1));
+      }).catch(() => setResults([]));
+      return;
+    }
     if (!q) { setResults([]); return; }
     setResults(null);
-    searchTMDB(q).then((data) => {
+    searchTMDB(q, 1).then((data) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setResults((data.results || []).filter((r: any) => r.media_type === "movie" || r.media_type === "tv"));
+      const filtered = (data.results || []).filter((r: any) => r.media_type === "movie" || r.media_type === "tv");
+      setResults(filtered);
+      setHasMore((data.page || 1) < (data.total_pages || 1));
     }).catch(() => setResults([]));
-  }, [q]);
+  }, [q, genre, mediaType]);
+
+  function loadMore() {
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    const fetch = genre
+      ? fetchDiscover(mediaType, genre, nextPage)
+      : searchTMDB(q, nextPage);
+    fetch.then((data) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let newResults = data.results || [];
+      if (!genre) newResults = newResults.filter((r: any) => r.media_type === "movie" || r.media_type === "tv");
+      setResults((prev) => [...(prev || []), ...newResults]);
+      setPage(nextPage);
+      setHasMore((data.page || nextPage) < (data.total_pages || 1));
+    }).catch(() => {}).finally(() => setLoadingMore(false));
+  }
+
+  const heading = genre
+    ? `${genreName || "Genre"} ${mediaType === "tv" ? "TV Shows" : "Movies"}`
+    : `Results for \u201c${q}\u201d`;
 
   return (
     <div className="search-page">
-      <h1>Results for &ldquo;{q}&rdquo;</h1>
+      <button className="back-btn" onClick={() => navigate(-1)}>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+        </svg>
+        Back
+      </button>
+      <h1>{heading}</h1>
       {results === null ? (
         <div className="search-grid">
           {Array.from({ length: 12 }).map((_, i) => (
@@ -31,9 +82,22 @@ export default function Search() {
       ) : results.length === 0 ? (
         <p className="search-empty">No results found</p>
       ) : (
-        <div className="search-grid">
-          {results.map((item) => <MovieCard key={item.id} item={item} />)}
-        </div>
+        <>
+          <div className="search-grid">
+            {results.map((item) => <MovieCard key={item.id} item={item} />)}
+          </div>
+          {hasMore && (
+            <div className="search-load-more">
+              <button
+                className="search-load-more-btn"
+                onClick={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

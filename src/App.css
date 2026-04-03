@@ -47,6 +47,10 @@
   padding: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-body);
   background: var(--bg-deep);
@@ -74,12 +78,32 @@ a {
   text-decoration: none;
 }
 
+button, .navbar, .movie-card, .mini-player, .hero-section, .content-row-header, .player-overlay {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
   border: none;
   background: none;
   color: inherit;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  margin-bottom: 12px;
+  transition: color var(--transition);
+}
+
+.back-btn:hover {
+  color: var(--text-primary);
 }
 
 img {

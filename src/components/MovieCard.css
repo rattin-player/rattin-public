@@ -31,6 +31,19 @@
   transition: transform var(--transition-slow);
 }
 
+.movie-card-poster::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(to top, var(--bg-deep), transparent);
+  pointer-events: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  z-index: 1;
+}
+
 .movie-card:hover .movie-card-poster img {
   transform: scale(1.04);
 }

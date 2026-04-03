@@ -54,6 +54,31 @@ export default function tmdbRoutes(app: Express, ctx: ServerContext): void {
     res.json({ ok: true });
   });
 
+// Genre list (cached long — genres rarely change)
+app.get("/api/tmdb/genres", async (_req: Request, res: Response) => {
+  const key = "genres:all";
+  const { value: cached } = tmdbCache.getStale(key);
+  if (cached) return res.json(cached);
+  try {
+    const [movie, tv] = await Promise.all([
+      fetchTMDB("/genre/movie/list"),
+      fetchTMDB("/genre/tv/list"),
+    ]);
+    // Merge and deduplicate by id
+    const seen = new Set<number>();
+    const genres: { id: number; name: string }[] = [];
+    for (const g of [...((movie as any).genres || []), ...((tv as any).genres || [])]) {
+      if (!seen.has(g.id)) { seen.add(g.id); genres.push(g); }
+    }
+    genres.sort((a, b) => a.name.localeCompare(b.name));
+    const result = { genres };
+    tmdbCache.set(key, result, 7 * 24 * 60 * 60 * 1000); // 7 days
+    res.json(result);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
+  }
+});
+
 // Stale-while-revalidate: trending
 app.get("/api/tmdb/trending", async (req: Request, res: Response) => {
   const page = (req.query.page as string) || "1";

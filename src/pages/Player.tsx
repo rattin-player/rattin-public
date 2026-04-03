@@ -10,6 +10,7 @@ import { formatTime, formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
+import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
 export default function Player() {
@@ -183,6 +184,7 @@ export default function Player() {
       // doesn't exist until waitForBridge resolves)
       // Track when playback actually starts to ignore stale EOF from previous mpvStop
       let playbackStarted = false;
+      let positionRestored = false;
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
@@ -193,6 +195,14 @@ export default function Player() {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
         setLoading(false);
+        // Restore saved playback position once we know the duration
+        if (!positionRestored && d > 0) {
+          positionRestored = true;
+          const saved = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
+          if (shouldRestorePosition(saved, d)) {
+            mpvSeek(saved);
+          }
+        }
       });
       onMpvEofReached(() => {
         if (playbackStarted) navigate(-1);
@@ -239,7 +249,8 @@ export default function Player() {
     };
   }, [infoHash, fileIndex]);
 
-  // Stop mpv only on actual unmount (leaving the player page)
+  // Stop mpv on unmount (leaving the player page). The native mpv overlay
+  // covers the WebEngine view, so it must be fully stopped to show the UI.
   useEffect(() => {
     return () => { mpvStop(); };
   }, []);
