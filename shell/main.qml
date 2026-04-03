@@ -23,7 +23,6 @@ Window {
     property int activeSub: 0
     property int activeAudio: 1
     property int subSize: 55
-    property bool serverReady: false
 
     function togglePause() {
         if (root.paused) bridge.resume()
@@ -141,7 +140,7 @@ Window {
     WebEngineView {
         id: webView
         anchors.fill: parent
-        url: root.serverReady ? initialUrl : "about:blank"
+        url: serverReady ? initialUrl : "about:blank"
         z: 2
         webChannel: wChannel
 
@@ -165,28 +164,8 @@ Window {
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        visible: !root.serverReady
+        visible: !serverReady
         z: 5
-
-        Column {
-            anchors.centerIn: parent
-            spacing: 16
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Rattin"
-                color: "#e94560"
-                font.pixelSize: 28
-                font.bold: true
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Loading..."
-                color: "#888888"
-                font.pixelSize: 14
-            }
-        }
     }
 
     Timer {
