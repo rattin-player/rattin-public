@@ -195,21 +195,23 @@ if (Test-Path $vcDir) {
     Warn "VCToolsRedistDir not found — VC++ runtime DLLs not bundled"
 }
 
-# Compile TypeScript to JS (ship compiled code, not source)
-Log "Compiling TypeScript"
+# Bundle server into a single JS file with esbuild
+Log "Bundling server with esbuild"
 Push-Location $RepoRoot
-& npx tsc --outDir compiled --noEmit false
+& npx esbuild server.ts --bundle --platform=node --format=esm `
+    --outfile=compiled/server.js `
+    --external:utp-native --external:node-datachannel `
+    --external:bufferutil --external:utf-8-validate `
+    --target=node20 `
+    "--banner:js=import{createRequire}from'module';const require=createRequire(import.meta.url);"
 Pop-Location
 
-# App code (compiled JS, not raw TS)
-foreach ($item in @("tsconfig.json", "package.json", "package-lock.json")) {
+# App code — single bundled server.js + static assets
+foreach ($item in @("package.json", "package-lock.json")) {
     $src = Join-Path $RepoRoot $item
     if (Test-Path $src) { Copy-Item $src (Join-Path $AppDir $item) }
 }
 Copy-Item (Join-Path $RepoRoot "compiled/server.js") (Join-Path $AppDir "server.js")
-foreach ($dir in @("routes", "lib")) {
-    Copy-Item (Join-Path $RepoRoot "compiled/$dir") (Join-Path $AppDir $dir) -Recurse
-}
 Copy-Item (Join-Path $RepoRoot "public") (Join-Path $AppDir "public") -Recurse
 
 # Production node_modules

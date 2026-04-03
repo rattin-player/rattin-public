@@ -146,17 +146,19 @@ jobs:
               exit 1
           }
 
-          # Compile TypeScript to JS (ship compiled code, not source)
-          npx tsc --outDir compiled --noEmit false
+          # Bundle server into single JS file with esbuild
+          npx esbuild server.ts --bundle --platform=node --format=esm `
+            --outfile=compiled/server.js `
+            --external:utp-native --external:node-datachannel `
+            --external:bufferutil --external:utf-8-validate `
+            --target=node20 `
+            "--banner:js=import{createRequire}from'module';const require=createRequire(import.meta.url);"
 
-          # App code (compiled JS, not raw TS)
-          foreach ($item in @("tsconfig.json","package.json","package-lock.json")) {
+          # App code — single bundled file + static assets
+          foreach ($item in @("package.json","package-lock.json")) {
               if (Test-Path $item) { Copy-Item $item "$app/" }
           }
           Copy-Item compiled/server.js "$app/"
-          foreach ($dir in @("routes","lib")) {
-              Copy-Item (Join-Path compiled $dir) (Join-Path $app $dir) -Recurse
-          }
           Copy-Item public (Join-Path $app "public") -Recurse
 
           # Production dependencies
