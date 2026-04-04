@@ -24,10 +24,15 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false, 
 
   useEffect(() => {
     let cancelled = false;
-    fetchFn()
-      .then((data) => { if (!cancelled) setItems(data.items || []); })
-      .catch(() => { if (!cancelled) setItems([]); });
-    return () => { cancelled = true; };
+    const load = () => {
+      fetchFn()
+        .then((data) => { if (!cancelled) setItems(data.items || []); })
+        .catch(() => { if (!cancelled) setItems([]); });
+    };
+    load();
+    const onCleared = () => { if (!cancelled) load(); };
+    window.addEventListener("storage-cleared", onCleared);
+    return () => { cancelled = true; window.removeEventListener("storage-cleared", onCleared); };
   }, []);
 
   function scroll(dir: number) {

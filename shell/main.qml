@@ -357,7 +357,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: transport.backRequested()
+                        onClicked: { root.loadingOverlay = false; bridge.stop(); transport.backRequested() }
                     }
                 }
 

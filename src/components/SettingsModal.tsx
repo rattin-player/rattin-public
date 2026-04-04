@@ -262,7 +262,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 className="settings-clear-btn"
                 onClick={async () => {
                   setClearingHistory(true);
-                  try { await clearWatchHistory(); setHistoryCount(0); } catch {}
+                  try { await clearWatchHistory(); setHistoryCount(0); window.dispatchEvent(new Event("storage-cleared")); } catch {}
                   setClearingHistory(false);
                 }}
                 disabled={clearingHistory || historyCount === 0}
@@ -273,7 +273,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 className="settings-clear-btn"
                 onClick={async () => {
                   setClearingSaved(true);
-                  try { await clearSavedList(); setSavedCount(0); } catch {}
+                  try { await clearSavedList(); setSavedCount(0); window.dispatchEvent(new Event("storage-cleared")); } catch {}
                   setClearingSaved(false);
                 }}
                 disabled={clearingSaved || savedCount === 0}
