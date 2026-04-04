@@ -880,15 +880,30 @@ Window {
                     }
                 }
 
-                Text {
-                    id: audioBtn; text: "\uD83D\uDD0A"
-                    color: "#888"
-                    font.pixelSize: 14
+                Canvas {
+                    id: audioBtn
+                    width: 18; height: 16
                     anchors.right: sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left
                     anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
                     visible: root.audioTracks.length > 1
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = audioBtnMa.containsMouse ? "white" : "#888"
+                        ctx.lineWidth = 1.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
+                        // Speaker body
+                        ctx.beginPath(); ctx.moveTo(2, 5); ctx.lineTo(5, 5); ctx.lineTo(9, 2); ctx.lineTo(9, 14); ctx.lineTo(5, 11); ctx.lineTo(2, 11); ctx.closePath(); ctx.stroke()
+                        // Sound waves
+                        ctx.beginPath(); ctx.arc(9, 8, 4, -0.8, 0.8); ctx.stroke()
+                        ctx.beginPath(); ctx.arc(9, 8, 7, -0.6, 0.6); ctx.stroke()
+                    }
+                    Connections {
+                        target: audioBtnMa
+                        function onContainsMouseChanged() { audioBtn.requestPaint() }
+                    }
                     MouseArea {
-                        anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor
+                        id: audioBtnMa; anchors.fill: parent; anchors.margins: -8
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                         onClicked: { root.refreshTracks(); subPopup.visible = false; audioPopup.visible = !audioPopup.visible }
                     }
                 }
