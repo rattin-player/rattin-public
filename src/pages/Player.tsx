@@ -19,7 +19,22 @@ export default function Player() {
   const location = useLocation();
   const { startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize, togglePlay } = usePlayer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const state = location.state as any;
+  // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
+  // to the same URL in Qt WebEngine
+  const state = (() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ls = location.state as any;
+    const key = `playerState:${infoHash}:${fileIndex}`;
+    if (ls?.tmdbId) {
+      try { sessionStorage.setItem(key, JSON.stringify(ls)); } catch {}
+      return ls;
+    }
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ls;
+  })();
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
   const tags: string[] = currentTags.length > 0 ? currentTags : (active?.tags || []);
   const mediaTitle: string = state?.title || active?.title || "";
