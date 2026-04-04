@@ -133,10 +133,11 @@ describe("scoreTorrent", () => {
       `200 seeders (${manySeeds}) should beat 5 seeders (${fewSeeds})`);
   });
 
-  it("does not score source tags (WEB/BluRay are cosmetic)", () => {
+  it("source tag is a light tiebreaker (not a deciding factor)", () => {
     const bluray = scoreTorrent(makeTorrent("Inception.2010.1080p.BluRay"), "Inception", 2010, "movie");
     const bare = scoreTorrent(makeTorrent("Inception.2010.1080p"), "Inception", 2010, "movie");
-    assert.strictEqual(bluray, bare);
+    assert.ok(bluray > bare);
+    assert.ok(bluray - bare <= 3); // at most 3 points difference
   });
 });
 

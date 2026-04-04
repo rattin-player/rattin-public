@@ -34,6 +34,12 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   else if (/720p/.test(name)) resScore = 10;
   score += resScore;
 
+  // Source tag: light tiebreaker, not a deciding factor
+  if (/blu-?ray|bdremux/i.test(name)) score += 3;
+  else if (/web-?dl/i.test(name)) score += 3;
+  else if (/webrip|\bweb\b/i.test(name)) score += 2;
+  else if (/bdrip/i.test(name)) score += 2;
+
   if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
 
   if (result.seeders === 0) return -1;
