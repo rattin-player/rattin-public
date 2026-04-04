@@ -47,10 +47,49 @@ export class WatchHistory {
     return this.store.get(recordKey(mediaType, tmdbId, season, episode));
   }
 
-  /** Unfinished items with >= 5 min watched, sorted by most recent, limit 20. */
+  /** Unfinished items + "next up" for TV series, sorted by most recent, limit 20. */
   getContinueWatching(): WatchRecord[] {
-    return this.store
-      .query((r) => !r.finished && !r.dismissed && r.position >= MIN_WATCH_SECONDS)
+    // In-progress episodes
+    const inProgress = this.store
+      .query((r) => !r.finished && !r.dismissed && r.position >= MIN_WATCH_SECONDS);
+
+    // Find TV series where all episodes are finished — create "next up" entries
+    const tvByShow = new Map<number, WatchRecord[]>();
+    for (const r of this.store.values()) {
+      if (r.mediaType === "tv") {
+        const list = tvByShow.get(r.tmdbId) || [];
+        list.push(r);
+        tvByShow.set(r.tmdbId, list);
+      }
+    }
+
+    // Series already represented in inProgress
+    const inProgressShows = new Set(inProgress.filter((r) => r.mediaType === "tv").map((r) => r.tmdbId));
+
+    const nextUp: WatchRecord[] = [];
+    for (const [tmdbId, eps] of tvByShow) {
+      if (inProgressShows.has(tmdbId)) continue;
+      // All episodes for this show are finished — suggest next
+      if (eps.every((e) => e.finished)) {
+        const sorted = eps.sort((a, b) => {
+          const sd = (a.season ?? 0) - (b.season ?? 0);
+          return sd !== 0 ? sd : (a.episode ?? 0) - (b.episode ?? 0);
+        });
+        const last = sorted[sorted.length - 1];
+        if (last.dismissed) continue;
+        nextUp.push({
+          ...last,
+          season: last.season ?? 1,
+          episode: (last.episode ?? 0) + 1,
+          position: 0,
+          duration: 0,
+          finished: false,
+          dismissed: false,
+        });
+      }
+    }
+
+    return [...inProgress, ...nextUp]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 20);
   }
