@@ -317,7 +317,8 @@ export default function Player() {
   const beaconProgressRef = useRef(() => {});
   beaconProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    if (!time || !state?.tmdbId) return;
+    console.log("[watch-history] beacon called:", { hasTime: !!time, time: time?.time, duration: time?.duration, tmdbId: state?.tmdbId });
+    if (!time || !state?.tmdbId) { console.log("[watch-history] beacon bail: no time or tmdbId"); return; }
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
     const pos = Math.floor(time.time);
@@ -344,9 +345,37 @@ export default function Player() {
 
   // Save progress then navigate back — ensures data is persisted before unmount
   const goBack = useCallback(() => {
+    console.log("[watch-history] goBack called");
     beaconProgressRef.current();
     navigate(-1);
   }, [navigate]);
+
+  // Keep window.__rattinWatchState in sync so QML can save progress before bridge.stop()
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const time = effectiveTimeRef.current;
+      if (!time || !state?.tmdbId) return;
+      const tmdbId = Number(state.tmdbId);
+      if (isNaN(tmdbId)) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinWatchState = {
+        tmdbId,
+        mediaType: state.type || "movie",
+        title: mediaTitle,
+        posterPath: state.posterPath ?? null,
+        season: state.season != null ? Number(state.season) : undefined,
+        episode: state.episode != null ? Number(state.episode) : undefined,
+        episodeTitle: state.episodeTitle ?? undefined,
+        position: Math.floor(time.time),
+        duration: Math.floor(time.duration),
+      };
+    }, 1000);
+    return () => {
+      clearInterval(interval);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinWatchState = null;
+    };
+  }, [state, mediaTitle]);
 
   // Periodic reporting every 10s
   useEffect(() => {

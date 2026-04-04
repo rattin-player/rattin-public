@@ -256,10 +256,16 @@ Window {
                 bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                 event.accepted = true; break
             case Qt.Key_Escape:
-                if (root.visibility === Window.FullScreen)
+                if (root.visibility === Window.FullScreen) {
                     root.showNormal()
-                else
+                } else {
+                    if (root.currentTime > 0) {
+                        webView.runJavaScript(
+                            "fetch('/api/watch-history/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.__rattinWatchState||{})}).catch(function(){})"
+                        )
+                    }
                     bridge.stop()
+                }
                 event.accepted = true; break
             case Qt.Key_F:
                 root.toggleFullscreen()
@@ -296,7 +302,15 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: bridge.stop()
+                        onClicked: {
+                            // Save watch progress before stopping — JS callbacks may not fire after stop()
+                            if (root.currentTime > 0) {
+                                webView.runJavaScript(
+                                    "fetch('/api/watch-history/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.__rattinWatchState||{})}).catch(function(){})"
+                                )
+                            }
+                            bridge.stop()
+                        }
                     }
                 }
 
