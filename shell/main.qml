@@ -260,16 +260,19 @@ Window {
                     root.showNormal()
                 } else {
                     if (root.currentTime > 0) {
-                        var t = Math.floor(root.currentTime)
-                        var d = Math.floor(root.duration)
+                        var et = Math.floor(root.currentTime)
+                        var ed = Math.floor(root.duration)
                         webView.runJavaScript(
-                            "var s=window.__rattinWatchState;" +
-                            "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
+                            "(function(){var s=window.__rattinWatchState;" +
+                            "if(s&&s.tmdbId){s.position=" + et + ";s.duration=" + ed + ";" +
                             "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
-                            "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}"
+                            "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}" +
+                            "})()",
+                            function(result) { bridge.stop() }
                         )
+                    } else {
+                        bridge.stop()
                     }
-                    bridge.stop()
                 }
                 event.accepted = true; break
             case Qt.Key_F:
@@ -308,19 +311,22 @@ Window {
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            // Save watch progress before stopping — JS callbacks may not fire after stop()
-                            // Merge QML's live time into JS state (JS state may be stale or null on quick back)
+                            // Save watch progress before stopping — must complete before bridge.stop()
+                            // runJavaScript is async, so stop() goes in the callback
                             if (root.currentTime > 0) {
                                 var t = Math.floor(root.currentTime)
                                 var d = Math.floor(root.duration)
                                 webView.runJavaScript(
-                                    "var s=window.__rattinWatchState;" +
+                                    "(function(){var s=window.__rattinWatchState;" +
                                     "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
                                     "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
-                                    "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}"
+                                    "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}" +
+                                    "})()",
+                                    function(result) { bridge.stop() }
                                 )
+                            } else {
+                                bridge.stop()
                             }
-                            bridge.stop()
                         }
                     }
                 }
