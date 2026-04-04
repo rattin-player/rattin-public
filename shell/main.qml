@@ -151,6 +151,10 @@ Window {
         function onPauseChanged(p) {
             transport.pauseChanged(p)
             root.paused = p
+            if (p) {
+                seekBufferTimer.stop()
+                root.seekBuffering = false
+            }
         }
         function onIsPlayingChanged(p) {
             transport.isPlayingChanged(p)
@@ -175,7 +179,7 @@ Window {
                 root.seekBuffering = false
                 controlsOverlay.visible = !root.sourcePanelOpen
             }
-            if (idle && root.playing && !root.loadingOverlay) {
+            if (idle && root.playing && !root.loadingOverlay && !root.paused) {
                 seekBufferTimer.start()
             }
         }
@@ -252,7 +256,7 @@ Window {
         id: seekBufferTimer
         interval: 300
         onTriggered: {
-            if (root.coreIdle && root.playing && !root.loadingOverlay)
+            if (root.coreIdle && root.playing && !root.loadingOverlay && !root.paused)
                 root.seekBuffering = true
         }
     }
