@@ -21,25 +21,35 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
 
   const titleWords = titleLower.split(/\s+/);
   const matchedWords = titleWords.filter((w) => name.includes(w)).length;
-  score += (matchedWords / titleWords.length) * 50;
+  const titleScore = (matchedWords / titleWords.length) * 50;
+  score += titleScore;
 
   // Year match is only meaningful for movies — TV torrent names rarely include the show's first-air year
-  if (year && type === "movie" && name.includes(String(year))) score += 8;
+  let yearScore = 0;
+  if (year && type === "movie" && name.includes(String(year))) { yearScore = 8; score += yearScore; }
 
-  if (/1080p/.test(name)) score += 20;
-  if (/2160p|4k/i.test(name)) score += 15;
-  if (/720p/.test(name)) score += 10;
-  if (/blu-?ray|bdremux/i.test(name)) score += 6;
-  if (/web-?dl|webrip/i.test(name)) score += 8;
-  if (/bdrip/i.test(name)) score += 5;
-  if (/remux/i.test(name)) score += 3;
+  let resScore = 0;
+  if (/1080p/.test(name)) resScore = 20;
+  else if (/2160p|4k/i.test(name)) resScore = 15;
+  else if (/720p/.test(name)) resScore = 10;
+  score += resScore;
+
+  let sourceScore = 0;
+  if (/blu-?ray|bdremux/i.test(name)) sourceScore = 6;
+  else if (/web-?dl|webrip/i.test(name)) sourceScore = 8;
+  else if (/bdrip/i.test(name)) sourceScore = 5;
+  if (/remux/i.test(name)) sourceScore += 3;
+  score += sourceScore;
 
   if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
 
   if (result.seeders === 0) return -1;
   // Seeders: strongest real-world signal for availability
   // log2 curve: 5s→13, 50s→28, 200s→38, 1000s→50
-  score += Math.min(50, Math.log2(result.seeders + 1) * 5);
+  const seederScore = Math.min(50, Math.log2(result.seeders + 1) * 5);
+  score += seederScore;
+
+  console.log(`[score] ${result.name.slice(0, 60).padEnd(60)} | title=${titleScore.toFixed(0).padStart(2)} year=${yearScore} res=${String(resScore).padStart(2)} src=${String(sourceScore).padStart(2)} seed=${seederScore.toFixed(0).padStart(2)} (${String(result.seeders).padStart(5)}) | TOTAL=${score.toFixed(0)}`);
 
   return score;
 }
