@@ -20,6 +20,7 @@ Window {
     property int volume: 100
     property string mediaTitle: ""
     property var subTracks: []
+    property var reversedSubTracks: []
     property var audioTracks: []
     property int activeSub: 0
     property int activeAudio: 1
@@ -90,6 +91,7 @@ Window {
             }
         }
         root.subTracks = subs
+        root.reversedSubTracks = subs.slice().reverse()
         root.audioTracks = audios
     }
 
@@ -601,47 +603,71 @@ Window {
             }
         }
 
-        // ── Track picker popup ──
+        // ── Subtitle picker popup ──
         Rectangle {
-            id: trackPopup
+            id: subPopup
             visible: false
             anchors.right: parent.right
             anchors.bottom: bottomBar.top
             anchors.rightMargin: 16
             anchors.bottomMargin: 8
             width: 260
-            height: Math.min(trackCol.height + 24, 340)
+            height: Math.min(subListCol.height + subSizeRow.height + 52, 340)
             radius: 8
             color: "#E0181818"
             clip: true
 
             MouseArea { anchors.fill: parent }
 
-            Flickable {
-                id: trackFlick
-                anchors.fill: parent
+            // Size controls fixed at bottom
+            Column {
+                id: subSizeRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
                 anchors.margins: 12
-                contentHeight: trackCol.height
+
+                Rectangle { width: parent.width; height: 1; color: "#30ffffff" }
+
+                Row {
+                    spacing: 8; topPadding: 8
+                    Text {
+                        text: "A\u2212"; color: "#ccc"; font.pixelSize: 14
+                        MouseArea {
+                            anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
+                        }
+                    }
+                    Text { text: root.subSize.toString(); color: "#888"; font.pixelSize: 12; width: 24; horizontalAlignment: Text.AlignHCenter }
+                    Text {
+                        text: "A+"; color: "#ccc"; font.pixelSize: 14
+                        MouseArea {
+                            anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
+                        }
+                    }
+                }
+            }
+
+            Flickable {
+                id: subFlick
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: subSizeRow.top
+                anchors.margins: 12
+                contentHeight: subListCol.height
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
                 Column {
-                    id: trackCol
-                    width: trackFlick.width
+                    id: subListCol
+                    width: subFlick.width
                     spacing: 4
-
-                    Text {
-                        text: "Subtitles"
-                        color: "#888"
-                        font.pixelSize: 11
-                        font.bold: true
-                        visible: root.subTracks.length > 0
-                    }
 
                     Rectangle {
                         width: parent.width; height: 28; radius: 4
                         color: root.activeSub === 0 ? "#30c9a84c" : "transparent"
-                        visible: root.subTracks.length > 0
                         Text {
                             anchors.left: parent.left; anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
@@ -656,9 +682,9 @@ Window {
                     }
 
                     Repeater {
-                        model: root.subTracks
+                        model: root.reversedSubTracks
                         Rectangle {
-                            width: trackCol.width; height: 28; radius: 4
+                            width: subListCol.width; height: 28; radius: 4
                             color: root.activeSub === modelData.id ? "#30c9a84c" : "transparent"
                             Text {
                                 anchors.left: parent.left; anchors.leftMargin: 8
@@ -674,16 +700,47 @@ Window {
                             }
                         }
                     }
+                }
 
-                    Text {
-                        text: "Audio"; color: "#888"; font.pixelSize: 11; font.bold: true
-                        topPadding: 8; visible: root.audioTracks.length > 1
-                    }
+                ScrollBar.vertical: ScrollBar {
+                    policy: subFlick.contentHeight > subFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                }
+            }
+        }
+
+        // ── Audio picker popup ──
+        Rectangle {
+            id: audioPopup
+            visible: false
+            anchors.right: parent.right
+            anchors.bottom: bottomBar.top
+            anchors.rightMargin: 16
+            anchors.bottomMargin: 8
+            width: 260
+            height: Math.min(audioListCol.height + 24, 340)
+            radius: 8
+            color: "#E0181818"
+            clip: true
+
+            MouseArea { anchors.fill: parent }
+
+            Flickable {
+                id: audioFlick
+                anchors.fill: parent
+                anchors.margins: 12
+                contentHeight: audioListCol.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: audioListCol
+                    width: audioFlick.width
+                    spacing: 4
 
                     Repeater {
-                        model: root.audioTracks.length > 1 ? root.audioTracks : []
+                        model: root.audioTracks
                         Rectangle {
-                            width: trackCol.width; height: 28; radius: 4
+                            width: audioListCol.width; height: 28; radius: 4
                             color: root.activeAudio === modelData.id ? "#30c9a84c" : "transparent"
                             Text {
                                 anchors.left: parent.left; anchors.leftMargin: 8
@@ -699,33 +756,10 @@ Window {
                             }
                         }
                     }
-
-                    Text {
-                        text: "Size"; color: "#888"; font.pixelSize: 11; font.bold: true
-                        topPadding: 8; visible: root.subTracks.length > 0
-                    }
-                    Row {
-                        spacing: 8; visible: root.subTracks.length > 0
-                        Text {
-                            text: "A\u2212"; color: "#ccc"; font.pixelSize: 14
-                            MouseArea {
-                                anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                                onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
-                            }
-                        }
-                        Text { text: root.subSize.toString(); color: "#888"; font.pixelSize: 12; width: 24; horizontalAlignment: Text.AlignHCenter }
-                        Text {
-                            text: "A+"; color: "#ccc"; font.pixelSize: 14
-                            MouseArea {
-                                anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                                onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
-                            }
-                        }
-                    }
                 }
 
                 ScrollBar.vertical: ScrollBar {
-                    policy: trackFlick.contentHeight > trackFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                    policy: audioFlick.contentHeight > audioFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                 }
             }
         }
@@ -847,20 +881,33 @@ Window {
                 }
 
                 Text {
+                    id: audioBtn; text: "\uD83D\uDD0A"
+                    color: "#888"
+                    font.pixelSize: 14
+                    anchors.right: sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left
+                    anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
+                    visible: root.audioTracks.length > 1
+                    MouseArea {
+                        anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.refreshTracks(); subPopup.visible = false; audioPopup.visible = !audioPopup.visible }
+                    }
+                }
+
+                Text {
                     id: subBtn; text: "CC"
                     color: root.activeSub > 0 ? "#c9a84c" : "#888"
                     font.pixelSize: 13; font.bold: true
-                    anchors.right: sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left
+                    anchors.right: audioBtn.visible ? audioBtn.left : (sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left)
                     anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
-                    visible: root.subTracks.length > 0 || root.audioTracks.length > 1
+                    visible: root.subTracks.length > 0
                     MouseArea {
                         anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.refreshTracks(); trackPopup.visible = !trackPopup.visible }
+                        onClicked: { root.refreshTracks(); audioPopup.visible = false; subPopup.visible = !subPopup.visible }
                     }
                 }
 
                 Row {
-                    anchors.right: subBtn.visible ? subBtn.left : (sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left)
+                    anchors.right: subBtn.visible ? subBtn.left : (audioBtn.visible ? audioBtn.left : (sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left))
                     anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
 
