@@ -1,6 +1,19 @@
 // src/lib/native-bridge.ts
-// Bridge between React UI and Qt shell's mpv player.
-// Commands are sent to the MpvBridge C++ object via QWebChannel.
+// Bridge between React UI and Qt shell's native mpv video player.
+//
+// This app is a Qt WebEngineView with a native mpv player rendered on top.
+// React does NOT render video — mpv does, via an OpenGL surface in QML.
+// React sends commands to mpv (play, seek, stop) and receives events back
+// (time updates, EOF, pause changes, track changes from QML's native overlay).
+//
+// The communication path is:
+//   React → this file → QWebChannel → QML transport (main.qml) → MpvBridge (C++)
+//   MpvBridge (C++) → QML → QWebChannel signals → window.mpvEvents callbacks → React
+//
+// QML also has its own native controls overlay (play/pause, seek, volume, CC)
+// that sits on top of the mpv surface. When the user interacts with those
+// controls, QML emits signals (nativeSubChanged, backRequested, etc.) that
+// this bridge forwards to React so it can update its state.
 //
 // QWebChannel is imported from the npm package so it's available in
 // MainWorld as part of the React bundle. Qt's auto-injection of
@@ -32,6 +45,8 @@ interface MpvEvents {
   onNativeAudioChanged: ((mpvId: number) => void) | null;
   onNativeVolumeChanged: ((percent: number) => void) | null;
   onNativeSubSizeChanged: ((size: number) => void) | null;
+  onToggleSourcePanel: (() => void) | null;
+  onBackRequested: (() => void) | null;
 }
 
 declare global {
@@ -74,6 +89,8 @@ export function waitForBridge(): Promise<void> {
           onNativeAudioChanged: null,
           onNativeVolumeChanged: null,
           onNativeSubSizeChanged: null,
+          onToggleSourcePanel: null,
+          onBackRequested: null,
         };
         bridge.timeChanged.connect((s: number) => {
           if (window.mpvEvents?.onTimeChanged) window.mpvEvents.onTimeChanged(s);
@@ -102,6 +119,12 @@ export function waitForBridge(): Promise<void> {
         });
         bridge.nativeSubSizeChanged.connect((size: number) => {
           if (window.mpvEvents?.onNativeSubSizeChanged) window.mpvEvents.onNativeSubSizeChanged(size);
+        });
+        bridge.toggleSourcePanel.connect(() => {
+          if (window.mpvEvents?.onToggleSourcePanel) window.mpvEvents.onToggleSourcePanel();
+        });
+        bridge.backRequested.connect(() => {
+          if (window.mpvEvents?.onBackRequested) window.mpvEvents.onBackRequested();
         });
         _bridgeReady = true;
         console.log("[native-bridge] bridge connected!");
@@ -234,4 +257,20 @@ export function onNativeVolumeChanged(cb: (percent: number) => void): void {
 
 export function onNativeSubSizeChanged(cb: (size: number) => void): void {
   if (window.mpvEvents) window.mpvEvents.onNativeSubSizeChanged = cb;
+}
+
+export function onBackRequested(cb: () => void): void {
+  if (window.mpvEvents) window.mpvEvents.onBackRequested = cb;
+}
+
+export function onToggleSourcePanel(cb: () => void): void {
+  if (window.mpvEvents) window.mpvEvents.onToggleSourcePanel = cb;
+}
+
+export function mpvSetSourceCount(count: number): void {
+  (window.mpvBridge as any)?.setSourceCount?.(count);
+}
+
+export function mpvNotifySourcePanel(open: boolean): void {
+  (window.mpvBridge as any)?.notifySourcePanel?.(open);
 }

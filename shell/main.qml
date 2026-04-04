@@ -23,6 +23,8 @@ Window {
     property int activeSub: 0
     property int activeAudio: 1
     property int subSize: 55
+    property bool sourcePanelOpen: false
+    property int sourceCount: 0
 
     function togglePause() {
         if (root.paused) bridge.resume()
@@ -99,8 +101,13 @@ Window {
         signal nativeVolumeChanged(int percent)  // QML→JS: native overlay changed volume
         signal volumeChanged(int percent)        // JS→QML: JS changed volume
         signal nativeSubSizeChanged(int size)    // QML→JS: native overlay changed sub size
+        signal backRequested()                    // QML→JS: user pressed back in native overlay
+        signal toggleSourcePanel()               // QML→JS: open/close source panel
+        signal sourcePanelChanged(bool open)     // JS→QML: source panel state changed
 
         function play(url) { bridge.play(url) }
+        function setSourceCount(count) { root.sourceCount = count }
+        function notifySourcePanel(open) { transport.sourcePanelChanged(open) }
         function pause() { bridge.pause() }
         function resume() { bridge.resume() }
         function seek(seconds) { bridge.seek(seconds) }
@@ -148,6 +155,11 @@ Window {
         function onSubtitleTrackChanged(mpvId) { root.activeSub = mpvId }
         function onAudioTrackChanged(mpvId) { root.activeAudio = mpvId }
         function onVolumeChanged(percent) { root.volume = percent }
+        function onSourcePanelChanged(open) {
+            root.sourcePanelOpen = open
+            mpvPlayer.visible = !open && root.playing
+            controlsOverlay.visible = !open && root.playing
+        }
     }
 
     MpvObject {
@@ -279,7 +291,7 @@ Window {
                 if (root.visibility === Window.FullScreen)
                     root.showNormal()
                 else
-                    root.saveProgressAndStop()
+                    transport.backRequested()
                 event.accepted = true; break
             case Qt.Key_F:
                 root.toggleFullscreen()
@@ -316,7 +328,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.saveProgressAndStop()
+                        onClicked: transport.backRequested()
                     }
                 }
 
@@ -471,12 +483,12 @@ Window {
 
                 Rectangle {
                     width: root.duration > 0 ? parent.width * (root.currentTime / root.duration) : 0
-                    height: parent.height; radius: 2; color: "#e94560"
+                    height: parent.height; radius: 2; color: "#c9a84c"
                 }
                 Rectangle {
                     visible: root.duration > 0
                     x: root.duration > 0 ? parent.width * (root.currentTime / root.duration) - 6 : 0
-                    y: -4; width: 12; height: 12; radius: 6; color: "#e94560"
+                    y: -4; width: 12; height: 12; radius: 6; color: "#c9a84c"
                     opacity: controlsOverlay.showControls ? 1 : 0
                 }
                 MouseArea {
@@ -495,11 +507,36 @@ Window {
                 anchors.leftMargin: 16; anchors.rightMargin: 16; anchors.bottomMargin: 12
                 height: 30
 
-                Text {
-                    id: playBtn; text: root.paused ? "\u25B6" : "\u23F8"
-                    color: "white"; font.pixelSize: 22
+                Item {
+                    id: playBtn
+                    width: 30; height: 30
                     anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                    MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePause() }
+
+                    Canvas {
+                        anchors.centerIn: parent; width: 16; height: 16
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            ctx.fillStyle = "white"
+                            if (root.paused) {
+                                ctx.beginPath()
+                                ctx.moveTo(4, 2); ctx.lineTo(16, 9); ctx.lineTo(4, 16)
+                                ctx.closePath(); ctx.fill()
+                            } else {
+                                ctx.roundedRect(2, 2, 5, 14, 1, 1); ctx.fill()
+                                ctx.roundedRect(11, 2, 5, 14, 1, 1); ctx.fill()
+                            }
+                        }
+                        Connections {
+                            target: root
+                            function onPausedChanged() { playBtn.children[0].requestPaint() }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: root.togglePause()
+                    }
                 }
 
                 Text {
@@ -516,11 +553,35 @@ Window {
                     MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: root.toggleFullscreen() }
                 }
 
+                // Source switcher button (hamburger icon)
+                Canvas {
+                    id: sourceBtn
+                    width: 18; height: 18
+                    anchors.right: fullscreenBtn.left; anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
+                    visible: root.sourceCount > 1
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.fillStyle = sourceBtnMa.containsMouse ? "white" : "#888"
+                        for (var i = 0; i < 3; i++) ctx.fillRect(2, 3 + i * 5, 14, 2)
+                    }
+                    Connections {
+                        target: sourceBtnMa
+                        function onContainsMouseChanged() { sourceBtn.requestPaint() }
+                    }
+                    MouseArea {
+                        id: sourceBtnMa; anchors.fill: parent; anchors.margins: -8
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: transport.toggleSourcePanel()
+                    }
+                }
+
                 Text {
                     id: subBtn; text: "CC"
                     color: root.activeSub > 0 ? "#c9a84c" : "#888"
                     font.pixelSize: 13; font.bold: true
-                    anchors.right: fullscreenBtn.left; anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left
+                    anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
                     visible: root.subTracks.length > 0 || root.audioTracks.length > 1
                     MouseArea {
                         anchors.fill: parent; anchors.margins: -8; cursorShape: Qt.PointingHandCursor
@@ -529,15 +590,46 @@ Window {
                 }
 
                 Row {
-                    anchors.right: subBtn.visible ? subBtn.left : fullscreenBtn.left
+                    anchors.right: subBtn.visible ? subBtn.left : (sourceBtn.visible ? sourceBtn.left : fullscreenBtn.left)
                     anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
+                    spacing: 8
 
-                    Text {
-                        text: root.volume === 0 ? "\uD83D\uDD07" : root.volume < 50 ? "\uD83D\uDD09" : "\uD83D\uDD0A"
-                        color: "white"; font.pixelSize: 16; anchors.verticalCenter: parent.verticalCenter
+                    Item {
+                        width: 30; height: 30
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Canvas {
+                            id: volCanvas
+                            anchors.centerIn: parent; width: 18; height: 18
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.clearRect(0, 0, width, height)
+                                ctx.strokeStyle = "white"; ctx.lineWidth = 1.8
+                                ctx.lineCap = "round"; ctx.lineJoin = "round"
+                                ctx.beginPath()
+                                ctx.moveTo(10, 3); ctx.lineTo(5, 6); ctx.lineTo(2, 6)
+                                ctx.lineTo(2, 12); ctx.lineTo(5, 12); ctx.lineTo(10, 15)
+                                ctx.closePath()
+                                ctx.fillStyle = "white"; ctx.fill()
+                                if (root.volume === 0) {
+                                    ctx.beginPath(); ctx.moveTo(13, 6); ctx.lineTo(17, 12); ctx.stroke()
+                                    ctx.beginPath(); ctx.moveTo(17, 6); ctx.lineTo(13, 12); ctx.stroke()
+                                } else {
+                                    ctx.beginPath(); ctx.arc(11, 9, 3, -0.8, 0.8); ctx.stroke()
+                                    if (root.volume >= 50) {
+                                        ctx.beginPath(); ctx.arc(11, 9, 6, -0.9, 0.9); ctx.stroke()
+                                    }
+                                }
+                            }
+                            Connections {
+                                target: root
+                                function onVolumeChanged() { volCanvas.requestPaint() }
+                            }
+                        }
+
                         MouseArea {
-                            anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (root.volume > 0) { controlsOverlay._savedVolume = root.volume; root.volume = 0 }
                                 else { root.volume = controlsOverlay._savedVolume || 100 }
@@ -547,11 +639,18 @@ Window {
                     }
 
                     Rectangle {
-                        width: 80; height: 3; radius: 2; color: "#40ffffff"; anchors.verticalCenter: parent.verticalCenter
-                        Rectangle { width: parent.width * (root.volume / 100); height: parent.height; radius: 2; color: "white" }
-                        Rectangle { x: parent.width * (root.volume / 100) - 6; y: -4.5; width: 12; height: 12; radius: 6; color: "white" }
+                        width: 80; height: 4; radius: 2; color: "#26ffffff"; anchors.verticalCenter: parent.verticalCenter
+                        Rectangle { width: parent.width * (root.volume / 100); height: parent.height; radius: 2; color: "#c9a84c" }
+                        Rectangle {
+                            x: parent.width * (root.volume / 100) - 5; y: -3; width: 10; height: 10; radius: 5
+                            color: "#c9a84c"
+                            scale: volSliderMa.containsMouse || volSliderMa.pressed ? 1.3 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 150 } }
+                        }
                         MouseArea {
-                            anchors.fill: parent; anchors.topMargin: -10; anchors.bottomMargin: -10; cursorShape: Qt.PointingHandCursor
+                            id: volSliderMa
+                            anchors.fill: parent; anchors.topMargin: -10; anchors.bottomMargin: -10
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: function(mouse) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v); transport.nativeVolumeChanged(v) }
                             onPositionChanged: function(mouse) { if (pressed) { var v = Math.round(Math.max(0, Math.min(100, (mouse.x / parent.width) * 100))); root.volume = v; bridge.setVolume(v); transport.nativeVolumeChanged(v) } }
                         }
