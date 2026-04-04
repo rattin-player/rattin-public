@@ -58,15 +58,15 @@ export function useAudioTracks(deps: UseAudioTracksDeps): UseAudioTracksReturn {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return data.tracks.map((t: any) => ({
               value: t.streamIndex,
-              label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
+              label: (t.title || LANG_MAP[(t.lang || "").split(/[-_]/)[0]] || t.lang || `Track ${t.streamIndex}`) + (t.channels > 2 ? " 5.1" : ""),
             }));
           });
           if (activeAudioRef.current === null) {
             // Prefer pre-selected, then English, then first track
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const englishTrack = data.tracks.length > 1 ? data.tracks.find((t: any) => {
-              const lang = (t.lang || "").toLowerCase();
-              return lang === "eng" || lang === "en" || lang === "english";
+              const base = (t.lang || "").toLowerCase().split(/[-_]/)[0];
+              return base === "eng" || base === "en" || base === "english";
             }) : null;
             const initial = preSelectedAudio ?? englishTrack?.streamIndex ?? data.tracks[0]?.streamIndex ?? null;
             setActiveAudio(initial);

@@ -78,8 +78,8 @@ export function subtitleMatchesVideo(subPath: string, videoPath: string): boolea
 const NON_DIALOGUE_TAGS = /\b(sdh|forced|sign|song|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
 
 function isEnglish(lang: string): boolean {
-  const l = lang.toLowerCase();
-  return l === "eng" || l === "en" || l === "english";
+  const base = lang.toLowerCase().split(/[-_]/)[0];
+  return base === "eng" || base === "en" || base === "english";
 }
 
 /** From embedded tracks (with lang/title fields), pick the English dialogue sub. */
