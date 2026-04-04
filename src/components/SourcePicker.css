@@ -87,12 +87,13 @@
 }
 
 .picker-group-label {
-  font-size: 0.68rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 12px 14px 4px;
+  letter-spacing: 0.5px;
+  color: var(--accent-bright);
+  padding: 14px 14px 6px;
+  border-bottom: 1px solid var(--accent-subtle);
+  margin-bottom: 2px;
 }
 
 /* -- Source Items -- */
