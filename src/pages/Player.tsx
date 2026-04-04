@@ -209,8 +209,7 @@ export default function Player() {
       });
       onMpvEofReached(() => {
         if (playbackStarted) {
-          reportProgressRef.current();
-          navigate(-1);
+          goBack();
         }
       });
       onMpvPauseChanged((paused) => {
@@ -342,16 +341,23 @@ export default function Player() {
     } catch { /* best effort */ }
   };
 
+  // Save progress then navigate back — ensures data is persisted before unmount
+  const goBack = useCallback(() => {
+    beaconProgressRef.current();
+    navigate(-1);
+  }, [navigate]);
+
   // Periodic reporting every 30s
   useEffect(() => {
     const interval = setInterval(() => reportProgressRef.current(), 30_000);
     return () => clearInterval(interval);
   }, []);
 
-  // Report on unmount (leaving player) — sendBeacon for reliable delivery
+  // Report on unmount (leaving player)
   useEffect(() => {
     return () => { beaconProgressRef.current(); };
   }, []);
+
 
   const [showControls, setShowControls] = useState(true);
   const [muted, setMuted] = useState(false);
@@ -500,7 +506,7 @@ export default function Player() {
 
       {loading && (
         <div className={`player-loading${showSources ? " sources-open" : ""}`}>
-          <button className="player-loading-back" onClick={() => navigate(-1)}>
+          <button className="player-loading-back" onClick={goBack}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
             </svg>
@@ -543,7 +549,7 @@ export default function Player() {
 
       <div className={`player-overlay ${showControls ? "visible" : ""}${loading ? " disabled" : ""}`}>
         <div className="player-top" onClick={(e) => e.stopPropagation()}>
-          <button className="player-back" onClick={() => navigate(-1)}>
+          <button className="player-back" onClick={goBack}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
             </svg>
