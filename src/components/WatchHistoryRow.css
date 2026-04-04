@@ -48,3 +48,15 @@
   border-radius: 0 2px 2px 0;
   transition: width 0.3s ease;
 }
+
+.wh-card.loading .movie-card-poster {
+  opacity: 0.5;
+}
+
+.wh-card.loading .movie-card-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: inherit;
+}

@@ -11,20 +11,28 @@ interface WatchHistoryRowProps {
   showProgress?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onRemove?: (item: any) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onPlay?: (item: any) => Promise<void>;
 }
 
-export default function WatchHistoryRow({ title, fetchFn, showProgress = false, onRemove }: WatchHistoryRowProps) {
+export default function WatchHistoryRow({ title, fetchFn, showProgress = false, onRemove, onPlay }: WatchHistoryRowProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [items, setItems] = useState<any[] | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
-    fetchFn()
-      .then((data) => { if (!cancelled) setItems(data.items || []); })
-      .catch(() => { if (!cancelled) setItems([]); });
-    return () => { cancelled = true; };
+    const load = () => {
+      fetchFn()
+        .then((data) => { if (!cancelled) setItems(data.items || []); })
+        .catch(() => { if (!cancelled) setItems([]); });
+    };
+    load();
+    const onCleared = () => { if (!cancelled) load(); };
+    window.addEventListener("storage-cleared", onCleared);
+    return () => { cancelled = true; window.removeEventListener("storage-cleared", onCleared); };
   }, []);
 
   function scroll(dir: number) {
@@ -55,11 +63,25 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false, 
                   ? `S${item.season}E${item.episode}`
                   : null;
 
+                const cardId = `${type}:${item.tmdbId}:${item.season ?? ""}:${item.episode ?? ""}`;
                 return (
                   <div
-                    key={`${type}:${item.tmdbId}:${item.season ?? ""}:${item.episode ?? ""}`}
-                    className="movie-card wh-card"
-                    onClick={() => navigate(`/${type}/${item.tmdbId}`)}
+                    key={cardId}
+                    className={`movie-card wh-card${playingId === cardId ? " loading" : ""}`}
+                    onClick={async () => {
+                      if (onPlay) {
+                        setPlayingId(cardId);
+                        try {
+                          await onPlay(item);
+                        } catch {
+                          navigate(`/${type}/${item.tmdbId}`);
+                        } finally {
+                          setPlayingId(null);
+                        }
+                      } else {
+                        navigate(`/${type}/${item.tmdbId}`);
+                      }
+                    }}
                   >
                     <div className="movie-card-poster">
                       {img ? (

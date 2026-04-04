@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
 import WatchHistoryRow from "../components/WatchHistoryRow";
-import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved } from "../lib/api";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved, autoPlay, poster as posterUrl } from "../lib/api";
+import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import "./Home.css";
 
 function recentDateRange() {
@@ -36,6 +37,55 @@ export default function Home() {
     fetchGenres().then((data) => setGenres(data.genres || [])).catch(() => {});
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleContinuePlay = useCallback(async (item: any) => {
+    // Show loading overlay with poster immediately while searching for streams
+    const displayTitle = item.mediaType === "tv" && item.season != null
+      ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
+      : item.title;
+    waitForBridge().then(() => {
+      if (item.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${item.posterPath}`);
+      mpvSetTitle(displayTitle);
+      mpvSetLoadingStatus("Finding best stream...");
+      mpvSetLoading(true);
+    });
+    let result;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
+      result = await autoPlay(
+        item.title,
+        item.year,
+        item.mediaType,
+        item.season,
+        item.episode,
+        item.imdbId,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; mpvSetLoading(false); return; }
+    } catch (err) {
+      mpvSetLoading(false);
+      throw err; // re-throw so WatchHistoryRow falls back to Detail
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const navState: any = {
+      tags: result.tags,
+      title: displayTitle,
+      tmdbId: item.tmdbId,
+      year: item.year,
+      type: item.mediaType,
+      imdbId: item.imdbId,
+      posterPath: item.posterPath,
+      season: item.season,
+      episode: item.episode,
+      episodeTitle: item.episodeTitle,
+      seasonEpisodeCount: item.seasonEpisodeCount,
+      resumePosition: item.position > 0 ? item.position : undefined,
+    };
+    if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
+    navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
+  }, [navigate]);
+
   return (
     <div className="home">
       <HeroSection item={hero} />
@@ -65,6 +115,7 @@ export default function Home() {
         title="Continue Watching"
         fetchFn={fetchContinueWatching}
         showProgress
+        onPlay={handleContinuePlay}
         onRemove={(item) => dismissWatchHistory({ tmdbId: item.tmdbId, mediaType: item.mediaType, season: item.season, episode: item.episode })}
       />
       <WatchHistoryRow

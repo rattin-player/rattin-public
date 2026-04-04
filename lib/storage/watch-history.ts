@@ -14,6 +14,8 @@ export interface WatchRecord {
   finished: boolean;
   updatedAt: string;  // ISO 8601
   dismissed?: boolean; // hidden from Continue Watching without deleting data
+  imdbId?: string;    // for Torrentio search (best provider)
+  year?: number;      // for movie search quality
 }
 
 export interface ResumePoint {

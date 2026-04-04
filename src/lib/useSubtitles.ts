@@ -11,6 +11,31 @@ export const LANG_MAP: Record<string, string> = {
   pol: "Polish", pl: "Polish", tur: "Turkish", tr: "Turkish",
 };
 
+// Known subtitle type tags to extract from title
+const SUB_TYPE_RE = /\b(sdh|forced|signs?\s*(?:&\s*songs?)?|songs?|commentary|cc|full|dialogue)\b/i;
+
+/** Normalize embedded subtitle label to "Language (Type)" format */
+function formatSubLabel(lang: string | null, title: string | null, streamIndex: number): string {
+  const base = (lang || "").split(/[-_]/)[0];
+  const language = LANG_MAP[base] || lang || `Track ${streamIndex}`;
+
+  if (!title) return language;
+
+  // Extract type tag from the title if present
+  const typeMatch = title.match(SUB_TYPE_RE);
+  if (typeMatch) {
+    const tag = typeMatch[1].toUpperCase() === "SDH" ? "SDH"
+      : typeMatch[1].charAt(0).toUpperCase() + typeMatch[1].slice(1).toLowerCase();
+    return `${language} (${tag})`;
+  }
+
+  // If title is just a language name or code, use our normalized language
+  if (LANG_MAP[title.toLowerCase()] || LANG_MAP[base]) return language;
+
+  // Title has custom info (e.g., "Dialogue@Kaizoku") — append it
+  return `${language} — ${title}`;
+}
+
 export interface SubtitleOption {
   value: string;
   label: string;
@@ -75,11 +100,11 @@ export function subtitleMatchesVideo(subPath: string, videoPath: string): boolea
 }
 
 // Tags that indicate a subtitle track is NOT plain dialogue
-const NON_DIALOGUE_TAGS = /\b(sdh|forced|sign|song|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
+const NON_DIALOGUE_TAGS = /\b(sdh|forced|signs?|songs?|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
 
 function isEnglish(lang: string): boolean {
-  const l = lang.toLowerCase();
-  return l === "eng" || l === "en" || l === "english";
+  const base = lang.toLowerCase().split(/[-_]/)[0];
+  return base === "eng" || base === "en" || base === "english";
 }
 
 /** From embedded tracks (with lang/title fields), pick the English dialogue sub. */
@@ -197,7 +222,7 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return data.tracks.map((t: any) => ({
               value: `embedded:${t.streamIndex}`,
-              label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + " (embedded)",
+              label: formatSubLabel(t.lang, t.title, t.streamIndex),
               streamIndex: t.streamIndex,
             }));
           });

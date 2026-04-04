@@ -304,6 +304,25 @@ describe("searchTorrentio", () => {
     assert.deepEqual(results, []);
   });
 
+  it("does not mark movie results as season packs", async () => {
+    const MOVIE_STREAMS = {
+      streams: [
+        {
+          name: "Torrentio\n1080p",
+          title: "Inception.2010.1080p.BluRay.x264-GROUP\nInception.2010.1080p.BluRay.x264-GROUP.mkv\n👤 120 💾 8.91 GB ⚙️ RARBG",
+          infoHash: "CCDD1122334455667788990011AABBCCDD112233",
+          fileIdx: 2,
+        },
+      ],
+    };
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify(MOVIE_STREAMS), { status: 200 });
+    const results = await searchTorrentio("tt1375666", "movie");
+    assert.equal(results.length, 1);
+    // Movie with fileIdx should NOT be flagged as season pack
+    assert.equal(results[0].seasonPack, false);
+  });
+
   it("builds correct URL for movies", async () => {
     let capturedUrl = "";
     globalThis.fetch = async (url: RequestInfo | URL) => {

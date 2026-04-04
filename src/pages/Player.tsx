@@ -414,6 +414,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: dur,
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     }).catch(() => {});
   };
 
@@ -439,6 +441,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: Math.floor(time.duration),
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     });
     // Synchronous XHR blocks until complete — guarantees delivery during unmount
     try {
@@ -478,6 +482,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: 0,
       duration: 0,
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     };
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -634,14 +640,6 @@ export default function Player() {
                         {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
                           <span key={t} className="player-source-tag">{t}</span>
                         ))}
-                        {s.multiAudio && <span className="player-source-tag multi-audio">Multi Audio</span>}
-                        {s.subLanguages?.length > 0
-                          ? <span className="player-source-tag has-subs">Subs: {s.subLanguages.join(", ")}</span>
-                          : s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}
-                        {s.foreignOnly && <span className="player-source-tag foreign">Foreign</span>}
-                        {s.languages?.length > 0 && (
-                          <span className="player-source-tag languages">{s.languages.join(" ")}</span>
-                        )}
                       </div>
                     </div>
                     <div className="player-source-item-meta">

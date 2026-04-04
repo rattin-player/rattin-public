@@ -162,6 +162,7 @@ export async function searchTorrentio(
           source: parsed.source,
           fileIdx: s.fileIdx,
           seasonPack:
+            type === "tv" &&
             s.fileIdx !== undefined &&
             !/S\d{1,2}E\d{1,2}/i.test(parsed.torrentName),
           languages: meta.languages,

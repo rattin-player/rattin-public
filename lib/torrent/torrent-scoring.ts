@@ -12,13 +12,6 @@ interface FileMatch {
   index: number;
 }
 
-// Extended result type with optional Torrentio metadata
-interface ScoringResult extends TorrentResult {
-  foreignOnly?: boolean;
-  hasSubs?: boolean;
-  multiAudio?: boolean;
-}
-
 export function scoreTorrent(result: TorrentResult, title: string, year: number | undefined, type: string): number {
   let score = 0;
   const name = result.name.toLowerCase();
@@ -28,36 +21,43 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
 
   const titleWords = titleLower.split(/\s+/);
   const matchedWords = titleWords.filter((w) => name.includes(w)).length;
-  score += (matchedWords / titleWords.length) * 50;
+  const titleScore = (matchedWords / titleWords.length) * 50;
+  score += titleScore;
 
   // Year match is only meaningful for movies — TV torrent names rarely include the show's first-air year
-  if (year && type === "movie" && name.includes(String(year))) score += 15;
+  let yearScore = 0;
+  if (year && type === "movie" && name.includes(String(year))) { yearScore = 8; score += yearScore; }
 
-  if (/1080p/.test(name)) score += 20;
-  if (/2160p|4k/i.test(name)) score += 15;
-  if (/720p/.test(name)) score += 10;
-  if (/blu-?ray|bdrip|bdremux/i.test(name)) score += 8;
-  if (/web-?dl|webrip/i.test(name)) score += 12;
-  if (/remux/i.test(name)) score += 3;
+  let resScore = 0;
+  if (/1080p/.test(name)) resScore = 20;
+  else if (/2160p|4k/i.test(name)) resScore = 15;
+  else if (/720p/.test(name)) resScore = 10;
+  score += resScore;
+
+  // Source tag: light tiebreaker, not a deciding factor
+  if (/blu-?ray|bdremux/i.test(name)) score += 3;
+  else if (/web-?dl/i.test(name)) score += 3;
+  else if (/webrip|\bweb\b/i.test(name)) score += 2;
+  else if (/bdrip/i.test(name)) score += 2;
 
   if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
 
   if (result.seeders === 0) return -1;
-  // Seeders are the strongest signal for availability and debrid cache likelihood.
-  // log2 curve: 10s→10, 50s→17, 100s→20, 500s→27, 1000s→30, 5000s→37
-  score += Math.min(40, Math.log2(result.seeders + 1) * 3);
+  // Seeders: strongest real-world signal for availability
+  // log2 base + linear tail so high-seeder torrents keep separating
+  // 100s→34, 500s→50, 1000s→60, 1786s→70, 3000s→70(cap)
+  const seederScore = Math.min(70, Math.log2(result.seeders + 1) * 5 + result.seeders / 100);
+  score += seederScore;
 
-  // Language/subtitle scoring (from Torrentio metadata)
-  // Only penalize when we're confident there's no English — foreignOnly alone
-  // is unreliable (many "foreign" torrents have dual audio + English subs).
-  // Check the torrent name itself for English indicators.
-  const meta = result as ScoringResult;
-  const hasEnglishInName = /\beng\b|\benglish\b|\bENG\b/i.test(name)
-    || /\biTA[_.-]ENG\b|\bENG[_.-]iTA\b/i.test(result.name)
-    || /\bDUAL\b|\bdual.audio\b|\bmulti.audio\b/i.test(name);
-  if (meta.foreignOnly && !meta.multiAudio && !meta.hasSubs && !hasEnglishInName) score -= 20;
-  if (meta.hasSubs) score += 5;
-  if (meta.multiAudio) score += 5;
+  // Size efficiency: smaller files download faster → play sooner.
+  // Inverse relationship: halving the size should give a meaningful bonus.
+  // Uses 1/size curve so 0.3GB vs 0.6GB is a real difference, not just 1 point.
+  // Penalty for bloated files (>8GB).
+  if (result.size && result.size > 0) {
+    const gb = result.size / (1024 ** 3);
+    if (gb <= 6) score += Math.round(Math.min(15, 4 / gb));  // 0.3GB→+13, 0.6GB→+7, 1GB→+4, 2GB→+2, 4GB→+1, 6GB→+1
+    else if (gb > 8) score -= Math.round(Math.min(10, (gb - 8) * 2)); // 10GB→-4, 15GB→-10(cap)
+  }
 
   return score;
 }

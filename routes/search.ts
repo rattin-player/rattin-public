@@ -516,6 +516,18 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "not_found" });
     }
 
+    // Prefer best 1080p torrent for auto-play (best balance of quality and size)
+    // Fall back to overall best if no 1080p is available
+    const best1080 = scored.find((r) => /1080p/i.test(r.name));
+    if (best1080) {
+      const topIdx = scored.indexOf(best1080);
+      if (topIdx > 0) {
+        scored.splice(topIdx, 1);
+        scored.unshift(best1080);
+        log("info", "Auto-play: promoted 1080p candidate", { name: best1080.name, score: best1080.score });
+      }
+    }
+
     // Try debrid — loop through top candidates until one works
     const debrid = getDebridProvider();
     const debridOn = debrid && getDebridMode() === "on";

@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
+import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
@@ -147,8 +148,20 @@ export default function Detail() {
     setShowPicker(false);
     setPlayState("loading");
     setPlayError("");
+    // Show loading overlay immediately
+    if (!isRemote) {
+      waitForBridge().then(() => {
+        if (data.poster_path) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${data.poster_path}`);
+        mpvSetTitle(displayTitle(pickerSeason, pickerEpisode));
+        mpvSetLoadingStatus("Starting stream...");
+        mpvSetLoading(true);
+      });
+    }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
       const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode, stream.fileIdx);
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (isRemote) {
         sendRemoteStart(result, result.tags || stream.tags, pickerSeason, pickerEpisode);
         return;
@@ -178,6 +191,7 @@ export default function Detail() {
       }
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
+      mpvSetLoading(false);
       setPlayState("error");
       setPlayError((err as Error).message);
     }
@@ -191,7 +205,19 @@ export default function Detail() {
       const title = data.title || data.name;
       const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
+      // Show loading overlay with poster immediately while searching for streams
+      if (!isRemote) {
+        waitForBridge().then(() => {
+          if (data.poster_path) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${data.poster_path}`);
+          mpvSetTitle(displayTitle(season, episode));
+          mpvSetLoadingStatus("Finding best stream...");
+          mpvSetLoading(true);
+        });
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
       const result = await autoPlay(title, year, type, season, episode, imdbId);
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (isRemote) {
         sendRemoteStart(result, result.tags, season, episode);
       } else {
@@ -214,6 +240,7 @@ export default function Detail() {
         navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err: unknown) {
+      mpvSetLoading(false);
       setPlayState("error");
       setPlayError((err as Error).message);
     }
