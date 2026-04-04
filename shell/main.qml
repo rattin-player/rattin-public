@@ -25,6 +25,14 @@ Window {
     property int subSize: 55
     property bool sourcePanelOpen: false
     property int sourceCount: 0
+    property bool coreIdle: true
+    property bool loadingOverlay: false
+    property string posterUrl: ""
+    property string loadingStatus: ""
+    property bool seekBuffering: false
+    property bool slowWarning: false
+    property bool slowWarningDismissed: false
+    property bool hasAlternateSources: false
 
     function togglePause() {
         if (root.paused) bridge.resume()
@@ -108,6 +116,10 @@ Window {
         function play(url) { bridge.play(url) }
         function setSourceCount(count) { root.sourceCount = count }
         function notifySourcePanel(open) { transport.sourcePanelChanged(open) }
+        function setPoster(url) { root.posterUrl = url }
+        function setLoadingStatus(text) { root.loadingStatus = text }
+        function setLoading(loading) { root.loadingOverlay = loading; if (!loading) root.seekBuffering = false }
+        function setSlowWarning(show, hasAlt) { root.slowWarning = show; root.hasAlternateSources = hasAlt; if (!show) root.slowWarningDismissed = false }
         function pause() { bridge.pause() }
         function resume() { bridge.resume() }
         function seek(seconds) { bridge.seek(seconds) }
@@ -144,8 +156,28 @@ Window {
             transport.isPlayingChanged(p)
             root.playing = p
             mpvPlayer.visible = p
-            controlsOverlay.visible = p
-            if (p) trackRefreshTimer.start()
+            controlsOverlay.visible = p && !root.loadingOverlay
+            if (p) {
+                trackRefreshTimer.start()
+                root.loadingOverlay = true
+                root.seekBuffering = false
+                root.slowWarning = false
+                root.slowWarningDismissed = false
+            } else {
+                seekBufferTimer.stop()
+                root.seekBuffering = false
+            }
+        }
+        function onCoreIdleChanged(idle) {
+            root.coreIdle = idle
+            if (!idle && root.playing) {
+                root.loadingOverlay = false
+                root.seekBuffering = false
+                controlsOverlay.visible = !root.sourcePanelOpen
+            }
+            if (idle && root.playing && !root.loadingOverlay) {
+                seekBufferTimer.start()
+            }
         }
     }
 
@@ -158,7 +190,7 @@ Window {
         function onSourcePanelChanged(open) {
             root.sourcePanelOpen = open
             mpvPlayer.visible = !open && root.playing
-            controlsOverlay.visible = !open && root.playing
+            controlsOverlay.visible = !open && root.playing && !root.loadingOverlay
         }
     }
 
@@ -213,6 +245,228 @@ Window {
             // Stop retrying once we have tracks
             if (root.subTracks.length > 0 || root.audioTracks.length > 1)
                 trackRefreshTimer.stop()
+        }
+    }
+
+    Timer {
+        id: seekBufferTimer
+        interval: 300
+        onTriggered: {
+            if (root.coreIdle && root.playing && !root.loadingOverlay)
+                root.seekBuffering = true
+        }
+    }
+
+    // ── Loading overlay (covers mpv during load) ──
+    Rectangle {
+        id: loadingOverlay
+        anchors.fill: parent
+        color: "#000000"
+        z: 4
+        visible: opacity > 0
+        opacity: (root.loadingOverlay && root.playing && !root.sourcePanelOpen) ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 300 } }
+
+        Image {
+            anchors.fill: parent
+            source: root.posterUrl
+            fillMode: Image.PreserveAspectCrop
+            opacity: 0.25
+            visible: status === Image.Ready
+        }
+
+        // Spinner
+        Rectangle {
+            id: loadingSpinner
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: -20
+            width: 40; height: 40
+            radius: 20
+            color: "transparent"
+            border.width: 3
+            border.color: "#40ffffff"
+
+            Rectangle {
+                width: 40; height: 40; radius: 20
+                color: "transparent"
+                border.width: 3
+                border.color: "transparent"
+
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = "#c9a84c"
+                        ctx.lineWidth = 3
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.arc(20, 20, 17, -Math.PI / 2, Math.PI / 4)
+                        ctx.stroke()
+                    }
+                }
+
+                RotationAnimation on rotation {
+                    from: 0; to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                    running: loadingOverlay.visible
+                }
+            }
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: loadingSpinner.bottom
+            anchors.topMargin: 20
+            text: root.loadingStatus
+            color: "#aaaaaa"
+            font.pixelSize: 13
+            visible: root.loadingStatus !== ""
+        }
+
+        // Top bar (back + title)
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 60
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: "#BF000000" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 12
+
+                Text {
+                    text: "\u2190"
+                    color: "white"
+                    font.pixelSize: 20
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: transport.backRequested()
+                    }
+                }
+
+                Text {
+                    text: root.mediaTitle
+                    color: "white"
+                    font.pixelSize: 15
+                    elide: Text.ElideRight
+                    width: root.width - 100
+                }
+            }
+        }
+
+        // Slow source warning banner
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottomMargin: 40
+            width: slowWarningRow.width + 32
+            height: 40
+            radius: 8
+            color: "#20ef4444"
+            border.width: 1
+            border.color: "#40ef4444"
+            visible: root.slowWarning && !root.slowWarningDismissed
+
+            Row {
+                id: slowWarningRow
+                anchors.centerIn: parent
+                spacing: 12
+
+                Text {
+                    text: "Source may be slow"
+                    color: "#fca5a5"
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Rectangle {
+                    width: switchSourceText.width + 16
+                    height: 26
+                    radius: 4
+                    color: "#30ef4444"
+                    border.width: 1
+                    border.color: "#40ef4444"
+                    visible: root.hasAlternateSources
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: switchSourceText
+                        anchors.centerIn: parent
+                        text: "Switch Source"
+                        color: "#fca5a5"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: transport.toggleSourcePanel()
+                    }
+                }
+
+                Text {
+                    text: "\u2715"
+                    color: "#80fca5a5"
+                    font.pixelSize: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.slowWarningDismissed = true
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Seek buffering spinner (lightweight, mid-playback) ──
+    Rectangle {
+        anchors.centerIn: parent
+        width: 56; height: 56; radius: 28
+        color: "#80000000"
+        z: 4
+        visible: root.seekBuffering && !root.loadingOverlay && !root.sourcePanelOpen
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 32; height: 32; radius: 16
+            color: "transparent"
+            border.width: 2.5
+            border.color: "#40ffffff"
+
+            Canvas {
+                anchors.fill: parent
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    ctx.strokeStyle = "#c9a84c"
+                    ctx.lineWidth = 2.5
+                    ctx.lineCap = "round"
+                    ctx.beginPath()
+                    ctx.arc(16, 16, 13, -Math.PI / 2, Math.PI / 4)
+                    ctx.stroke()
+                }
+            }
+
+            RotationAnimation on rotation {
+                from: 0; to: 360
+                duration: 1000
+                loops: Animation.Infinite
+                running: root.seekBuffering && !root.loadingOverlay
+            }
         }
     }
 

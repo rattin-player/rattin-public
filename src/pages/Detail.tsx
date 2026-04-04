@@ -296,6 +296,8 @@ export default function Detail() {
                 onClick={() => {
                   if (resumePoint && type === "tv" && resumePoint.season > 0) {
                     handlePlay(resumePoint.season, resumePoint.episode);
+                  } else if (type === "tv") {
+                    handlePlay(1, 1);
                   } else {
                     handlePlay();
                   }

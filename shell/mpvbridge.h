@@ -33,6 +33,7 @@ signals:
     void eofReached();
     void pauseChanged(bool paused);
     void isPlayingChanged(bool playing);
+    void coreIdleChanged(bool idle);
 
 private slots:
     void onMpvEvent(const QString &eventName, const QVariant &value);

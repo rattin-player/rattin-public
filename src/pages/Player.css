@@ -12,11 +12,6 @@
   cursor: default;
 }
 
-/* Spinner animation (used by loading states) */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* ── Remote connection toast ── */
 .player-remote-toast {
   position: absolute;
@@ -366,38 +361,3 @@
   50% { opacity: 0.4; }
 }
 
-/* ── Slow source warning banner ── */
-.player-slow-warning {
-  position: absolute;
-  top: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 12;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-  font-size: 0.82rem;
-  font-weight: 500;
-  animation: fadeIn 0.3s ease-out;
-  pointer-events: auto;
-}
-
-.player-slow-warning button {
-  padding: 4px 12px;
-  border-radius: 4px;
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
-  font-size: 0.75rem;
-  font-weight: 600;
-  transition: background var(--transition);
-}
-
-.player-slow-warning button:hover {
-  background: rgba(239, 68, 68, 0.35);
-}

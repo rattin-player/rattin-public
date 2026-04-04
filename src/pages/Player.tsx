@@ -29,7 +29,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
-import { usePlayerLoading } from "../lib/usePlayerLoading";
 import { useSubtitles } from "../lib/useSubtitles";
 import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
@@ -37,7 +36,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -154,12 +153,7 @@ export default function Player() {
   }, [active, startStream, navigate, state, sources, mediaTitle]);
 
   const {
-    loading, setLoading, loadingReason, setLoadingReason,
-    loadingMsg, currentMessage, pendingSubReload, reloadActiveSubRef, MESSAGES: _MESSAGES,
-  } = usePlayerLoading({ infoHash: infoHash!, fileIndex: fileIndex!, reloadActiveSub: null });
-
-  const {
-    dlProgress, dlSpeed,
+    dlProgress, dlSpeed, numPeers,
     getEffectiveTime,
     seekTo,
     setPlaying,
@@ -175,9 +169,6 @@ export default function Player() {
     infoHash: infoHash!, fileIndex: fileIndex!, subsRef, activeSubRef,
     preSelectedSub,
   });
-
-  // Wire reloadActiveSub into usePlayerLoading now that it's available
-  reloadActiveSubRef.current = reloadActiveSub;
 
   const { audioTracks, activeAudio, switchAudio } = useAudioTracks({
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
@@ -211,18 +202,38 @@ export default function Player() {
   });
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
-  const [showSlowWarning, setShowSlowWarning] = useState(false);
   const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(stuckTimer.current);
     if (dlProgress >= 1 || dlSpeed > 0 || !active) {
-      setShowSlowWarning(false);
+      mpvSetSlowWarning(false, false);
       return;
     }
     // Start timer when speed is 0 and download isn't complete
-    stuckTimer.current = setTimeout(() => setShowSlowWarning(true), 15000);
+    stuckTimer.current = setTimeout(() => mpvSetSlowWarning(true, sources.length > 1), 15000);
     return () => clearTimeout(stuckTimer.current);
-  }, [dlSpeed, dlProgress, active]);
+  }, [dlSpeed, dlProgress, active, sources.length]);
+
+  // Forward loading status to QML overlay
+  useEffect(() => {
+    const isDebrid = !!state?.debridStreamKey;
+    let status: string;
+    if (isDebrid) {
+      status = "Loading stream...";
+    } else if (numPeers === 0 && dlProgress < 1) {
+      status = "Connecting to peers...";
+    } else if (dlProgress < 1) {
+      const speed = dlSpeed >= 1048576
+        ? `${(dlSpeed / 1048576).toFixed(1)} MB/s`
+        : dlSpeed >= 1024
+          ? `${(dlSpeed / 1024).toFixed(0)} KB/s`
+          : `${dlSpeed} B/s`;
+      status = `Connected to ${numPeers} peer${numPeers !== 1 ? "s" : ""} \u00b7 ${speed}`;
+    } else {
+      status = "Starting playback...";
+    }
+    mpvSetLoadingStatus(status);
+  }, [numPeers, dlSpeed, dlProgress, state?.debridStreamKey]);
 
   // Sync PlayerContext.active with URL params (Detail.tsx navigates here without calling startStream)
   useEffect(() => {
@@ -248,6 +259,11 @@ export default function Player() {
         : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}`;
       console.log("[native-bridge] mpvPlay:", streamUrl);
       try {
+        // Set poster for loading overlay before starting playback
+        const posterPath = state?.posterPath;
+        if (posterPath) {
+          mpvSetPoster(`https://image.tmdb.org/t/p/w1280${posterPath}`);
+        }
         mpvSetTitle(mediaTitle || "");
         mpvPlay(streamUrl);
         console.log("[native-bridge] mpvPlay sent");
@@ -263,13 +279,11 @@ export default function Player() {
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
-        setLoading(false);
         playbackStarted = true;
       });
       onMpvDurationChanged((d) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
-        setLoading(false);
         // Restore saved playback position once we know the duration
         // sessionStorage (updated every 3s) is freshest within a session;
         // resumePosition from watch history persists across app restarts
@@ -575,7 +589,7 @@ export default function Player() {
         </div>
       )}
 
-      {/* Loading/buffering UI is handled by QML splash overlay */}
+      {/* Loading/buffering/slow source UI is handled by QML overlays */}
 
       {showSkipIntro && introRange && (
         <button
@@ -587,13 +601,6 @@ export default function Player() {
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>
-      )}
-
-      {showSlowWarning && sources.length > 1 && !showSources && (
-        <div className="player-slow-warning" onClick={(e) => e.stopPropagation()}>
-          <span>No data from peers — source may be dead</span>
-          <button onClick={() => setShowSources(true)}>Switch Source</button>
-        </div>
       )}
 
       {/* Playback controls are handled by the native QML overlay (main.qml) */}
