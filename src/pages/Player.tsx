@@ -317,6 +317,7 @@ export default function Player() {
   const beaconProgressRef = useRef(() => {});
   beaconProgressRef.current = () => {
     const time = effectiveTimeRef.current;
+    console.log("[watch-history] beacon unmount:", { hasTime: !!time, tmdbId: state?.tmdbId, time: time?.time, duration: time?.duration });
     if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
