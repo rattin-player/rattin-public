@@ -61,17 +61,21 @@ export default function Detail() {
     }
   }, [id, selectedSeason, data]);
 
-  // Fetch resume point and saved state
-  useEffect(() => {
+  function refreshResumePoint() {
     if (!id) return;
-    setResumePoint(null);
     fetchResumePoint(Number(id), type).then((r) => {
       setResumePoint(r.resumePoint);
-      // Auto-select the resume season if user hasn't manually picked one
       if (r.resumePoint?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
         setSelectedSeason(r.resumePoint.season);
       }
     }).catch(() => {});
+  }
+
+  // Fetch resume point and saved state
+  useEffect(() => {
+    if (!id) return;
+    setResumePoint(null);
+    refreshResumePoint();
     checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
   }, [id, type]);
 
@@ -441,6 +445,7 @@ export default function Detail() {
                                 next.set(epKey, { ...progress, position: nowFinished ? dur : 0, duration: dur, finished: nowFinished });
                                 return next;
                               });
+                              refreshResumePoint();
                             }).catch(() => {});
                           }}
                         >
