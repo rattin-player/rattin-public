@@ -6,7 +6,7 @@
 // Tested against webtorrent@2.x. If an upgrade breaks these,
 // grep for "torrent-compat" to find all call sites.
 
-import type { TorrentFile, Torrent } from "./types.js";
+import type { TorrentFile, Torrent } from "../types.js";
 
 /**
  * Get the absolute byte offset of a file within the torrent.

@@ -1,7 +1,7 @@
 import path from "path";
 import { statSync } from "fs";
 import type { Express, Request, Response, NextFunction } from "express";
-import { getActiveDebridStreamByKey } from "../lib/debrid.js";
+import { getActiveDebridStreamByKey } from "../lib/torrent/debrid.js";
 import { jobKey } from "../lib/cache/torrent-caches.js";
 import { isAllowedFile, SUBTITLE_EXTENSIONS } from "../lib/media/media-utils.js";
 import {

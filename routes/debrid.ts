@@ -4,7 +4,7 @@ import {
   getDebridProvider, reloadDebridProvider,
   loadConfig, saveConfig, deleteConfig, configExists, getDebridMode,
   type DebridMode,
-} from "../lib/debrid.js";
+} from "../lib/torrent/debrid.js";
 
 export default function debridRoutes(app: Express, ctx: ServerContext): void {
   const { log } = ctx;

@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { getFileOffset } from "../torrent-compat.js";
+import { getFileOffset } from "../torrent/torrent-compat.js";
 import type { SeekEntry, Torrent, TorrentFile } from "../types.js";
 
 // ── Seek Index ─────────────────────────────────────────────────────────

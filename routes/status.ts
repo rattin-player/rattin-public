@@ -6,7 +6,7 @@ import {
   isAllowedFile,
 } from "../lib/media/media-utils.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
-import { getActiveDebridFiles } from "../lib/debrid.js";
+import { getActiveDebridFiles } from "../lib/torrent/debrid.js";
 
 export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {

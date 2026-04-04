@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { parseTorrentioTitle, parseSizeStr, searchTorrentio, parseTorrentioMeta } from "../lib/torrentio.js";
+import { parseTorrentioTitle, parseSizeStr, searchTorrentio, parseTorrentioMeta } from "../lib/torrent/torrentio.js";
 
 // ---------------------------------------------------------------------------
 // parseTorrentioTitle tests

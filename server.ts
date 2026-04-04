@@ -7,7 +7,7 @@ import { tmdbCache } from "./lib/cache/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/cache/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
 import { createApiAccessControl } from "./lib/access-control.js";
-import { createContext } from "./lib/server-context.js";
+import { createContext } from "./lib/torrent/server-context.js";
 import rcRoutes from "./routes/rc.js";
 import tmdbRoutes from "./routes/tmdb.js";
 import mediaRoutes from "./routes/media.js";

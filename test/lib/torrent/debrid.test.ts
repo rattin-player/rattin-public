@@ -21,7 +21,7 @@ describe("Debrid module", () => {
 
     it("saveConfig writes valid JSON with correct permissions", async () => {
       // Import fresh to avoid singleton state
-      const { saveConfig, loadConfig } = await import("../../lib/debrid.js");
+      const { saveConfig, loadConfig } = await import("../../../lib/torrent/debrid.js");
 
       // Monkey-patch config path for test — this is fragile but the module
       // uses a const. We test the logic through the public API instead.

@@ -3,20 +3,20 @@ import { statSync } from "fs";
 // @ts-expect-error — no @types/webtorrent available
 import WebTorrent from "webtorrent";
 import crypto from "crypto";
-import { BoundedMap } from "./cache/bounded-map.js";
-import { registerCache, cleanupHash } from "./cache/torrent-caches.js";
-import { downloadDir, transcodeDir, dataDir } from "./storage/paths.js";
-import { JsonStore } from "./storage/store.js";
-import { WatchHistory } from "./storage/watch-history.js";
-import { SavedList } from "./storage/saved-list.js";
-import type { WatchRecord } from "./storage/watch-history.js";
-import type { SavedItem } from "./storage/saved-list.js";
+import { BoundedMap } from "../cache/bounded-map.js";
+import { registerCache, cleanupHash } from "../cache/torrent-caches.js";
+import { downloadDir, transcodeDir, dataDir } from "../storage/paths.js";
+import { JsonStore } from "../storage/store.js";
+import { WatchHistory } from "../storage/watch-history.js";
+import { SavedList } from "../storage/saved-list.js";
+import type { WatchRecord } from "../storage/watch-history.js";
+import type { SavedItem } from "../storage/saved-list.js";
 import type { Request, Response, NextFunction } from "express";
 import type {
   CompletedFile, StreamEntry, ActiveTranscode,
   AvailEntry, IntroEntry, ProbeResult, RCSession, SeekEntry,
   Torrent, TorrentFile, TorrentClient, LogLevel, ServerContext,
-} from "./types.js";
+} from "../types.js";
 
 interface CreateContextOverrides {
   client?: TorrentClient;
