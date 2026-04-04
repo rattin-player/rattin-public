@@ -94,11 +94,12 @@ export default function Player() {
       const newTags = result.tags || source.tags || [];
       setCurrentTags(newTags);
       setShowSources(false);
+      // Capture position BEFORE teardown — startStream nulls effectiveTimeRef
+      const currentPos = effectiveTimeRef.current?.time ?? 0;
       // Kill old player, wait for mpv to fully stop, then spawn new player
       navigate("/", { replace: true });
       await mpvStopAndWait();
       startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridStreamKey);
-      const currentPos = effectiveTimeRef.current?.time ?? 0;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
         state: {
           ...state,

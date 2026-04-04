@@ -130,6 +130,9 @@ export default function Detail() {
           debridStreamKey: result.debridStreamKey, year, type, season, episode, imdbId,
           tmdbId: id, posterPath: data.poster_path ?? null,
           episodeTitle: season != null ? (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name : undefined,
+          resumePosition: resumePoint?.position > 0
+            && (type === "movie" || (resumePoint.season === season && resumePoint.episode === episode))
+            ? resumePoint.position : undefined,
         },
       }),
     }).catch(() => {});

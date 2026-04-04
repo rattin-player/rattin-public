@@ -282,6 +282,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
               tags: value.tags, title: value.title, debridStreamKey: value.debridStreamKey,
               year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
               tmdbId: value.tmdbId, posterPath: value.posterPath, episodeTitle: value.episodeTitle,
+              resumePosition: value.resumePosition,
             };
 
             if (wasOnPlayer) {
