@@ -274,3 +274,19 @@ export function mpvSetSourceCount(count: number): void {
 export function mpvNotifySourcePanel(open: boolean): void {
   (window.mpvBridge as any)?.notifySourcePanel?.(open);
 }
+
+export function mpvSetPoster(url: string): void {
+  (window.mpvBridge as any)?.setPoster?.(url);
+}
+
+export function mpvSetLoadingStatus(text: string): void {
+  (window.mpvBridge as any)?.setLoadingStatus?.(text);
+}
+
+export function mpvSetLoading(loading: boolean): void {
+  (window.mpvBridge as any)?.setLoading?.(loading);
+}
+
+export function mpvSetSlowWarning(show: boolean, hasAlternatives: boolean): void {
+  (window.mpvBridge as any)?.setSlowWarning?.(show, hasAlternatives);
+}
