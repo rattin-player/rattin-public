@@ -3,7 +3,7 @@ import { execFile } from "child_process";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import type { CrossCorrelationResult, FingerprintResult } from "./types.js";
+import type { CrossCorrelationResult, FingerprintResult } from "../types.js";
 
 // Count set bits in a 32-bit integer
 export function popcount32(n: number): number {

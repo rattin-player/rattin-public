@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
-import { getFileOffset } from "./torrent-compat.js";
-import type { SeekEntry, Torrent, TorrentFile } from "./types.js";
+import { getFileOffset } from "../torrent-compat.js";
+import type { SeekEntry, Torrent, TorrentFile } from "../types.js";
 
 // ── Seek Index ─────────────────────────────────────────────────────────
 // Builds a keyframe index (time -> byte offset) from ffprobe output.

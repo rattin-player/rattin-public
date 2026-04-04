@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   isAllowedFile, srtToVtt, magnetToInfoHash, fmtBytes, throttle,
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS, ALLOWED_EXTENSIONS,
-} from "../lib/media-utils.js";
+} from "../lib/media/media-utils.js";
 
 describe("isAllowedFile", () => {
   it("allows video files", () => {

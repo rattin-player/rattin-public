@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent-scoring.js";
-import { fmtBytes, throttle } from "../lib/media-utils.js";
+import { fmtBytes, throttle } from "../lib/media/media-utils.js";
 import { searchTorrentio } from "../lib/torrentio.js";
 import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/debrid.js";
 import type { ServerContext, Torrent } from "../lib/types.js";

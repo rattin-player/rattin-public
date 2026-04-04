@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import type { ChildProcess } from "child_process";
 import type { Readable } from "stream";
 import type { Request, Response } from "express";
-import type { TranscodeArgs, ProbeResult, LiveTranscodeOpts, ActiveTranscode, LogFn } from "./types.js";
+import type { TranscodeArgs, ProbeResult, LiveTranscodeOpts, ActiveTranscode, LogFn } from "../types.js";
 
 const WATCHDOG_TIMEOUT = 120000;
 

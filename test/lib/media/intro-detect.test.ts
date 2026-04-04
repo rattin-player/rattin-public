@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { detectIntro, lookupExternal, _setExtractor, _setFetcher } from "../../lib/intro-detect.js";
+import { detectIntro, lookupExternal, _setExtractor, _setFetcher } from "../../../lib/media/intro-detect.js";
 
 // Use `any` for mock fetcher/extractor to avoid matching the exact overloaded signatures
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -6,8 +6,8 @@ import type { Express, Request, Response } from "express";
 import { jobKey } from "../lib/cache/torrent-caches.js";
 import { getFileOffset } from "../lib/torrent-compat.js";
 import { hasPiece } from "../lib/torrent-compat.js";
-import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media-utils.js";
-import { detectIntro, lookupExternal } from "../lib/intro-detect.js";
+import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media/media-utils.js";
+import { detectIntro, lookupExternal } from "../lib/media/intro-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
 import { getActiveDebridUrl } from "../lib/debrid.js";
 
