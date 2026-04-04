@@ -292,13 +292,14 @@ export default function Player() {
   const reportProgressRef = useRef(() => {});
   reportProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    if (!time || !state?.tmdbId) return;
+    if (!time) { console.log("[watch-history] skip: no effectiveTime"); return; }
+    if (!state?.tmdbId) { console.log("[watch-history] skip: no tmdbId in state"); return; }
     const tmdbId = Number(state.tmdbId);
-    if (isNaN(tmdbId)) return;
-    // Allow saving even if duration is unknown — position alone is still useful
+    if (isNaN(tmdbId)) { console.log("[watch-history] skip: tmdbId NaN"); return; }
     const pos = Math.floor(time.time);
     const dur = Math.floor(time.duration);
-    if (pos <= 0) return;
+    if (pos <= 0) { console.log("[watch-history] skip: pos <= 0", pos); return; }
+    console.log("[watch-history] reporting", { tmdbId, pos, dur });
     reportWatchProgress({
       tmdbId,
       mediaType: state.type || "movie",
@@ -347,10 +348,17 @@ export default function Player() {
     navigate(-1);
   }, [navigate]);
 
-  // Periodic reporting every 30s
+  // Periodic reporting every 10s
   useEffect(() => {
-    const interval = setInterval(() => reportProgressRef.current(), 30_000);
-    return () => clearInterval(interval);
+    console.log("[watch-history] periodic timer started");
+    const interval = setInterval(() => {
+      console.log("[watch-history] periodic tick");
+      reportProgressRef.current();
+    }, 10_000);
+    return () => {
+      console.log("[watch-history] periodic timer cleared");
+      clearInterval(interval);
+    };
   }, []);
 
   // Report on unmount (leaving player)
