@@ -5,7 +5,12 @@ import WebTorrent from "webtorrent";
 import crypto from "crypto";
 import { BoundedMap } from "./bounded-map.js";
 import { registerCache, cleanupHash } from "./torrent-caches.js";
-import { downloadDir, transcodeDir } from "./paths.js";
+import { downloadDir, transcodeDir, dataDir } from "./paths.js";
+import { JsonStore } from "./store.js";
+import { WatchHistory } from "./watch-history.js";
+import { SavedList } from "./saved-list.js";
+import type { WatchRecord } from "./watch-history.js";
+import type { SavedItem } from "./saved-list.js";
 import type { Request, Response, NextFunction } from "express";
 import type {
   CompletedFile, StreamEntry, ActiveTranscode,
@@ -57,6 +62,13 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
 
   const probeCache = new BoundedMap<ProbeResult>(50); // filePath -> result
   registerCache("probeCache", probeCache as unknown as Map<string, unknown>, "path");
+
+  // ── Persistent storage ──────────────────────────────────────────────
+  const profileDir = dataDir();
+  const watchHistoryStore = new JsonStore<WatchRecord>(path.join(profileDir, "watch-history.json"));
+  const watchHistory = new WatchHistory(watchHistoryStore);
+  const savedListStore = new JsonStore<SavedItem>(path.join(profileDir, "saved-list.json"));
+  const savedList = new SavedList(savedListStore);
 
   // Stable token generated once per server start. After the PC passes nginx
   // basic auth once, the app sets a 30-day cookie with this token. Nginx's
@@ -177,7 +189,7 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
     durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
     availabilityCache, AVAIL_TTL, introCache, probeCache, pcAuthToken,
-    rcSessions,
+    rcSessions, watchHistory, savedList,
     log, diskPath, isFileComplete, cleanupTorrentCaches,
     trackStreamOpen, trackStreamClose, streamTracking,
   };

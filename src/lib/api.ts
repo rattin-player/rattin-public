@@ -229,6 +229,62 @@ export async function deleteTmdbConfig(): Promise<void> {
   if (!res.ok) throw new Error("delete_failed");
 }
 
+// ── Watch History ─────────────────────────────────────────────────
+
+export async function reportWatchProgress(data: {
+  tmdbId: number; mediaType: string; title: string; posterPath: string | null;
+  season?: number; episode?: number; episodeTitle?: string;
+  position: number; duration: number;
+}): Promise<void> {
+  await fetch("/api/watch-history/progress", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchContinueWatching(): Promise<{ items: any[] }> {
+  return get("/api/watch-history/continue");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchRecentlyWatched(): Promise<{ items: any[] }> {
+  return get("/api/watch-history/recent");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchSeriesProgress(tmdbId: number): Promise<{ episodes: any[] }> {
+  return get(`/api/watch-history/series/${tmdbId}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchResumePoint(tmdbId: number, mediaType: string): Promise<{ resumePoint: any }> {
+  return get(`/api/watch-history/resume/${tmdbId}?mediaType=${mediaType}`);
+}
+
+// ── Saved List ───────────────────────────────────────────────────
+
+export async function toggleSaved(data: {
+  tmdbId: number; mediaType: string; title: string; posterPath: string | null;
+}): Promise<{ saved: boolean }> {
+  const res = await fetch("/api/saved/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export function checkSaved(mediaType: string, tmdbId: number): Promise<{ saved: boolean }> {
+  return get(`/api/saved/${mediaType}/${tmdbId}`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchSavedList(): Promise<{ items: any[] }> {
+  return get("/api/saved");
+}
+
 // ── VPN ────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

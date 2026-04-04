@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
-import { fetchTrending, fetchDiscover, fetchGenres } from "../lib/api";
+import WatchHistoryRow from "../components/WatchHistoryRow";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved } from "../lib/api";
 import "./Home.css";
 
 function recentDateRange() {
@@ -60,6 +61,17 @@ export default function Home() {
           </button>
         ))}
       </div>
+      <WatchHistoryRow
+        title="Continue Watching"
+        fetchFn={fetchContinueWatching}
+        showProgress
+        onRemove={(item) => dismissWatchHistory({ tmdbId: item.tmdbId, mediaType: item.mediaType, season: item.season, episode: item.episode })}
+      />
+      <WatchHistoryRow
+        title="My List"
+        fetchFn={fetchSavedList}
+        onRemove={(item) => toggleSaved({ tmdbId: item.tmdbId, mediaType: item.mediaType, title: item.title, posterPath: item.posterPath }).then(() => {})}
+      />
       <ContentRows from={from} to={to} />
     </div>
   );

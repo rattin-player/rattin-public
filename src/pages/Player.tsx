@@ -7,7 +7,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -196,19 +196,26 @@ export default function Player() {
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
         setLoading(false);
         // Restore saved playback position once we know the duration
+        // Priority: nav state resumePosition (from watch history) > sessionStorage (legacy)
         if (!positionRestored && d > 0) {
           positionRestored = true;
-          const saved = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
+          const resumePos = state?.resumePosition ? parseFloat(state.resumePosition) : 0;
+          const sessionPos = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
+          const saved = resumePos > 0 ? resumePos : sessionPos;
           if (shouldRestorePosition(saved, d)) {
             mpvSeek(saved);
           }
         }
       });
       onMpvEofReached(() => {
-        if (playbackStarted) navigate(-1);
+        if (playbackStarted) {
+          reportProgressRef.current();
+          navigate(-1);
+        }
       });
       onMpvPauseChanged((paused) => {
         setPlaying(!paused);
+        if (paused) reportProgressRef.current();
       });
       // Sync React subtitle/audio state when QML native overlay changes tracks
       onNativeSubChanged((mpvId) => {
@@ -280,6 +287,37 @@ export default function Player() {
   }
   useEffect(() => {
     return () => { if (commandRef) commandRef.current = null; };
+  }, []);
+
+  // ── Watch history progress reporting (periodic + on pause/unmount) ──
+  const reportProgressRef = useRef(() => {});
+  reportProgressRef.current = () => {
+    const time = effectiveTimeRef.current;
+    if (!time || time.duration <= 0 || !state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    reportWatchProgress({
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: Math.floor(time.time),
+      duration: Math.floor(time.duration),
+    }).catch(() => {});
+  };
+
+  // Periodic reporting every 30s
+  useEffect(() => {
+    const interval = setInterval(() => reportProgressRef.current(), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Report on unmount (leaving player)
+  useEffect(() => {
+    return () => { reportProgressRef.current(); };
   }, []);
 
   const [showControls, setShowControls] = useState(true);

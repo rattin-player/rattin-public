@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import SourcePicker from "../components/SourcePicker";
@@ -30,6 +30,11 @@ export default function Detail() {
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
   const [showAllReddit, setShowAllReddit] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [resumePoint, setResumePoint] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [episodeProgress, setEpisodeProgress] = useState<Map<string, any>>(new Map());
+  const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     setData(null);
@@ -51,6 +56,27 @@ export default function Detail() {
       fetchSeason(id!, selectedSeason).then(setEpisodes).catch(() => {});
     }
   }, [id, selectedSeason, data]);
+
+  // Fetch resume point and saved state
+  useEffect(() => {
+    if (!id) return;
+    setResumePoint(null);
+    fetchResumePoint(Number(id), type).then((r) => setResumePoint(r.resumePoint)).catch(() => {});
+    checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
+  }, [id, type]);
+
+  // Fetch episode progress for TV
+  useEffect(() => {
+    if (type !== "tv" || !id) return;
+    fetchSeriesProgress(Number(id))
+      .then((r) => {
+        const map = new Map();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const ep of r.episodes) map.set(`s${ep.season}e${ep.episode}`, ep);
+        setEpisodeProgress(map);
+      })
+      .catch(() => {});
+  }, [id, type]);
 
   async function openPicker(season?: number, episode?: number) {
     setPickerSeason(season);
@@ -114,11 +140,13 @@ export default function Detail() {
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const navState: any = {
         tags: result.tags || stream.tags, title: displayTitle(pickerSeason, pickerEpisode), tmdbId: id,
-        year, type, imdbId, sources: streams,
+        year, type, imdbId, sources: streams, posterPath: data.poster_path ?? null,
       };
       if (pickerSeason != null) {
         navState.season = pickerSeason;
         navState.episode = pickerEpisode;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === pickerEpisode)?.name;
       }
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
@@ -141,12 +169,15 @@ export default function Detail() {
         sendRemoteStart(result, result.tags, season, episode);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const navState: any = { tags: result.tags, title: displayTitle(season, episode), tmdbId: id, year, type, imdbId };
+        const navState: any = { tags: result.tags, title: displayTitle(season, episode), tmdbId: id, year, type, imdbId, posterPath: data.poster_path ?? null };
         if (season != null) {
           navState.season = season;
           navState.episode = episode;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name;
         }
         if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
+        if (resumePoint?.position > 0) navState.resumePosition = resumePoint.position;
         navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err: unknown) {
@@ -229,7 +260,13 @@ export default function Detail() {
             <div className="detail-actions">
               <button
                 className="detail-play-btn"
-                onClick={() => handlePlay()}
+                onClick={() => {
+                  if (resumePoint && type === "tv" && resumePoint.season > 0) {
+                    handlePlay(resumePoint.season, resumePoint.episode);
+                  } else {
+                    handlePlay();
+                  }
+                }}
                 disabled={playState === "loading"}
               >
                 {playState === "loading" ? (
@@ -239,9 +276,30 @@ export default function Detail() {
                     <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
                       <path d="M8 5v14l11-7z" />
                     </svg>
-                    Play
+                    {resumePoint && type === "tv" && resumePoint.season > 0
+                      ? `Resume S${resumePoint.season}E${resumePoint.episode}`
+                      : resumePoint && type === "movie" && resumePoint.position > 0
+                        ? "Resume"
+                        : "Play"}
                   </>
                 )}
+              </button>
+              <button
+                className={`detail-save-btn${isSaved ? " saved" : ""}`}
+                onClick={() => {
+                  const title = data.title || data.name;
+                  toggleSaved({
+                    tmdbId: Number(id),
+                    mediaType: type,
+                    title,
+                    posterPath: data.poster_path ?? null,
+                  }).then((r) => setIsSaved(r.saved)).catch(() => {});
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" fill={isSaved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+                </svg>
+                {isSaved ? "Saved" : "Save"}
               </button>
               <button
                 className="detail-source-btn"
@@ -307,8 +365,14 @@ export default function Detail() {
                 ))
               ) : (
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (episodes.episodes || []).map((ep: any) => (
-                  <div key={ep.id} className="episode-card">
+                (episodes.episodes || []).map((ep: any) => {
+                  const epKey = `s${selectedSeason}e${ep.episode_number}`;
+                  const progress = episodeProgress.get(epKey);
+                  const epPct = progress && progress.duration > 0
+                    ? Math.min(100, (progress.position / progress.duration) * 100)
+                    : 0;
+                  return (
+                  <div key={ep.id} className={`episode-card${progress?.finished ? " watched" : ""}`}>
                     {ep.still_path && (
                       <img className="episode-thumb" src={still(ep.still_path)!} alt="" loading="lazy" />
                     )}
@@ -349,8 +413,19 @@ export default function Detail() {
                         </button>
                       </div>
                     </div>
+                    {epPct > 0 && !progress?.finished && (
+                      <div className="episode-progress">
+                        <div className="episode-progress-fill" style={{ width: `${epPct}%` }} />
+                      </div>
+                    )}
+                    {progress?.finished && (
+                      <div className="episode-watched-badge">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                      </div>
+                    )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
