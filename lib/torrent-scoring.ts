@@ -59,6 +59,8 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
     else if (gb > 8) score -= Math.round(Math.min(10, (gb - 8) * 2)); // 10GB→-4, 15GB→-10(cap)
   }
 
+  const sizeGB = result.size ? (result.size / (1024 ** 3)).toFixed(1) : "?";
+  console.log(`[score] ${result.name.slice(0, 60).padEnd(60)} | t=${titleScore.toFixed(0).padStart(2)} y=${yearScore} r=${String(resScore).padStart(2)} s=${String(sourceScore).padStart(2)} seed=${seederScore.toFixed(0).padStart(2)}(${String(result.seeders).padStart(5)}) sz=${String(sizeGB).padStart(5)}GB | ${score.toFixed(0)}`);
   return score;
 }
 
