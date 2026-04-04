@@ -3,13 +3,13 @@ import fs from "fs";
 import { createReadStream, statSync } from "fs";
 import { spawn } from "child_process";
 import type { Express, Request, Response } from "express";
-import { jobKey } from "../lib/torrent-caches.js";
-import { getFileOffset } from "../lib/torrent-compat.js";
-import { hasPiece } from "../lib/torrent-compat.js";
-import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media-utils.js";
-import { detectIntro, lookupExternal } from "../lib/intro-detect.js";
+import { jobKey } from "../lib/cache/torrent-caches.js";
+import { getFileOffset } from "../lib/torrent/torrent-compat.js";
+import { hasPiece } from "../lib/torrent/torrent-compat.js";
+import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media/media-utils.js";
+import { detectIntro, lookupExternal } from "../lib/media/intro-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
-import { getActiveDebridUrl } from "../lib/debrid.js";
+import { getActiveDebridUrl } from "../lib/torrent/debrid.js";
 
 export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   const {

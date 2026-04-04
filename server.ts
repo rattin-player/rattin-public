@@ -2,12 +2,12 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
-import { sessionsPath, downloadDir } from "./lib/paths.js";
-import { tmdbCache } from "./lib/cache.js";
-import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
+import { sessionsPath, downloadDir } from "./lib/storage/paths.js";
+import { tmdbCache } from "./lib/cache/cache.js";
+import { pruneOrphans, cacheStats } from "./lib/cache/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
 import { createApiAccessControl } from "./lib/access-control.js";
-import { createContext } from "./lib/server-context.js";
+import { createContext } from "./lib/torrent/server-context.js";
 import rcRoutes from "./routes/rc.js";
 import tmdbRoutes from "./routes/tmdb.js";
 import mediaRoutes from "./routes/media.js";
@@ -19,10 +19,10 @@ import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
 import storageRoutes from "./routes/storage.js";
-import { sweepOldFiles } from "./lib/cache-cleanup.js";
+import { sweepOldFiles } from "./lib/cache/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
-import type { WatchHistory } from "./lib/watch-history.js";
-import type { SavedList } from "./lib/saved-list.js";
+import type { WatchHistory } from "./lib/storage/watch-history.js";
+import type { SavedList } from "./lib/storage/saved-list.js";
 
 interface CreateAppOverrides {
   __dirname?: string;

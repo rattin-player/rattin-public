@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "../lib/cache.js";
+import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "../lib/cache/cache.js";
 import { tmdbConfigured, saveTmdbKey, deleteTmdbKey } from "../lib/tmdb-config.js";
 import type { ServerContext } from "../lib/types.js";
 

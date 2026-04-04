@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { TTLCache, CACHE_TTL } from "../lib/cache.js";
+import { TTLCache, CACHE_TTL } from "../lib/cache/cache.js";
 
 describe("TTLCache", () => {
   let cache: TTLCache;

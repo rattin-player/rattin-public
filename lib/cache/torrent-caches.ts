@@ -3,7 +3,7 @@
 // Every Map/Set keyed by infoHash or "infoHash:fileIndex" MUST be
 // registered here so that cleanupHash() and pruneOrphans() cover it.
 
-import type { CacheKeyStyle, CacheRegistration } from "./types.js";
+import type { CacheKeyStyle, CacheRegistration } from "../types.js";
 
 /**
  * Build a normalized cache key "infohash:fileindex".

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BoundedMap } from "../../lib/bounded-map.js";
+import { BoundedMap } from "../../../lib/cache/bounded-map.js";
 
 describe("BoundedMap", () => {
   it("extends Map", () => {

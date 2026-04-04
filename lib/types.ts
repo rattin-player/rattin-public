@@ -4,8 +4,8 @@
 import type { ChildProcess } from "child_process";
 import type { Request, Response, NextFunction } from "express";
 import type { Readable } from "stream";
-import type { WatchHistory } from "./watch-history.js";
-import type { SavedList } from "./saved-list.js";
+import type { WatchHistory } from "./storage/watch-history.js";
+import type { SavedList } from "./storage/saved-list.js";
 
 // ── Log ───────────────────────────────────────────────────────────────
 

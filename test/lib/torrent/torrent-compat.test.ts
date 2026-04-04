@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getFileOffset, getFileEndPiece, hasPiece } from "../../lib/torrent-compat.js";
+import { getFileOffset, getFileEndPiece, hasPiece } from "../../../lib/torrent/torrent-compat.js";
 
 describe("getFileOffset", () => {
   it("returns file.offset when it is a valid number", () => {

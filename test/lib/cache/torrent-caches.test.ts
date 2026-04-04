@@ -6,7 +6,7 @@ import {
   cleanupHash,
   pruneOrphans,
   cacheStats,
-} from "../../lib/torrent-caches.js";
+} from "../../../lib/cache/torrent-caches.js";
 
 // ── jobKey() — stateless, test freely ──
 

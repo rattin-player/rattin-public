@@ -1,7 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, type TestServerResult } from "../helpers/mock-app.js";
-import { setActiveDebridStream } from "../../lib/debrid.js";
+import { setActiveDebridStream } from "../../lib/torrent/debrid.js";
 
 describe("Pipeline consistency", () => {
   let baseUrl: string, close: () => Promise<void>, ctx: TestServerResult;

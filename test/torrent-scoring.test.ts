@@ -4,7 +4,7 @@ import {
   scoreTorrent, parseTags, matchEpisodePattern,
   findEpisodeFile, findLargestVideoFile,
   hasWrongEpisode, coversTargetSeason,
-} from "../lib/torrent-scoring.js";
+} from "../lib/torrent/torrent-scoring.js";
 
 describe("parseTags", () => {
   it("detects resolution", () => {

@@ -5,8 +5,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 import { mkdtempSync, rmSync } from "fs";
 import path from "path";
 import os from "os";
-import { JsonStore } from "../../lib/store.js";
-import { SavedList, type SavedItem } from "../../lib/saved-list.js";
+import { JsonStore } from "../../../lib/storage/store.js";
+import { SavedList, type SavedItem } from "../../../lib/storage/saved-list.js";
 
 let tmpDir: string;
 let store: JsonStore<SavedItem>;

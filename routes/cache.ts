@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { ServerContext } from "../lib/types.js";
-import { dirSize, clearDir, formatBytes } from "../lib/cache-cleanup.js";
+import { dirSize, clearDir, formatBytes } from "../lib/cache/cache-cleanup.js";
 
 export default function cacheRoutes(app: Express, ctx: ServerContext): void {
   const { DOWNLOAD_PATH, log } = ctx;

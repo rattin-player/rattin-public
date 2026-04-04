@@ -7,8 +7,8 @@
 //   tv:${tvId}:season:${num}
 //   genres
 
-import type { StaleResult, CacheStats, LogFn } from "./types.js";
-import { loadTmdbKey } from "./tmdb-config.js";
+import type { StaleResult, CacheStats, LogFn } from "../types.js";
+import { loadTmdbKey } from "../tmdb-config.js";
 
 const DEFAULT_MAX_ENTRIES = 500;
 const EVICT_RATIO = 0.2;

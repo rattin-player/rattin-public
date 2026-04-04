@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { popcount32, matchScore, crossCorrelate, extractFingerprint } from "../../lib/fingerprint.js";
+import { popcount32, matchScore, crossCorrelate, extractFingerprint } from "../../../lib/media/fingerprint.js";
 
 // Simple LCG to generate pseudo-random 32-bit values for fingerprint test data.
 function lcg(seed: number): () => number {

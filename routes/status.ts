@@ -1,12 +1,12 @@
 import path from "path";
 import type { Express, Request, Response } from "express";
-import { jobKey } from "../lib/torrent-caches.js";
+import { jobKey } from "../lib/cache/torrent-caches.js";
 import {
   VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS,
   isAllowedFile,
-} from "../lib/media-utils.js";
+} from "../lib/media/media-utils.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
-import { getActiveDebridFiles } from "../lib/debrid.js";
+import { getActiveDebridFiles } from "../lib/torrent/debrid.js";
 
 export default function statusRoutes(app: Express, ctx: ServerContext): void {
   const {

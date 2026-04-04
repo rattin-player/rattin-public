@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import path from "path";
-import { configDir } from "./paths.js";
+import { configDir } from "./storage/paths.js";
 
 const CONFIG_DIR = configDir();
 const CONFIG_PATH = path.join(CONFIG_DIR, "tmdb.json");

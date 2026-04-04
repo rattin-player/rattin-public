@@ -1,6 +1,6 @@
 import { readdir, stat, rm } from "fs/promises";
 import path from "path";
-import type { LogFn } from "./types.js";
+import type { LogFn } from "../types.js";
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 

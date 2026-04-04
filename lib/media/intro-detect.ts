@@ -2,7 +2,7 @@
 // Intro detection pipeline: fingerprint-based cross-episode comparison + AniSkip fallback.
 
 import { extractFingerprint as defaultExtractor, crossCorrelate } from "./fingerprint.js";
-import type { FingerprintResult, IntroEntry } from "./types.js";
+import type { FingerprintResult, IntroEntry } from "../types.js";
 
 type ExtractorFn = (filePath: string, durationSec: number) => Promise<FingerprintResult | number[]>;
 type FetcherFn = typeof globalThis.fetch;
