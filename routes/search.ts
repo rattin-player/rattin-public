@@ -565,6 +565,10 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
           } satisfies TorrentPlayResult);
         }
       } catch (err) {
+        if (mode === "always") {
+          log("err", "Debrid failed in force-debrid mode, not falling back", { error: (err as Error).message });
+          return res.status(502).json({ error: "debrid_failed" });
+        }
         log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
       }
     }
@@ -704,6 +708,10 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
         } satisfies TorrentPlayResult);
       }
     } catch (err) {
+      if (mode === "always") {
+        log("err", "Debrid failed in force-debrid mode, not falling back", { error: (err as Error).message });
+        return res.status(502).json({ error: "debrid_failed" });
+      }
       log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
     }
   }
