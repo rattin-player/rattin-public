@@ -197,7 +197,7 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return data.tracks.map((t: any) => ({
               value: `embedded:${t.streamIndex}`,
-              label: (t.title || LANG_MAP[t.lang] || t.lang || `Track ${t.streamIndex}`) + " (embedded)",
+              label: (t.title || LANG_MAP[(t.lang || "").split(/[-_]/)[0]] || t.lang || `Track ${t.streamIndex}`) + " (embedded)",
               streamIndex: t.streamIndex,
             }));
           });
