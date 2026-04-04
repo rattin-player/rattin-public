@@ -36,7 +36,7 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
 
   let sourceScore = 0;
   if (/blu-?ray|bdremux/i.test(name)) sourceScore = 6;
-  else if (/web-?dl|webrip/i.test(name)) sourceScore = 8;
+  else if (/web-?dl|webrip|\bweb\b/i.test(name)) sourceScore = 8;
   else if (/bdrip/i.test(name)) sourceScore = 5;
   if (/remux/i.test(name)) sourceScore += 3;
   score += sourceScore;
@@ -45,8 +45,9 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
 
   if (result.seeders === 0) return -1;
   // Seeders: strongest real-world signal for availability
-  // log2 curve: 5s→13, 50s→28, 200s→38, 1000s→50
-  const seederScore = Math.min(50, Math.log2(result.seeders + 1) * 5);
+  // log2 base + linear tail so high-seeder torrents keep separating
+  // 100s→34, 500s→50, 1000s→60, 1786s→70, 3000s→70(cap)
+  const seederScore = Math.min(70, Math.log2(result.seeders + 1) * 5 + result.seeders / 100);
   score += seederScore;
 
   return score;

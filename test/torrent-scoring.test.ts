@@ -112,7 +112,7 @@ describe("scoreTorrent", () => {
     assert.ok(many > few);
   });
 
-  it("caps seeder bonus at 50", () => {
+  it("caps seeder bonus at 70", () => {
     const big = scoreTorrent(makeTorrent("Inception.2010.1080p", 100000), "Inception", 2010, "movie");
     const huge = scoreTorrent(makeTorrent("Inception.2010.1080p", 10000000), "Inception", 2010, "movie");
     // Both should be capped, so difference should be 0 or very small
