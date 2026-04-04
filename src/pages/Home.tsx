@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
 import WatchHistoryRow from "../components/WatchHistoryRow";
-import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved, autoPlay } from "../lib/api";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved, autoPlay, poster as posterUrl } from "../lib/api";
+import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import "./Home.css";
 
 function recentDateRange() {
@@ -38,20 +39,34 @@ export default function Home() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleContinuePlay = useCallback(async (item: any) => {
-    const result = await autoPlay(
-      item.title,
-      item.year,
-      item.mediaType,
-      item.season,
-      item.episode,
-      item.imdbId,
-    );
+    // Show loading overlay with poster immediately while searching for streams
+    const displayTitle = item.mediaType === "tv" && item.season != null
+      ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
+      : item.title;
+    waitForBridge().then(() => {
+      if (item.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${item.posterPath}`);
+      mpvSetTitle(displayTitle);
+      mpvSetLoadingStatus("Finding best stream...");
+      mpvSetLoading(true);
+    });
+    let result;
+    try {
+      result = await autoPlay(
+        item.title,
+        item.year,
+        item.mediaType,
+        item.season,
+        item.episode,
+        item.imdbId,
+      );
+    } catch (err) {
+      mpvSetLoading(false);
+      throw err; // re-throw so WatchHistoryRow falls back to Detail
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const navState: any = {
       tags: result.tags,
-      title: item.mediaType === "tv" && item.season != null
-        ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
-        : item.title,
+      title: displayTitle,
       tmdbId: item.tmdbId,
       year: item.year,
       type: item.mediaType,

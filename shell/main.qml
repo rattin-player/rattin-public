@@ -269,7 +269,7 @@ Window {
         color: "#000000"
         z: 4
         visible: opacity > 0
-        opacity: (root.loadingOverlay && root.playing && !root.sourcePanelOpen) ? 1 : 0
+        opacity: (root.loadingOverlay && !root.sourcePanelOpen) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 300 } }
 
         Image {
