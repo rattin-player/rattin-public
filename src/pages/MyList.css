@@ -1,0 +1,131 @@
+.my-list-page {
+  min-height: 100vh;
+  padding: 80px 48px 48px;
+}
+
+.my-list-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 24px;
+  margin-bottom: 32px;
+}
+
+.my-list-header h1 {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.my-list-count {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.my-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 24px 16px;
+}
+
+.my-list-card {
+  cursor: pointer;
+}
+
+.my-list-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  z-index: 3;
+  backdrop-filter: blur(4px);
+  border: none;
+  cursor: pointer;
+}
+
+.my-list-card:hover .my-list-remove-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .my-list-remove-btn {
+    opacity: 0.7;
+  }
+}
+
+.my-list-remove-btn:hover {
+  color: var(--text-primary);
+  background: rgba(251, 113, 133, 0.6);
+}
+
+.my-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.my-list-empty svg {
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.my-list-empty p {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+}
+
+.my-list-empty span {
+  font-size: 0.9rem;
+  margin-bottom: 24px;
+}
+
+.my-list-browse-btn {
+  padding: 10px 28px;
+  border-radius: 28px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent-bright);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all var(--transition-slow);
+}
+
+.my-list-browse-btn:hover {
+  background: var(--accent-subtle);
+  border-color: var(--accent-bright);
+}
+
+@media (max-width: 768px) {
+  .my-list-page {
+    padding: 70px 16px 32px;
+  }
+
+  .my-list-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .my-list-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 16px 12px;
+  }
+}
