@@ -34,13 +34,6 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   else if (/720p/.test(name)) resScore = 10;
   score += resScore;
 
-  let sourceScore = 0;
-  if (/blu-?ray|bdremux/i.test(name)) sourceScore = 6;
-  else if (/web-?dl|webrip|\bweb\b/i.test(name)) sourceScore = 8;
-  else if (/bdrip/i.test(name)) sourceScore = 5;
-  if (/remux/i.test(name)) sourceScore += 3;
-  score += sourceScore;
-
   if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
 
   if (result.seeders === 0) return -1;
@@ -60,7 +53,7 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   }
 
   const sizeGB = result.size ? (result.size / (1024 ** 3)).toFixed(1) : "?";
-  console.log(`[score] ${result.name.slice(0, 60).padEnd(60)} | t=${titleScore.toFixed(0).padStart(2)} y=${yearScore} r=${String(resScore).padStart(2)} s=${String(sourceScore).padStart(2)} seed=${seederScore.toFixed(0).padStart(2)}(${String(result.seeders).padStart(5)}) sz=${String(sizeGB).padStart(5)}GB | ${score.toFixed(0)}`);
+  console.log(`[score] ${result.name.slice(0, 60).padEnd(60)} | t=${titleScore.toFixed(0).padStart(2)} y=${yearScore} r=${String(resScore).padStart(2)} seed=${seederScore.toFixed(0).padStart(2)}(${String(result.seeders).padStart(5)}) sz=${String(sizeGB).padStart(5)}GB | ${score.toFixed(0)}`);
   return score;
 }
 
