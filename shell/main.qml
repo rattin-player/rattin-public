@@ -593,7 +593,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { console.log("[shell] controls overlay back clicked"); transport.backRequested() }
+                        onClicked: transport.backRequested()
                     }
                 }
 

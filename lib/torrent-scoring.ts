@@ -49,8 +49,6 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   const seederScore = Math.min(50, Math.log2(result.seeders + 1) * 5);
   score += seederScore;
 
-  console.log(`[score] ${result.name.slice(0, 60).padEnd(60)} | title=${titleScore.toFixed(0).padStart(2)} year=${yearScore} res=${String(resScore).padStart(2)} src=${String(sourceScore).padStart(2)} seed=${seederScore.toFixed(0).padStart(2)} (${String(result.seeders).padStart(5)}) | TOTAL=${score.toFixed(0)}`);
-
   return score;
 }
 

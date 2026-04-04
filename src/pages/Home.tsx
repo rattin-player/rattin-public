@@ -39,7 +39,6 @@ export default function Home() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleContinuePlay = useCallback(async (item: any) => {
-    console.log("[continue-play] item:", JSON.stringify({ title: item.title, mediaType: item.mediaType, season: item.season, episode: item.episode, year: item.year, imdbId: item.imdbId, position: item.position }));
     // Show loading overlay with poster immediately while searching for streams
     const displayTitle = item.mediaType === "tv" && item.season != null
       ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`

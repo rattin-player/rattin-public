@@ -73,7 +73,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                   const isDefault = s.infoHash === defaultHash;
                   return (
                     <button
-                      key={s.infoHash}
+                      key={`${s.infoHash}:${s.fileIdx ?? ""}`}
                       className={`picker-item${isDefault ? " default" : ""}`}
                       onClick={() => onPick(s)}
                     >

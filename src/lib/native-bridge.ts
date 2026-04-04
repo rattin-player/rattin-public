@@ -124,7 +124,6 @@ export function waitForBridge(): Promise<void> {
           if (window.mpvEvents?.onToggleSourcePanel) window.mpvEvents.onToggleSourcePanel();
         });
         bridge.backRequested.connect(() => {
-          console.log("[native-bridge] backRequested signal received, handler:", !!window.mpvEvents?.onBackRequested);
           if (window.mpvEvents?.onBackRequested) window.mpvEvents.onBackRequested();
         });
         _bridgeReady = true;
