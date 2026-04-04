@@ -1,5 +1,5 @@
 import path from "path";
-import { VIDEO_EXTENSIONS } from "./media-utils.js";
+import { VIDEO_EXTENSIONS } from "./media/media-utils.js";
 import type { TorrentResult } from "./types.js";
 
 interface FileEntry {

@@ -3,11 +3,11 @@ import { statSync } from "fs";
 import type { Express, Request, Response, NextFunction } from "express";
 import { getActiveDebridStreamByKey } from "../lib/debrid.js";
 import { jobKey } from "../lib/cache/torrent-caches.js";
-import { isAllowedFile, SUBTITLE_EXTENSIONS } from "../lib/media-utils.js";
+import { isAllowedFile, SUBTITLE_EXTENSIONS } from "../lib/media/media-utils.js";
 import {
   probeMedia as _probeMedia, serveFile, serveFromTorrent,
   serveLiveTranscode as _serveLiveTranscode,
-} from "../lib/transcode.js";
+} from "../lib/media/transcode.js";
 import type { ServerContext } from "../lib/types.js";
 
 export default function streamRoutes(app: Express, ctx: ServerContext): void {
