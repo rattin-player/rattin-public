@@ -609,111 +609,122 @@ Window {
             anchors.rightMargin: 16
             anchors.bottomMargin: 8
             width: 260
-            height: trackCol.height + 24
+            height: Math.min(trackCol.height + 24, 340)
             radius: 8
             color: "#E0181818"
+            clip: true
 
             MouseArea { anchors.fill: parent }
 
-            Column {
-                id: trackCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+            Flickable {
+                id: trackFlick
+                anchors.fill: parent
                 anchors.margins: 12
-                spacing: 4
+                contentHeight: trackCol.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
 
-                Text {
-                    text: "Subtitles"
-                    color: "#888"
-                    font.pixelSize: 11
-                    font.bold: true
-                    visible: root.subTracks.length > 0
-                }
+                Column {
+                    id: trackCol
+                    width: trackFlick.width
+                    spacing: 4
 
-                Rectangle {
-                    width: parent.width; height: 28; radius: 4
-                    color: root.activeSub === 0 ? "#30c9a84c" : "transparent"
-                    visible: root.subTracks.length > 0
                     Text {
-                        anchors.left: parent.left; anchors.leftMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Off"
-                        color: root.activeSub === 0 ? "#c9a84c" : "#ccc"
-                        font.pixelSize: 13
+                        text: "Subtitles"
+                        color: "#888"
+                        font.pixelSize: 11
+                        font.bold: true
+                        visible: root.subTracks.length > 0
                     }
-                    MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: { bridge.setProperty("sid", 0); root.activeSub = 0; transport.nativeSubChanged(0) }
-                    }
-                }
 
-                Repeater {
-                    model: root.subTracks
                     Rectangle {
-                        width: trackCol.width; height: 28; radius: 4
-                        color: root.activeSub === modelData.id ? "#30c9a84c" : "transparent"
+                        width: parent.width; height: 28; radius: 4
+                        color: root.activeSub === 0 ? "#30c9a84c" : "transparent"
+                        visible: root.subTracks.length > 0
                         Text {
                             anchors.left: parent.left; anchors.leftMargin: 8
-                            anchors.right: parent.right; anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            color: root.activeSub === modelData.id ? "#c9a84c" : "#ccc"
-                            font.pixelSize: 13; elide: Text.ElideRight
+                            text: "Off"
+                            color: root.activeSub === 0 ? "#c9a84c" : "#ccc"
+                            font.pixelSize: 13
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { bridge.setProperty("sid", modelData.id); root.activeSub = modelData.id; transport.nativeSubChanged(modelData.id) }
+                            onClicked: { bridge.setProperty("sid", 0); root.activeSub = 0; transport.nativeSubChanged(0) }
                         }
                     }
-                }
 
-                Text {
-                    text: "Audio"; color: "#888"; font.pixelSize: 11; font.bold: true
-                    topPadding: 8; visible: root.audioTracks.length > 1
-                }
+                    Repeater {
+                        model: root.subTracks
+                        Rectangle {
+                            width: trackCol.width; height: 28; radius: 4
+                            color: root.activeSub === modelData.id ? "#30c9a84c" : "transparent"
+                            Text {
+                                anchors.left: parent.left; anchors.leftMargin: 8
+                                anchors.right: parent.right; anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label
+                                color: root.activeSub === modelData.id ? "#c9a84c" : "#ccc"
+                                font.pixelSize: 13; elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: { bridge.setProperty("sid", modelData.id); root.activeSub = modelData.id; transport.nativeSubChanged(modelData.id) }
+                            }
+                        }
+                    }
 
-                Repeater {
-                    model: root.audioTracks.length > 1 ? root.audioTracks : []
-                    Rectangle {
-                        width: trackCol.width; height: 28; radius: 4
-                        color: root.activeAudio === modelData.id ? "#30c9a84c" : "transparent"
+                    Text {
+                        text: "Audio"; color: "#888"; font.pixelSize: 11; font.bold: true
+                        topPadding: 8; visible: root.audioTracks.length > 1
+                    }
+
+                    Repeater {
+                        model: root.audioTracks.length > 1 ? root.audioTracks : []
+                        Rectangle {
+                            width: trackCol.width; height: 28; radius: 4
+                            color: root.activeAudio === modelData.id ? "#30c9a84c" : "transparent"
+                            Text {
+                                anchors.left: parent.left; anchors.leftMargin: 8
+                                anchors.right: parent.right; anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label
+                                color: root.activeAudio === modelData.id ? "#c9a84c" : "#ccc"
+                                font.pixelSize: 13; elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: { bridge.setProperty("aid", modelData.id); root.activeAudio = modelData.id; transport.nativeAudioChanged(modelData.id) }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Size"; color: "#888"; font.pixelSize: 11; font.bold: true
+                        topPadding: 8; visible: root.subTracks.length > 0
+                    }
+                    Row {
+                        spacing: 8; visible: root.subTracks.length > 0
                         Text {
-                            anchors.left: parent.left; anchors.leftMargin: 8
-                            anchors.right: parent.right; anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            color: root.activeAudio === modelData.id ? "#c9a84c" : "#ccc"
-                            font.pixelSize: 13; elide: Text.ElideRight
+                            text: "A\u2212"; color: "#ccc"; font.pixelSize: 14
+                            MouseArea {
+                                anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                                onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
+                            }
                         }
-                        MouseArea {
-                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { bridge.setProperty("aid", modelData.id); root.activeAudio = modelData.id; transport.nativeAudioChanged(modelData.id) }
+                        Text { text: root.subSize.toString(); color: "#888"; font.pixelSize: 12; width: 24; horizontalAlignment: Text.AlignHCenter }
+                        Text {
+                            text: "A+"; color: "#ccc"; font.pixelSize: 14
+                            MouseArea {
+                                anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                                onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
+                            }
                         }
                     }
                 }
 
-                Text {
-                    text: "Size"; color: "#888"; font.pixelSize: 11; font.bold: true
-                    topPadding: 8; visible: root.subTracks.length > 0
-                }
-                Row {
-                    spacing: 8; visible: root.subTracks.length > 0
-                    Text {
-                        text: "A\u2212"; color: "#ccc"; font.pixelSize: 14
-                        MouseArea {
-                            anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.subSize = Math.max(20, root.subSize - 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
-                        }
-                    }
-                    Text { text: root.subSize.toString(); color: "#888"; font.pixelSize: 12; width: 24; horizontalAlignment: Text.AlignHCenter }
-                    Text {
-                        text: "A+"; color: "#ccc"; font.pixelSize: 14
-                        MouseArea {
-                            anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.subSize = Math.min(100, root.subSize + 5); bridge.setProperty("sub-font-size", root.subSize); transport.nativeSubSizeChanged(root.subSize) }
-                        }
-                    }
+                ScrollBar.vertical: ScrollBar {
+                    policy: trackFlick.contentHeight > trackFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                 }
             }
         }
