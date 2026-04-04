@@ -8,9 +8,10 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
 
   const VALID_MEDIA_TYPES = ["movie", "tv"];
 
-  app.put("/api/watch-history/progress", (req: Request, res: Response) => {
+  // Accept both PUT (normal) and POST (sendBeacon on unmount)
+  function handleProgress(req: Request, res: Response) {
     const { tmdbId, mediaType, title, posterPath, season, episode, episodeTitle, position, duration } = req.body;
-    if (!tmdbId || !mediaType || !title || position == null || duration == null) {
+    if (!tmdbId || !mediaType || !title || position == null) {
       res.status(400).json({ error: "missing_fields" });
       return;
     }
@@ -31,12 +32,14 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
       episode: episode != null ? Number(episode) : undefined,
       episodeTitle: episodeTitle ?? undefined,
       position: Number(position),
-      duration: Number(duration),
+      duration: Number(duration || 0),
       finished: false, // computed by recordProgress
       updatedAt: "",   // set by recordProgress
     });
     res.json({ ok: true });
-  });
+  }
+  app.put("/api/watch-history/progress", handleProgress);
+  app.post("/api/watch-history/progress", handleProgress);
 
   app.get("/api/watch-history/continue", (_req: Request, res: Response) => {
     res.json({ items: watchHistory.getContinueWatching() });

@@ -293,9 +293,13 @@ export default function Player() {
   const reportProgressRef = useRef(() => {});
   reportProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    if (!time || time.duration <= 0 || !state?.tmdbId) return;
+    if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
+    // Allow saving even if duration is unknown — position alone is still useful
+    const pos = Math.floor(time.time);
+    const dur = Math.floor(time.duration);
+    if (pos <= 0) return;
     reportWatchProgress({
       tmdbId,
       mediaType: state.type || "movie",
@@ -304,9 +308,32 @@ export default function Player() {
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
-      position: Math.floor(time.time),
-      duration: Math.floor(time.duration),
+      position: pos,
+      duration: dur,
     }).catch(() => {});
+  };
+
+  // Use sendBeacon on unmount — guaranteed delivery even during navigation
+  const beaconProgressRef = useRef(() => {});
+  beaconProgressRef.current = () => {
+    const time = effectiveTimeRef.current;
+    if (!time || !state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    const pos = Math.floor(time.time);
+    if (pos <= 0) return;
+    const payload = JSON.stringify({
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: pos,
+      duration: Math.floor(time.duration),
+    });
+    navigator.sendBeacon("/api/watch-history/progress", new Blob([payload], { type: "application/json" }));
   };
 
   // Periodic reporting every 30s
@@ -315,9 +342,9 @@ export default function Player() {
     return () => clearInterval(interval);
   }, []);
 
-  // Report on unmount (leaving player)
+  // Report on unmount (leaving player) — sendBeacon for reliable delivery
   useEffect(() => {
-    return () => { reportProgressRef.current(); };
+    return () => { beaconProgressRef.current(); };
   }, []);
 
   const [showControls, setShowControls] = useState(true);

@@ -35,8 +35,11 @@ export class WatchHistory {
 
   recordProgress(record: WatchRecord): void {
     const key = recordKey(record.mediaType, record.tmdbId, record.season, record.episode);
-    const finished = record.duration > 0 && (record.position / record.duration) >= FINISHED_THRESHOLD;
-    this.store.set(key, { ...record, finished, updatedAt: new Date().toISOString() });
+    const existing = this.store.get(key);
+    // If duration is unknown (0), preserve the existing duration if we have one
+    const duration = record.duration > 0 ? record.duration : (existing?.duration ?? 0);
+    const finished = duration > 0 && (record.position / duration) >= FINISHED_THRESHOLD;
+    this.store.set(key, { ...record, duration, finished, updatedAt: new Date().toISOString() });
   }
 
   getProgress(mediaType: string, tmdbId: number, season?: number, episode?: number): WatchRecord | undefined {
