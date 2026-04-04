@@ -313,11 +313,10 @@ export default function Player() {
     }).catch(() => {});
   };
 
-  // Use sendBeacon on unmount — guaranteed delivery even during navigation
+  // Save progress on unmount — use synchronous XHR as Qt WebEngine may not support sendBeacon
   const beaconProgressRef = useRef(() => {});
   beaconProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    console.log("[watch-history] beacon unmount:", { hasTime: !!time, tmdbId: state?.tmdbId, time: time?.time, duration: time?.duration });
     if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
@@ -334,7 +333,13 @@ export default function Player() {
       position: pos,
       duration: Math.floor(time.duration),
     });
-    navigator.sendBeacon("/api/watch-history/progress", new Blob([payload], { type: "application/json" }));
+    // Synchronous XHR blocks until complete — guarantees delivery during unmount
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/watch-history/progress", false);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(payload);
+    } catch { /* best effort */ }
   };
 
   // Periodic reporting every 30s
