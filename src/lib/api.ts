@@ -161,6 +161,24 @@ export async function clearCache(): Promise<void> {
   if (!res.ok) throw new Error("clear_failed");
 }
 
+export function getWatchHistoryCount(): Promise<{ count: number }> {
+  return get("/api/watch-history/count");
+}
+
+export async function clearWatchHistory(): Promise<void> {
+  const res = await fetch("/api/watch-history", { method: "DELETE" });
+  if (!res.ok) throw new Error("clear_failed");
+}
+
+export function getSavedListCount(): Promise<{ count: number }> {
+  return get("/api/saved/count");
+}
+
+export async function clearSavedList(): Promise<void> {
+  const res = await fetch("/api/saved", { method: "DELETE" });
+  if (!res.ok) throw new Error("clear_failed");
+}
+
 // ── Debrid ─────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

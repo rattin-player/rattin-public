@@ -170,6 +170,8 @@ export class WatchHistory {
     if (record) this.store.set(key, { ...record, dismissed: true });
   }
 
+  get size(): number { return this.store.size; }
+  clear(): void { this.store.clear(); }
   flush(): void { this.store.flush(); }
   shutdown(): void { this.store.shutdown(); }
 }

@@ -256,6 +256,11 @@
   color: var(--accent-bright);
 }
 
+.player-source-tag.cached {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--green);
+}
+
 .player-source-tag.season-pack {
   background: var(--accent-subtle);
   color: var(--accent-bright);

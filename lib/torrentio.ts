@@ -36,6 +36,7 @@ export function parseSizeStr(sizeStr: string): number {
 export interface TorrentioMeta {
   languages: string[];
   hasSubs: boolean;
+  subLanguages: string[];
   multiAudio: boolean;
   foreignOnly: boolean;
 }
@@ -70,7 +71,12 @@ const LANG_CODE_TO_FLAG: Record<string, string> = {
   ROM: "🇷🇴", RO: "🇷🇴",
   HUN: "🇭🇺", HU: "🇭🇺",
 };
-const LANG_CODE_RE = new RegExp(`\\b(${Object.keys(LANG_CODE_TO_FLAG).join("|")})\\b`, "gi");
+// 2-letter language code matching was removed — codes like IT, NO, HI, DA
+// are common English words and caused false positives (e.g. "Watch.It.All.Burn"
+// → Italian flag). We rely on Torrentio's flag emojis instead, which are reliable.
+// Only 3-letter codes (ENG, ITA, FRA) are matched — they're unambiguous.
+const LANG_CODES_3 = Object.keys(LANG_CODE_TO_FLAG).filter(k => k.length === 3);
+const LANG_CODE_RE = new RegExp(`\\b(${LANG_CODES_3.join("|")})\\b`, "gi");
 
 export function parseTorrentioMeta(title: string): TorrentioMeta {
   const full = title;
@@ -78,9 +84,8 @@ export function parseTorrentioMeta(title: string): TorrentioMeta {
   // Extract flag emojis
   const flags = [...new Set(full.match(FLAG_RE) || [])];
 
-  // Extract text language codes and convert to flags
-  const codeMatches = [...full.matchAll(LANG_CODE_RE)];
-  for (const m of codeMatches) {
+  // Extract 3-letter language codes from torrent names
+  for (const m of full.matchAll(LANG_CODE_RE)) {
     const flag = LANG_CODE_TO_FLAG[m[1].toUpperCase()];
     if (flag && !flags.includes(flag)) flags.push(flag);
   }
@@ -88,7 +93,14 @@ export function parseTorrentioMeta(title: string): TorrentioMeta {
   // Subtitle detection — expanded patterns
   const hasSubs = /multi\s*sub|multisub|\bsub[s]?\b/i.test(full)
     || /\bsrt\b/i.test(full)
-    || /\bsubtitle/i.test(full);
+    || /\bsubtitle/i.test(full)
+    || /\besub[s]?\b/i.test(full);
+
+  const subLanguages: string[] = [];
+  if (hasSubs) {
+    if (/\besub[s]?\b/i.test(full)) subLanguages.push("English");
+    if (/multi\s*sub/i.test(full)) subLanguages.push("Multi");
+  }
 
   // Multi-audio detection
   const multiAudio = /multi\s*audio|dual\s*audio|\bDUAL\b|multi\s*\d+\s*lang/i.test(full);
@@ -96,7 +108,7 @@ export function parseTorrentioMeta(title: string): TorrentioMeta {
   // Foreign-only: has flags but none are English-speaking
   const foreignOnly = flags.length > 0 && !flags.some((f) => ENGLISH_FLAGS.has(f));
 
-  return { languages: flags, hasSubs, multiAudio, foreignOnly };
+  return { languages: flags, hasSubs, subLanguages, multiAudio, foreignOnly };
 }
 
 const TORRENTIO_BASE = "https://torrentio.strem.fun";
@@ -113,6 +125,7 @@ export interface TorrentioResult {
   seasonPack?: boolean;
   languages?: string[];
   hasSubs?: boolean;
+  subLanguages?: string[];
   multiAudio?: boolean;
   foreignOnly?: boolean;
 }
@@ -153,6 +166,7 @@ export async function searchTorrentio(
             !/S\d{1,2}E\d{1,2}/i.test(parsed.torrentName),
           languages: meta.languages,
           hasSubs: meta.hasSubs,
+          subLanguages: meta.subLanguages,
           multiAudio: meta.multiAudio,
           foreignOnly: meta.foreignOnly,
         };

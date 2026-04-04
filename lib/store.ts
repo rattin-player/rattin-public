@@ -54,6 +54,12 @@ export class JsonStore<T> {
     return results;
   }
 
+  clear(): void {
+    this.data.clear();
+    this.dirty = true;
+    this.writeToDisk();
+  }
+
   get size(): number {
     return this.data.size;
   }

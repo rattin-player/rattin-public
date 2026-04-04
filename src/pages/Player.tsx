@@ -37,7 +37,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -183,6 +183,28 @@ export default function Player() {
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
     preSelectedAudio,
   });
+
+  // Apply auto-selected audio track to mpv (hooks pick English, mpv needs to be told)
+  const appliedAudio = useRef(false);
+  useEffect(() => {
+    if (appliedAudio.current || activeAudio === null || audioTracks.length < 2) return;
+    const idx = audioTracks.findIndex(t => t.value === activeAudio);
+    if (idx >= 0) {
+      mpvSetAudioTrack(idx);
+      appliedAudio.current = true;
+    }
+  }, [activeAudio, audioTracks]);
+
+  // Apply auto-selected subtitle track to mpv
+  const appliedSub = useRef(false);
+  useEffect(() => {
+    if (appliedSub.current || !activeSub || subs.length < 2) return;
+    const idx = subs.findIndex(s => s.value === activeSub);
+    if (idx >= 0) {
+      mpvSetSubtitleTrack(idx);
+      appliedSub.current = true;
+    }
+  }, [activeSub, subs]);
 
   const { introRange, showSkipIntro, handleSkipIntro } = useIntro({
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
@@ -600,12 +622,15 @@ export default function Player() {
                       <span className="player-source-item-name">{s.name}</span>
                       <div className="player-source-item-tags">
                         {isCurrent && <span className="player-source-tag current">Playing</span>}
+                        {s.cached && <span className="player-source-tag cached">Cached</span>}
                         {s.seasonPack && <span className="player-source-tag season-pack">Season Pack</span>}
                         {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
                           <span key={t} className="player-source-tag">{t}</span>
                         ))}
                         {s.multiAudio && <span className="player-source-tag multi-audio">Multi Audio</span>}
-                        {s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}
+                        {s.subLanguages?.length > 0
+                          ? <span className="player-source-tag has-subs">Subs: {s.subLanguages.join(", ")}</span>
+                          : s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}
                         {s.foreignOnly && <span className="player-source-tag foreign">Foreign</span>}
                         {s.languages?.length > 0 && (
                           <span className="player-source-tag languages">{s.languages.join(" ")}</span>

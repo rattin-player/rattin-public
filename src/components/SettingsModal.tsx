@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount } from "../lib/api";
 import "./SettingsModal.css";
 
 interface SettingsModalProps {
@@ -17,17 +17,22 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     premium?: boolean;
     username?: string | null;
     expiration?: string | null;
-    mode?: "always" | "cached";
+    mode?: "on" | "off";
     provider?: string | null;
   } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [cacheSize, setCacheSize] = useState<{ bytes: number; formatted: string } | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [clearingSaved, setClearingSaved] = useState(false);
+  const [historyCount, setHistoryCount] = useState<number | null>(null);
+  const [savedCount, setSavedCount] = useState<number | null>(null);
 
   useEffect(() => {
     loadStatus();
     loadCacheSize();
+    loadDataCounts();
   }, []);
 
   async function loadStatus() {
@@ -52,6 +57,14 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     } catch {
       setCacheSize({ bytes: 0, formatted: "0 B" });
     }
+  }
+
+  async function loadDataCounts() {
+    try {
+      const [h, s] = await Promise.all([getWatchHistoryCount(), getSavedListCount()]);
+      setHistoryCount(h.count);
+      setSavedCount(s.count);
+    } catch {}
   }
 
   async function handleClearCache() {
@@ -162,20 +175,20 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                   </div>
                 )}
                 <div className="settings-info-row">
-                  <span className="settings-info-label">Mode</span>
+                  <span className="settings-info-label">Enabled</span>
                   <select
                     className="settings-mode-select"
-                    value={status.mode || "always"}
+                    value={status.mode === "off" ? "off" : "on"}
                     onChange={async (e) => {
-                      const mode = e.target.value as "always" | "cached";
+                      const mode = e.target.value as "on" | "off";
                       try {
                         await setDebridMode(mode);
                         setStatus((prev) => prev ? { ...prev, mode } : prev);
                       } catch {}
                     }}
                   >
-                    <option value="always">Always use debrid</option>
-                    <option value="cached">Cached only (instant)</option>
+                    <option value="on">On</option>
+                    <option value="off">Off (use WebTorrent)</option>
                   </select>
                 </div>
                 <button className="settings-remove-btn" onClick={handleRemove}>
@@ -234,6 +247,40 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             >
               {clearing ? "Clearing..." : "Clear cache"}
             </button>
+          </div>
+
+          <div className="settings-divider" />
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4>Data</h4>
+            </div>
+            <p className="pair-desc">
+              Reset watch history, saved list, or all data. This cannot be undone.
+            </p>
+            <div className="settings-data-actions">
+              <button
+                className="settings-clear-btn"
+                onClick={async () => {
+                  setClearingHistory(true);
+                  try { await clearWatchHistory(); setHistoryCount(0); } catch {}
+                  setClearingHistory(false);
+                }}
+                disabled={clearingHistory || historyCount === 0}
+              >
+                {clearingHistory ? "Clearing..." : `Clear watch history${historyCount ? ` (${historyCount})` : ""}`}
+              </button>
+              <button
+                className="settings-clear-btn"
+                onClick={async () => {
+                  setClearingSaved(true);
+                  try { await clearSavedList(); setSavedCount(0); } catch {}
+                  setClearingSaved(false);
+                }}
+                disabled={clearingSaved || savedCount === 0}
+              >
+                {clearingSaved ? "Clearing..." : `Clear saved list${savedCount ? ` (${savedCount})` : ""}`}
+              </button>
+            </div>
           </div>
         </div>
       </div>

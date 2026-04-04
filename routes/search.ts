@@ -16,6 +16,7 @@ interface SearchResult {
   fileIdx?: number;
   languages?: string[];
   hasSubs?: boolean;
+  subLanguages?: string[];
   multiAudio?: boolean;
   foreignOnly?: boolean;
 }
@@ -330,17 +331,13 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
           fileIdx: r.fileIdx,
           languages: r.languages || [],
           hasSubs: r.hasSubs || false,
+          subLanguages: r.subLanguages || [],
           multiAudio: r.multiAudio || false,
           foreignOnly: r.foreignOnly || false,
         };
       })
       .filter((r) => r.score > 0)
-      .sort((a, b) => {
-        const aForeign = a.foreignOnly ? 1 : 0;
-        const bForeign = b.foreignOnly ? 1 : 0;
-        if (aForeign !== bForeign) return aForeign - bForeign;
-        return b.seeders - a.seeders || b.score - a.score;
-      })
+      .sort((a, b) => b.score - a.score || b.seeders - a.seeders)
       .slice(0, 50);
 
     // Check debrid cache availability if configured
@@ -519,59 +516,37 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "not_found" });
     }
 
+    // Try debrid — loop through top candidates until one works
+    const debrid = getDebridProvider();
+    const debridOn = debrid && getDebridMode() === "on";
+    if (debridOn) {
+      const candidates = scored.slice(0, 5);
+      for (const candidate of candidates) {
+        const tags = parseTags(candidate.name);
+        const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
+        const magnet = `magnet:?xt=urn:btih:${candidate.infoHash}&dn=${encodeURIComponent(candidate.name)}${trackerParams}`;
+        try {
+          log("info", "Auto-play selected", { name: candidate.name, score: candidate.score, seeders: candidate.seeders });
+          const stream = await debrid.unrestrict(magnet, candidate.fileIdx);
+          log("info", "Auto-play via debrid", { name: candidate.name, filename: stream.filename });
+          const debridStreamKey = setActiveDebridStream(candidate.infoHash, stream.url, stream.files);
+          return res.json({
+            infoHash: candidate.infoHash, fileIndex: stream.fileIndex, fileName: stream.filename,
+            torrentName: candidate.name, totalSize: stream.filesize, tags, debridStreamKey,
+          } satisfies TorrentPlayResult);
+        } catch (err) {
+          log("warn", "Debrid failed for candidate, trying next", { name: candidate.name, error: (err as Error).message });
+        }
+      }
+      log("err", "Debrid failed for all candidates", {});
+      return res.status(502).json({ error: "debrid_failed" });
+    }
+
     const best = scored[0];
     log("info", "Auto-play selected", { name: best.name, score: best.score, seeders: best.seeders, source: best.source });
-
     const tags = parseTags(best.name);
     const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
     const magnet = `magnet:?xt=urn:btih:${best.infoHash}&dn=${encodeURIComponent(best.name)}${trackerParams}`;
-
-    // Try debrid based on configured mode
-    const debrid = getDebridProvider();
-    if (debrid) {
-      const mode = getDebridMode();
-      try {
-        if (mode === "cached") {
-          // Only use debrid if already cached on RD (instant, no delay)
-          const cached = await debrid.checkCached([best.infoHash]);
-          if (cached.get(best.infoHash.toLowerCase())) {
-            const stream = await debrid.unrestrict(magnet, best.fileIdx);
-            log("info", "Auto-play via debrid (cached)", { name: best.name, filename: stream.filename });
-            const debridStreamKey = setActiveDebridStream(best.infoHash, stream.url, stream.files);
-            return res.json({
-              infoHash: best.infoHash,
-              fileIndex: stream.fileIndex,
-              fileName: stream.filename,
-              torrentName: best.name,
-              totalSize: stream.filesize,
-              tags,
-              debridStreamKey,
-            } satisfies TorrentPlayResult);
-          }
-          log("info", "Debrid not cached, using WebTorrent", { name: best.name });
-        } else {
-          // Always wait for debrid — no fallback
-          const stream = await debrid.unrestrict(magnet, best.fileIdx);
-          log("info", "Auto-play via debrid", { name: best.name, filename: stream.filename });
-          const debridStreamKey = setActiveDebridStream(best.infoHash, stream.url, stream.files);
-          return res.json({
-            infoHash: best.infoHash,
-            fileIndex: stream.fileIndex,
-            fileName: stream.filename,
-            torrentName: best.name,
-            totalSize: stream.filesize,
-            tags,
-            debridStreamKey,
-          } satisfies TorrentPlayResult);
-        }
-      } catch (err) {
-        if (mode === "always") {
-          log("err", "Debrid failed in force-debrid mode, not falling back", { error: (err as Error).message });
-          return res.status(502).json({ error: "debrid_failed" });
-        }
-        log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
-      }
-    }
 
     // Reuse existing torrent if already in client
     const existing = client().torrents.find(
@@ -671,48 +646,26 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
   const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
   const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}${trackerParams}`;
 
-  // Try debrid based on configured mode
+  // Try debrid if enabled — no WebTorrent fallback
   const debrid = getDebridProvider();
-  if (debrid) {
-    const mode = getDebridMode();
+  const debridOn = debrid && getDebridMode() === "on";
+  if (debridOn) {
     try {
-      if (mode === "cached") {
-        const cached = await debrid.checkCached([infoHash]);
-        if (cached.get(infoHash.toLowerCase())) {
-          const stream = await debrid.unrestrict(magnet, fileIdx);
-          log("info", "Play-torrent via debrid (cached)", { infoHash, filename: stream.filename });
-          const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
-          return res.json({
-            infoHash,
-            fileIndex: stream.fileIndex,
-            fileName: stream.filename,
-            torrentName: name || stream.filename,
-            totalSize: stream.filesize,
-            tags,
-            debridStreamKey,
-          } satisfies TorrentPlayResult);
-        }
-        log("info", "Debrid not cached, using WebTorrent", { infoHash });
-      } else {
-        const stream = await debrid.unrestrict(magnet, fileIdx);
-        log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
-        const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
-        return res.json({
-          infoHash,
-          fileIndex: stream.fileIndex,
-          fileName: stream.filename,
-          torrentName: name || stream.filename,
-          totalSize: stream.filesize,
-          tags,
-          debridStreamKey,
-        } satisfies TorrentPlayResult);
-      }
+      const stream = await debrid.unrestrict(magnet, fileIdx);
+      log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
+      const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
+      return res.json({
+        infoHash,
+        fileIndex: stream.fileIndex,
+        fileName: stream.filename,
+        torrentName: name || stream.filename,
+        totalSize: stream.filesize,
+        tags,
+        debridStreamKey,
+      } satisfies TorrentPlayResult);
     } catch (err) {
-      if (mode === "always") {
-        log("err", "Debrid failed in force-debrid mode, not falling back", { error: (err as Error).message });
-        return res.status(502).json({ error: "debrid_failed" });
-      }
-      log("warn", "Debrid failed, falling back to WebTorrent", { error: (err as Error).message });
+      log("err", "Debrid failed", { infoHash, error: (err as Error).message });
+      return res.status(502).json({ error: "debrid_failed" });
     }
   }
 
