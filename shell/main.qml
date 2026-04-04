@@ -260,8 +260,13 @@ Window {
                     root.showNormal()
                 } else {
                     if (root.currentTime > 0) {
+                        var t = Math.floor(root.currentTime)
+                        var d = Math.floor(root.duration)
                         webView.runJavaScript(
-                            "fetch('/api/watch-history/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.__rattinWatchState||{})}).catch(function(){})"
+                            "var s=window.__rattinWatchState;" +
+                            "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
+                            "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
+                            "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}"
                         )
                     }
                     bridge.stop()
@@ -304,9 +309,15 @@ Window {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             // Save watch progress before stopping — JS callbacks may not fire after stop()
+                            // Merge QML's live time into JS state (JS state may be stale or null on quick back)
                             if (root.currentTime > 0) {
+                                var t = Math.floor(root.currentTime)
+                                var d = Math.floor(root.duration)
                                 webView.runJavaScript(
-                                    "fetch('/api/watch-history/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.__rattinWatchState||{})}).catch(function(){})"
+                                    "var s=window.__rattinWatchState;" +
+                                    "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
+                                    "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
+                                    "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}"
                                 )
                             }
                             bridge.stop()

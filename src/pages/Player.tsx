@@ -350,28 +350,25 @@ export default function Player() {
     navigate(-1);
   }, [navigate]);
 
-  // Keep window.__rattinWatchState in sync so QML can save progress before bridge.stop()
+  // Set window.__rattinWatchState immediately so QML can save progress before bridge.stop()
+  // Metadata set eagerly; position/duration are filled by QML from its own properties
   useEffect(() => {
-    const interval = setInterval(() => {
-      const time = effectiveTimeRef.current;
-      if (!time || !state?.tmdbId) return;
-      const tmdbId = Number(state.tmdbId);
-      if (isNaN(tmdbId)) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__rattinWatchState = {
-        tmdbId,
-        mediaType: state.type || "movie",
-        title: mediaTitle,
-        posterPath: state.posterPath ?? null,
-        season: state.season != null ? Number(state.season) : undefined,
-        episode: state.episode != null ? Number(state.episode) : undefined,
-        episodeTitle: state.episodeTitle ?? undefined,
-        position: Math.floor(time.time),
-        duration: Math.floor(time.duration),
-      };
-    }, 1000);
+    if (!state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__rattinWatchState = {
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: 0,
+      duration: 0,
+    };
     return () => {
-      clearInterval(interval);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__rattinWatchState = null;
     };
