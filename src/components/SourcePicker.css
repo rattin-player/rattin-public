@@ -93,6 +93,7 @@
   color: var(--accent-bright);
   padding: 16px 14px 8px;
   border-left: 3px solid var(--accent);
+  border-bottom: 1px solid var(--accent-subtle);
   margin: 4px 0 2px;
 }
 
