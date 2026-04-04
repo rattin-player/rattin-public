@@ -72,6 +72,17 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
     res.json({ record: record ?? null });
   });
 
+  app.delete("/api/watch-history/:mediaType/:tmdbId", (req: Request, res: Response) => {
+    const mediaType = req.params.mediaType as string;
+    const tmdbId = Number(req.params.tmdbId as string);
+    if (!VALID_MEDIA_TYPES.includes(mediaType) || isNaN(tmdbId)) {
+      res.status(400).json({ error: "invalid_params" });
+      return;
+    }
+    watchHistory.removeTitle(mediaType, tmdbId);
+    res.json({ ok: true });
+  });
+
   // ── Saved List ─────────────────────────────────────────────────────
 
   app.post("/api/saved/toggle", (req: Request, res: Response) => {

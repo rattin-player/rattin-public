@@ -1,3 +1,30 @@
+.wh-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  z-index: 3;
+  backdrop-filter: blur(4px);
+}
+
+.wh-card:hover .wh-remove-btn {
+  opacity: 1;
+}
+
+.wh-remove-btn:hover {
+  color: var(--text-primary);
+  background: rgba(251, 113, 133, 0.6);
+}
+
 .wh-progress-bar {
   position: absolute;
   bottom: 0;

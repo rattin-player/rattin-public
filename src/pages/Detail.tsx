@@ -14,7 +14,11 @@ export default function Detail() {
   const { isRemote, sessionId } = useRemoteMode();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null);
-  const [selectedSeason, setSelectedSeason] = useState(1);
+  const [selectedSeason, setSelectedSeason] = useState(() => {
+    if (type !== "tv" || !id) return 1;
+    const saved = sessionStorage.getItem(`season:${id}`);
+    return saved ? Number(saved) : 1;
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [episodes, setEpisodes] = useState<any>(null);
   const [playState, setPlayState] = useState<string | null>(null); // null | "loading" | "error"
@@ -61,7 +65,13 @@ export default function Detail() {
   useEffect(() => {
     if (!id) return;
     setResumePoint(null);
-    fetchResumePoint(Number(id), type).then((r) => setResumePoint(r.resumePoint)).catch(() => {});
+    fetchResumePoint(Number(id), type).then((r) => {
+      setResumePoint(r.resumePoint);
+      // Auto-select the resume season if user hasn't manually picked one
+      if (r.resumePoint?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
+        setSelectedSeason(r.resumePoint.season);
+      }
+    }).catch(() => {});
     checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
   }, [id, type]);
 
@@ -348,7 +358,11 @@ export default function Detail() {
               <h3>Episodes</h3>
               <select
                 value={selectedSeason}
-                onChange={(e) => setSelectedSeason(Number(e.target.value))}
+                onChange={(e) => {
+                  const s = Number(e.target.value);
+                  setSelectedSeason(s);
+                  if (id) sessionStorage.setItem(`season:${id}`, String(s));
+                }}
               >
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {seasons.map((s: any) => (

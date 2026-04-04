@@ -126,6 +126,16 @@ export class WatchHistory {
     return null;
   }
 
+  /** Remove all records for a title (movie or all episodes of a TV series). */
+  removeTitle(mediaType: string, tmdbId: number): void {
+    const prefix = mediaType === "tv" ? `tv:${tmdbId}:` : `${mediaType}:${tmdbId}`;
+    for (const [key] of this.store.entries()) {
+      if (key === `${mediaType}:${tmdbId}` || key.startsWith(prefix)) {
+        this.store.delete(key);
+      }
+    }
+  }
+
   flush(): void { this.store.flush(); }
   shutdown(): void { this.store.shutdown(); }
 }

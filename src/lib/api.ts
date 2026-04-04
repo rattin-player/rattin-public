@@ -263,6 +263,10 @@ export function fetchResumePoint(tmdbId: number, mediaType: string): Promise<{ r
   return get(`/api/watch-history/resume/${tmdbId}?mediaType=${mediaType}`);
 }
 
+export async function removeWatchHistory(mediaType: string, tmdbId: number): Promise<void> {
+  await fetch(`/api/watch-history/${mediaType}/${tmdbId}`, { method: "DELETE" });
+}
+
 // ── Saved List ───────────────────────────────────────────────────
 
 export async function toggleSaved(data: {

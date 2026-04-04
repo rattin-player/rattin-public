@@ -9,9 +9,11 @@ interface WatchHistoryRowProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fetchFn: () => Promise<{ items: any[] }>;
   showProgress?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onRemove?: (item: any) => Promise<void>;
 }
 
-export default function WatchHistoryRow({ title, fetchFn, showProgress = false }: WatchHistoryRowProps) {
+export default function WatchHistoryRow({ title, fetchFn, showProgress = false, onRemove }: WatchHistoryRowProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [items, setItems] = useState<any[] | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,7 +58,7 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false }
                 return (
                   <div
                     key={`${type}:${item.tmdbId}:${item.season ?? ""}:${item.episode ?? ""}`}
-                    className="movie-card"
+                    className="movie-card wh-card"
                     onClick={() => navigate(`/${type}/${item.tmdbId}`)}
                   >
                     <div className="movie-card-poster">
@@ -64,6 +66,21 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false }
                         <img src={img} alt={item.title} loading="lazy" />
                       ) : (
                         <div className="movie-card-placeholder" />
+                      )}
+                      {onRemove && (
+                        <button
+                          className="wh-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemove(item).then(() => {
+                              setItems((prev) => prev ? prev.filter((i) => i.tmdbId !== item.tmdbId) : prev);
+                            });
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                          </svg>
+                        </button>
                       )}
                       {showProgress && pct > 0 && (
                         <div className="wh-progress-bar">
