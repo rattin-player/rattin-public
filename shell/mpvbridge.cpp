@@ -14,6 +14,7 @@ void MpvBridge::attachMpv(MpvObject *mpv)
     m_mpv->observeProperty("duration");
     m_mpv->observeProperty("pause");
     m_mpv->observeProperty("eof-reached");
+    m_mpv->observeProperty("core-idle");
     connect(m_mpv, &MpvObject::mpvEvent, this, &MpvBridge::onMpvEvent);
 }
 
@@ -107,6 +108,8 @@ void MpvBridge::onMpvEvent(const QString &eventName, const QVariant &value)
         emit durationChanged(value.toDouble());
     } else if (eventName == "pause" && value.canConvert<bool>()) {
         emit pauseChanged(value.toBool());
+    } else if (eventName == "core-idle" && value.canConvert<bool>()) {
+        emit coreIdleChanged(value.toBool());
     } else if (eventName == "eof") {
         if (m_loadPending) {
             // Stale EOF from the previous file during a loadfile transition — suppress it.
