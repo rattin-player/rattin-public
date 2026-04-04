@@ -1,0 +1,43 @@
+.wh-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  z-index: 3;
+  backdrop-filter: blur(4px);
+}
+
+.wh-card:hover .wh-remove-btn {
+  opacity: 1;
+}
+
+.wh-remove-btn:hover {
+  color: var(--text-primary);
+  background: rgba(251, 113, 133, 0.6);
+}
+
+.wh-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  z-index: 2;
+}
+
+.wh-progress-fill {
+  height: 100%;
+  background: var(--accent-bright, #c9a84c);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.3s ease;
+}
