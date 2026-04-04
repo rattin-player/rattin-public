@@ -48,8 +48,6 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
     return ordered;
   }, [streams]);
 
-  // The "default" pick is the first stream in the first group
-  const defaultHash = groups[0]?.streams[0]?.infoHash;
 
   return (
     <div className="picker-overlay" onClick={onClose}>
@@ -70,11 +68,10 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
               <div key={group.resolution} className="picker-group">
                 <div className="picker-group-label">{group.resolution}</div>
                 {group.streams.map((s: Stream) => {
-                  const isDefault = s.infoHash === defaultHash;
                   return (
                     <button
                       key={`${s.infoHash}:${s.fileIdx ?? ""}`}
-                      className={`picker-item${isDefault ? " default" : ""}`}
+                      className="picker-item"
                       onClick={() => onPick(s)}
                     >
                       <div className="picker-item-row">

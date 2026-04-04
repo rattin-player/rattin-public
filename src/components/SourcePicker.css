@@ -116,16 +116,6 @@
   border-color: var(--border);
 }
 
-.picker-item.default {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
-}
-
-.picker-item.default:hover {
-  background: var(--accent-subtle);
-  border-color: var(--accent-bright);
-}
-
 .picker-item-row {
   display: flex;
   align-items: center;
