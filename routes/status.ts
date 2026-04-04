@@ -120,6 +120,11 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
     });
   });
 
+  // Lightweight heartbeat — keeps idle tracker alive (middleware calls touch())
+  app.get("/api/heartbeat", (_req: Request, res: Response) => {
+    res.json({ ok: true });
+  });
+
   // Pause all other torrents, resume this one
   app.post("/api/set-active/:infoHash", (req: Request, res: Response) => {
     const { infoHash: activeHash } = req.params as Record<string, string>;

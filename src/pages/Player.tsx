@@ -277,6 +277,17 @@ export default function Player() {
     return () => { mpvStop(); };
   }, []);
 
+  // Heartbeat: keep the server's idle tracker alive while on the Player page.
+  // useSeek polls /api/status every 1.5s which normally suffices, but Chromium
+  // may throttle timers when the window is backgrounded. A 30s ping with
+  // keepalive ensures the server never considers us idle.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetch("/api/heartbeat", { keepalive: true }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Register command handlers for remote control (assigned every render to avoid stale closures)
   if (commandRef) {
     commandRef.current = {
