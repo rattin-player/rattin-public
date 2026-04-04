@@ -12,6 +12,7 @@ import Search from "./pages/Search";
 import Remote from "./pages/Remote";
 import { getTmdbStatus } from "./lib/api";
 import { setupExternalLinkInterceptor } from "./lib/external-links";
+import { getRemoteSessionId } from "./lib/remote-session";
 
 function Layout({ children }: { children: ReactNode }) {
   return (
@@ -97,6 +98,8 @@ export default function App() {
   const [tmdbReady, setTmdbReady] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // Phone remote uses the desktop's TMDB key — skip the setup gate
+    if (getRemoteSessionId()) { setTmdbReady(true); return; }
     getTmdbStatus().then((s) => setTmdbReady(s.configured)).catch(() => setTmdbReady(false));
   }, []);
 
