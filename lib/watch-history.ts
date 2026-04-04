@@ -97,34 +97,23 @@ export class WatchHistory {
       return { season: 0, episode: 0, position: record.position };
     }
 
-    // TV: find the most recently watched episode
+    // TV: episodes sorted by season/episode number
     const episodes = this.getSeriesProgress(tmdbId);
     if (episodes.length === 0) return null;
 
-    // Sort by updatedAt to find the most recently interacted episode
-    const byRecent = [...episodes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const latest = byRecent[0];
-
-    if (!latest.finished) {
-      // Resume the unfinished episode
-      return { season: latest.season ?? 1, episode: latest.episode ?? 1, position: latest.position };
+    // Find the first unfinished episode (by season/episode order)
+    const unfinished = episodes.find((e) => !e.finished);
+    if (unfinished) {
+      return { season: unfinished.season ?? 1, episode: unfinished.episode ?? 1, position: unfinished.position };
     }
 
-    // Last episode was finished — look for a recorded but unwatched next episode
-    const latestIdx = episodes.findIndex(
-      (e) => e.season === latest.season && e.episode === latest.episode
-    );
-
-    if (latestIdx >= 0 && latestIdx < episodes.length - 1) {
-      const next = episodes[latestIdx + 1];
-      if (!next.finished) {
-        return { season: next.season ?? 1, episode: next.episode ?? 1, position: next.position };
-      }
-    }
-
-    // All recorded episodes are finished — don't guess; return null
-    // (the UI will show a generic "Play" button instead of "Resume S?E?")
-    return null;
+    // All recorded episodes are finished — suggest the next one after the last
+    const last = episodes[episodes.length - 1];
+    return {
+      season: last.season ?? 1,
+      episode: (last.episode ?? 0) + 1,
+      position: 0,
+    };
   }
 
   /** Dismiss a record from Continue Watching without deleting watch data. */
