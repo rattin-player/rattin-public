@@ -211,12 +211,10 @@ export default function Player() {
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
         setLoading(false);
         // Restore saved playback position once we know the duration
-        // Priority: nav state resumePosition (from watch history) > sessionStorage (legacy)
+        // sessionStorage (updated every 3s by PlayerContext) is always the freshest source
         if (!positionRestored && d > 0) {
           positionRestored = true;
-          const resumePos = state?.resumePosition ? parseFloat(state.resumePosition) : 0;
-          const sessionPos = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
-          const saved = resumePos > 0 ? resumePos : sessionPos;
+          const saved = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
           if (shouldRestorePosition(saved, d)) {
             mpvSeek(saved);
           }
