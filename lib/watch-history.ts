@@ -12,6 +12,7 @@ export interface WatchRecord {
   duration: number;   // seconds
   finished: boolean;
   updatedAt: string;  // ISO 8601
+  dismissed?: boolean; // hidden from Continue Watching without deleting data
 }
 
 export interface ResumePoint {
@@ -39,7 +40,7 @@ export class WatchHistory {
     // If duration is unknown (0), preserve the existing duration if we have one
     const duration = record.duration > 0 ? record.duration : (existing?.duration ?? 0);
     const finished = duration > 0 && (record.position / duration) >= FINISHED_THRESHOLD;
-    this.store.set(key, { ...record, duration, finished, updatedAt: new Date().toISOString() });
+    this.store.set(key, { ...record, duration, finished, dismissed: false, updatedAt: new Date().toISOString() });
   }
 
   getProgress(mediaType: string, tmdbId: number, season?: number, episode?: number): WatchRecord | undefined {
@@ -49,7 +50,7 @@ export class WatchHistory {
   /** Unfinished items with >= 5 min watched, sorted by most recent, limit 20. */
   getContinueWatching(): WatchRecord[] {
     return this.store
-      .query((r) => !r.finished && r.position >= MIN_WATCH_SECONDS)
+      .query((r) => !r.finished && !r.dismissed && r.position >= MIN_WATCH_SECONDS)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 20);
   }
@@ -126,14 +127,11 @@ export class WatchHistory {
     return null;
   }
 
-  /** Remove all records for a title (movie or all episodes of a TV series). */
-  removeTitle(mediaType: string, tmdbId: number): void {
-    const prefix = mediaType === "tv" ? `tv:${tmdbId}:` : `${mediaType}:${tmdbId}`;
-    for (const [key] of this.store.entries()) {
-      if (key === `${mediaType}:${tmdbId}` || key.startsWith(prefix)) {
-        this.store.delete(key);
-      }
-    }
+  /** Dismiss a record from Continue Watching without deleting watch data. */
+  dismiss(mediaType: string, tmdbId: number, season?: number, episode?: number): void {
+    const key = recordKey(mediaType, tmdbId, season, episode);
+    const record = this.store.get(key);
+    if (record) this.store.set(key, { ...record, dismissed: true });
   }
 
   flush(): void { this.store.flush(); }

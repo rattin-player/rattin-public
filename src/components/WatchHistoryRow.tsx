@@ -73,7 +73,9 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false, 
                           onClick={(e) => {
                             e.stopPropagation();
                             onRemove(item).then(() => {
-                              setItems((prev) => prev ? prev.filter((i) => i.tmdbId !== item.tmdbId) : prev);
+                              setItems((prev) => prev ? prev.filter((i) =>
+                                !(i.tmdbId === item.tmdbId && i.season === item.season && i.episode === item.episode)
+                              ) : prev);
                             });
                           }}
                         >

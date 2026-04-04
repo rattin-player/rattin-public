@@ -263,8 +263,14 @@ export function fetchResumePoint(tmdbId: number, mediaType: string): Promise<{ r
   return get(`/api/watch-history/resume/${tmdbId}?mediaType=${mediaType}`);
 }
 
-export async function removeWatchHistory(mediaType: string, tmdbId: number): Promise<void> {
-  await fetch(`/api/watch-history/${mediaType}/${tmdbId}`, { method: "DELETE" });
+export async function dismissWatchHistory(data: {
+  tmdbId: number; mediaType: string; season?: number; episode?: number;
+}): Promise<void> {
+  await fetch("/api/watch-history/dismiss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
 // ── Saved List ───────────────────────────────────────────────────

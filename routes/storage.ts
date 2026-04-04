@@ -82,14 +82,17 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
     res.json({ record: record ?? null });
   });
 
-  app.delete("/api/watch-history/:mediaType/:tmdbId", (req: Request, res: Response) => {
-    const mediaType = req.params.mediaType as string;
-    const tmdbId = Number(req.params.tmdbId as string);
-    if (!VALID_MEDIA_TYPES.includes(mediaType) || isNaN(tmdbId)) {
-      res.status(400).json({ error: "invalid_params" });
+  app.post("/api/watch-history/dismiss", (req: Request, res: Response) => {
+    const { tmdbId, mediaType, season, episode } = req.body;
+    if (!tmdbId || !mediaType) {
+      res.status(400).json({ error: "missing_fields" });
       return;
     }
-    watchHistory.removeTitle(mediaType, tmdbId);
+    watchHistory.dismiss(
+      mediaType, Number(tmdbId),
+      season != null ? Number(season) : undefined,
+      episode != null ? Number(episode) : undefined,
+    );
     res.json({ ok: true });
   });
 
