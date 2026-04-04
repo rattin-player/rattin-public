@@ -117,6 +117,14 @@ function isRemoteSafeRoute(req: Request): boolean {
   if (method === "POST" && path === "/api/rc/command") return true;
   if (method === "POST" && path === "/api/rc/request-qr") return true;
 
+  // Storage: watch history + saved list
+  if (method === "GET" && path.startsWith("/api/watch-history/")) return true;
+  if (method === "PUT" && path === "/api/watch-history/progress") return true;
+  if (method === "POST" && path === "/api/watch-history/progress") return true;
+  if (method === "POST" && path === "/api/watch-history/dismiss") return true;
+  if (method === "GET" && path.startsWith("/api/saved")) return true;
+  if (method === "POST" && path === "/api/saved/toggle") return true;
+
   return false;
 }
 

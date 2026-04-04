@@ -8,6 +8,7 @@ export interface WatchRecord {
   season?: number;
   episode?: number;
   episodeTitle?: string;
+  seasonEpisodeCount?: number; // total episodes in this season (from TMDB)
   position: number;   // seconds
   duration: number;   // seconds
   finished: boolean;
@@ -77,10 +78,12 @@ export class WatchHistory {
         });
         const last = sorted[sorted.length - 1];
         if (last.dismissed) continue;
+        const lastEp = last.episode ?? 0;
+        const isSeasonFinale = last.seasonEpisodeCount != null && lastEp >= last.seasonEpisodeCount;
         nextUp.push({
           ...last,
-          season: last.season ?? 1,
-          episode: (last.episode ?? 0) + 1,
+          season: isSeasonFinale ? (last.season ?? 1) + 1 : (last.season ?? 1),
+          episode: isSeasonFinale ? 1 : lastEp + 1,
           position: 0,
           duration: 0,
           finished: false,
@@ -151,9 +154,11 @@ export class WatchHistory {
 
     // All recorded episodes are finished — suggest the next one after the last in order
     const last = episodes[episodes.length - 1];
+    const lastEp = last.episode ?? 0;
+    const isSeasonFinale = last.seasonEpisodeCount != null && lastEp >= last.seasonEpisodeCount;
     return {
-      season: last.season ?? 1,
-      episode: (last.episode ?? 0) + 1,
+      season: isSeasonFinale ? (last.season ?? 1) + 1 : (last.season ?? 1),
+      episode: isSeasonFinale ? 1 : lastEp + 1,
       position: 0,
     };
   }

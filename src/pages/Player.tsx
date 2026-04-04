@@ -94,6 +94,8 @@ export default function Player() {
       const newTags = result.tags || source.tags || [];
       setCurrentTags(newTags);
       setShowSources(false);
+      // Capture position BEFORE teardown — startStream nulls effectiveTimeRef
+      const currentPos = effectiveTimeRef.current?.time ?? 0;
       // Kill old player, wait for mpv to fully stop, then spawn new player
       navigate("/", { replace: true });
       await mpvStopAndWait();
@@ -104,6 +106,7 @@ export default function Player() {
           tags: newTags,
           sources,
           debridStreamKey: result.debridStreamKey,
+          resumePosition: currentPos > 10 ? currentPos : undefined,
         },
       });
     } catch {
@@ -333,6 +336,7 @@ export default function Player() {
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
+      seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: dur,
     }).catch(() => {});
@@ -357,6 +361,7 @@ export default function Player() {
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
+      seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: Math.floor(time.duration),
     });
@@ -391,6 +396,7 @@ export default function Player() {
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
+      seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: 0,
       duration: 0,
     };

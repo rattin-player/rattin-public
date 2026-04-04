@@ -20,7 +20,7 @@ const S = {
 async function probeSession(sessionId: string): Promise<string> {
   try {
     const res = await fetch(`/api/rc/session/${sessionId}`);
-    if (res.status === 404) return "expired";
+    if (res.status === 404 || res.status === 401) return "expired";
     const data = await res.json();
     return data.playerOnline ? "online" : "offline";
   } catch {
