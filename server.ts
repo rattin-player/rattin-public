@@ -19,7 +19,7 @@ import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
 import storageRoutes from "./routes/storage.js";
-import { sweepOldFiles } from "./lib/cache/cache-cleanup.js";
+import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
 import type { WatchHistory } from "./lib/storage/watch-history.js";
 import type { SavedList } from "./lib/storage/saved-list.js";
@@ -149,6 +149,16 @@ vpnRoutes(app, ctx);
 cacheRoutes(app, ctx);
 openUrlRoutes(app, ctx);
 storageRoutes(app, ctx);
+
+// Disk space janitor — every 60s, evict oldest cache files if free space < 2GB
+const _diskJanitor = setInterval(() => {
+  const activeHashes = new Set(ctx.client.torrents.filter((t) => {
+    const st = streamTracker.get(t.infoHash);
+    return st && st.count > 0;
+  }).map((t) => t.infoHash));
+  evictIfLowSpace(ctx.DOWNLOAD_PATH, activeHashes, log).catch(() => {});
+}, 60 * 1000);
+if (_diskJanitor.unref) _diskJanitor.unref();
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {
