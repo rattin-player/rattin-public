@@ -357,7 +357,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.loadingOverlay = false; bridge.stop(); transport.backRequested() }
+                        onClicked: { console.log("[shell] loading overlay back clicked"); root.loadingOverlay = false; bridge.stop(); transport.backRequested() }
                     }
                 }
 
@@ -589,7 +589,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: transport.backRequested()
+                        onClicked: { console.log("[shell] controls overlay back clicked"); transport.backRequested() }
                     }
                 }
 

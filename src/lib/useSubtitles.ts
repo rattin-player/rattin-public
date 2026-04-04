@@ -86,11 +86,15 @@ function isEnglish(lang: string): boolean {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function pickBestEnglishSub(tracks: any[]): any | null {
   const eng = tracks.filter((t) => isEnglish(t.lang || "") || isEnglish(t.title || ""));
+  console.log("[sub-pick] English tracks:", eng.map((t) => ({ title: t.title, lang: t.lang, idx: t.streamIndex })));
   if (eng.length === 0) return null;
   if (eng.length === 1) return eng[0];
   // Prefer the one without SDH/forced/signs tags — that's plain dialogue
   const dialogue = eng.filter((t) => !NON_DIALOGUE_TAGS.test(t.title || ""));
-  return dialogue[0] || eng[0];
+  console.log("[sub-pick] Dialogue (non-signs/sdh):", dialogue.map((t) => ({ title: t.title, idx: t.streamIndex })));
+  const pick = dialogue[0] || eng[0];
+  console.log("[sub-pick] Picked:", pick?.title, pick?.streamIndex);
+  return pick;
 }
 
 /** From external subs (with label strings), pick the English dialogue sub. */
