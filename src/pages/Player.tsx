@@ -308,14 +308,12 @@ export default function Player() {
   const reportProgressRef = useRef(() => {});
   reportProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    if (!time) { console.log("[watch-history] skip: no effectiveTime"); return; }
-    if (!state?.tmdbId) { console.log("[watch-history] skip: no tmdbId in state"); return; }
+    if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
-    if (isNaN(tmdbId)) { console.log("[watch-history] skip: tmdbId NaN"); return; }
+    if (isNaN(tmdbId)) return;
     const pos = Math.floor(time.time);
     const dur = Math.floor(time.duration);
-    if (pos <= 0) { console.log("[watch-history] skip: pos <= 0", pos); return; }
-    console.log("[watch-history] reporting", { tmdbId, pos, dur });
+    if (pos <= 0) return;
     reportWatchProgress({
       tmdbId,
       mediaType: state.type || "movie",
@@ -333,8 +331,7 @@ export default function Player() {
   const beaconProgressRef = useRef(() => {});
   beaconProgressRef.current = () => {
     const time = effectiveTimeRef.current;
-    console.log("[watch-history] beacon called:", { hasTime: !!time, time: time?.time, duration: time?.duration, tmdbId: state?.tmdbId });
-    if (!time || !state?.tmdbId) { console.log("[watch-history] beacon bail: no time or tmdbId"); return; }
+    if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
     const pos = Math.floor(time.time);
@@ -361,7 +358,6 @@ export default function Player() {
 
   // Save progress then navigate back — ensures data is persisted before unmount
   const goBack = useCallback(() => {
-    console.log("[watch-history] goBack called");
     beaconProgressRef.current();
     navigate(-1);
   }, [navigate]);
@@ -390,24 +386,16 @@ export default function Player() {
     };
   }, [state, mediaTitle]);
 
-  // Periodic reporting every 10s
+  // Periodic reporting every 30s
   useEffect(() => {
-    console.log("[watch-history] periodic timer started");
-    const interval = setInterval(() => {
-      console.log("[watch-history] periodic tick");
-      reportProgressRef.current();
-    }, 10_000);
-    return () => {
-      console.log("[watch-history] periodic timer cleared");
-      clearInterval(interval);
-    };
+    const interval = setInterval(() => reportProgressRef.current(), 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   // Report on unmount (leaving player)
   useEffect(() => {
     return () => { beaconProgressRef.current(); };
   }, []);
-
 
   const [showControls, setShowControls] = useState(true);
   const [muted, setMuted] = useState(false);

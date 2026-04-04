@@ -8,9 +8,7 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
 
   const VALID_MEDIA_TYPES = ["movie", "tv"];
 
-  const { log } = ctx;
-
-  // Accept both PUT (normal) and POST (sendBeacon on unmount)
+  // Accept both PUT (normal) and POST (sync XHR on unmount)
   function handleProgress(req: Request, res: Response) {
     const { tmdbId, mediaType, title, posterPath, season, episode, episodeTitle, position, duration } = req.body;
     if (!tmdbId || !mediaType || !title || position == null) {
@@ -27,7 +25,6 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
     }
     const pos = Number(position);
     const dur = Number(duration || 0);
-    log("info", "Watch progress", { tmdbId, mediaType, title: title?.slice(0, 40), season, episode, position: pos, duration: dur });
     watchHistory.recordProgress({
       tmdbId: Number(tmdbId),
       mediaType,
