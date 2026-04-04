@@ -75,7 +75,7 @@ export function subtitleMatchesVideo(subPath: string, videoPath: string): boolea
 }
 
 // Tags that indicate a subtitle track is NOT plain dialogue
-const NON_DIALOGUE_TAGS = /\b(sdh|forced|sign|song|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
+const NON_DIALOGUE_TAGS = /\b(sdh|forced|signs?|songs?|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
 
 function isEnglish(lang: string): boolean {
   const base = lang.toLowerCase().split(/[-_]/)[0];
