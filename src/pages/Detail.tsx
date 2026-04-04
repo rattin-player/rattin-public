@@ -187,7 +187,12 @@ export default function Detail() {
           navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name;
         }
         if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
-        if (resumePoint?.position > 0) navState.resumePosition = resumePoint.position;
+        // Only attach resumePosition when playing the exact episode/movie the resume point refers to
+        if (resumePoint?.position > 0) {
+          const isMatch = type === "movie"
+            || (resumePoint.season === season && resumePoint.episode === episode);
+          if (isMatch) navState.resumePosition = resumePoint.position;
+        }
         navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
       }
     } catch (err: unknown) {

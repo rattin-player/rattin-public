@@ -34,6 +34,26 @@ Window {
         else root.showFullScreen()
     }
 
+    // Save watch progress via JS before stopping playback.
+    // Uses sync XHR with a 2s timeout so the UI never hangs indefinitely.
+    function saveProgressAndStop() {
+        if (root.currentTime > 0) {
+            var t = Math.floor(root.currentTime)
+            var d = Math.floor(root.duration)
+            webView.runJavaScript(
+                "(function(){var s=window.__rattinWatchState;" +
+                "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
+                "var x=new XMLHttpRequest();x.timeout=2000;" +
+                "x.open('POST','/api/watch-history/progress',false);" +
+                "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}" +
+                "})()",
+                function(result) { bridge.stop() }
+            )
+        } else {
+            bridge.stop()
+        }
+    }
+
     function formatTime(s) {
         var h = Math.floor(s / 3600)
         var m = Math.floor((s % 3600) / 60)
@@ -256,24 +276,10 @@ Window {
                 bridge.setVolume(root.volume); transport.nativeVolumeChanged(root.volume)
                 event.accepted = true; break
             case Qt.Key_Escape:
-                if (root.visibility === Window.FullScreen) {
+                if (root.visibility === Window.FullScreen)
                     root.showNormal()
-                } else {
-                    if (root.currentTime > 0) {
-                        var et = Math.floor(root.currentTime)
-                        var ed = Math.floor(root.duration)
-                        webView.runJavaScript(
-                            "(function(){var s=window.__rattinWatchState;" +
-                            "if(s&&s.tmdbId){s.position=" + et + ";s.duration=" + ed + ";" +
-                            "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
-                            "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}" +
-                            "})()",
-                            function(result) { bridge.stop() }
-                        )
-                    } else {
-                        bridge.stop()
-                    }
-                }
+                else
+                    root.saveProgressAndStop()
                 event.accepted = true; break
             case Qt.Key_F:
                 root.toggleFullscreen()
@@ -310,24 +316,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            // Save watch progress before stopping — must complete before bridge.stop()
-                            // runJavaScript is async, so stop() goes in the callback
-                            if (root.currentTime > 0) {
-                                var t = Math.floor(root.currentTime)
-                                var d = Math.floor(root.duration)
-                                webView.runJavaScript(
-                                    "(function(){var s=window.__rattinWatchState;" +
-                                    "if(s&&s.tmdbId){s.position=" + t + ";s.duration=" + d + ";" +
-                                    "var x=new XMLHttpRequest();x.open('POST','/api/watch-history/progress',false);" +
-                                    "x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(s))}" +
-                                    "})()",
-                                    function(result) { bridge.stop() }
-                                )
-                            } else {
-                                bridge.stop()
-                            }
-                        }
+                        onClicked: root.saveProgressAndStop()
                     }
                 }
 

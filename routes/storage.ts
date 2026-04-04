@@ -1,8 +1,18 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { ServerContext } from "../lib/types.js";
 
 export default function storageRoutes(app: Express, ctx: ServerContext): void {
   const { watchHistory, savedList } = ctx;
+
+  // Disable caching for all storage endpoints — data changes on every interaction
+  app.use("/api/watch-history", (_req: Request, res: Response, next: NextFunction) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
+  app.use("/api/saved", (_req: Request, res: Response, next: NextFunction) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
 
   // ── Watch History ──────────────────────────────────────────────────
 

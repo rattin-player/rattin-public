@@ -327,9 +327,11 @@ export default function Player() {
     }).catch(() => {});
   };
 
-  // Save progress on unmount — use synchronous XHR as Qt WebEngine may not support sendBeacon
+  // Save progress on unmount — sync XHR guarantees delivery during unmount
+  const savedOnExit = useRef(false);
   const beaconProgressRef = useRef(() => {});
   beaconProgressRef.current = () => {
+    if (savedOnExit.current) return;
     const time = effectiveTimeRef.current;
     if (!time || !state?.tmdbId) return;
     const tmdbId = Number(state.tmdbId);
@@ -354,6 +356,7 @@ export default function Player() {
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.send(payload);
     } catch { /* best effort */ }
+    savedOnExit.current = true;
   };
 
   // Save progress then navigate back — ensures data is persisted before unmount
