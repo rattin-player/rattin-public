@@ -40,11 +40,9 @@ export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleContinuePlay = useCallback(async (item: any) => {
     // Show loading overlay with poster immediately while searching for streams
-    // Strip any episode suffix from title that may have been saved from a previous session
-    const cleanTitle = item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
     const displayTitle = item.mediaType === "tv" && item.season != null
-      ? `${cleanTitle} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
-      : cleanTitle;
+      ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
+      : item.title;
     waitForBridge().then(() => {
       if (item.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${item.posterPath}`);
       mpvSetTitle(displayTitle);
@@ -69,13 +67,10 @@ export default function Home() {
       mpvSetLoading(false);
       throw err; // re-throw so WatchHistoryRow falls back to Detail
     }
-    // Base name: strip any episode suffix that may have been saved from a previous session
-    const baseName = item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const navState: any = {
       tags: result.tags,
       title: displayTitle,
-      baseName,
       tmdbId: item.tmdbId,
       year: item.year,
       type: item.mediaType,
