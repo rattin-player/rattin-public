@@ -98,12 +98,14 @@ export default function Player() {
       navigate("/", { replace: true });
       await mpvStopAndWait();
       startStream(result.infoHash, result.fileIndex, mediaTitle, newTags, result.debridStreamKey);
+      const currentPos = effectiveTimeRef.current?.time ?? 0;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
         state: {
           ...state,
           tags: newTags,
           sources,
           debridStreamKey: result.debridStreamKey,
+          resumePosition: currentPos > 10 ? currentPos : undefined,
         },
       });
     } catch {
