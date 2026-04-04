@@ -24,9 +24,15 @@ export default function Home() {
   const [genreFilter, setGenreFilter] = useState("");
   const { from, to } = useMemo(() => recentDateRange(), []);
 
+  // Exclude compound TMDB genres like "Science Fiction & Fantasy" which cause downstream issues
+  const withoutAmpersand = useMemo(
+    () => genres.filter((g) => !g.name.includes(" & ")),
+    [genres],
+  );
+
   const filteredGenres = genreFilter
-    ? genres.filter((g) => g.name.toLowerCase().includes(genreFilter.toLowerCase()))
-    : genres;
+    ? withoutAmpersand.filter((g) => g.name.toLowerCase().includes(genreFilter.toLowerCase()))
+    : withoutAmpersand;
 
   useEffect(() => {
     fetchTrending().then((data) => {
