@@ -402,17 +402,40 @@
   flex: 0 0 auto;
 }
 
-.episode-pick {
-  width: 34px;
-  height: 34px;
+.episode-watched-toggle {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.episode-watched-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.episode-card.watched .episode-watched-toggle {
+  color: var(--accent);
+}
+
+.episode-pick {
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
   transition: all var(--transition);
+  white-space: nowrap;
 }
 
 .episode-pick:hover {

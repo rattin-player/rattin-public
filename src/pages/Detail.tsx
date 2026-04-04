@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import SourcePicker from "../components/SourcePicker";
@@ -316,13 +316,15 @@ export default function Detail() {
                 </svg>
                 {isSaved ? "Saved" : "Save"}
               </button>
-              <button
-                className="detail-source-btn"
-                onClick={() => openPicker()}
-                disabled={playState === "loading"}
-              >
-                Pick Source
-              </button>
+              {type === "movie" && (
+                <button
+                  className="detail-source-btn"
+                  onClick={() => openPicker()}
+                  disabled={playState === "loading"}
+                >
+                  Pick Source
+                </button>
+              )}
               {trailer && (
                 <a
                   className="detail-trailer-btn"
@@ -417,11 +419,41 @@ export default function Detail() {
                       </div>
                       <div className="episode-actions">
                         <button
+                          className="episode-watched-toggle"
+                          title={progress?.finished ? "Mark unwatched" : "Mark watched"}
+                          onClick={() => {
+                            const title = data.title || data.name;
+                            const dur = ep.runtime ? ep.runtime * 60 : 2400;
+                            const nowFinished = !progress?.finished;
+                            reportWatchProgress({
+                              tmdbId: Number(id),
+                              mediaType: "tv",
+                              title: `${title} — S${selectedSeason}E${ep.episode_number}`,
+                              posterPath: data.poster_path ?? null,
+                              season: selectedSeason,
+                              episode: ep.episode_number,
+                              episodeTitle: ep.name,
+                              position: nowFinished ? dur : 0,
+                              duration: dur,
+                            }).then(() => {
+                              setEpisodeProgress((prev) => {
+                                const next = new Map(prev);
+                                next.set(epKey, { ...progress, position: nowFinished ? dur : 0, duration: dur, finished: nowFinished });
+                                return next;
+                              });
+                            }).catch(() => {});
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                          </svg>
+                        </button>
+                        <button
                           className="episode-pick"
                           onClick={() => openPicker(selectedSeason, ep.episode_number)}
                           title="Pick source"
                         >
-                          &hellip;
+                          Pick Source
                         </button>
                         <button
                           className="episode-play"
