@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 import os from "os";
-import { JsonStore } from "../../lib/store.js";
+import { JsonStore } from "../../../lib/storage/store.js";
 
 let tmpDir: string;
 

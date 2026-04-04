@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import crypto from "crypto";
 import path from "path";
-import { configDir } from "./paths.js";
+import { configDir } from "./storage/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 

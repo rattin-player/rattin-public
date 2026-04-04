@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "fs";
 import path from "path";
 import os from "os";
-import { JsonStore } from "../../lib/store.js";
-import { WatchHistory, type WatchRecord } from "../../lib/watch-history.js";
+import { JsonStore } from "../../../lib/storage/store.js";
+import { WatchHistory, type WatchRecord } from "../../../lib/storage/watch-history.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "fs";
 import path from "path";
 import type { Express, Request, Response } from "express";
 import type { ServerContext } from "../lib/types.js";
-import { configDir } from "../lib/paths.js";
+import { configDir } from "../lib/storage/paths.js";
 
 const CONFIG_DIR = configDir();
 const STATE_FILE = path.join(CONFIG_DIR, "vpn-state.json");

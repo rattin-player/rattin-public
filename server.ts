@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
-import { sessionsPath, downloadDir } from "./lib/paths.js";
+import { sessionsPath, downloadDir } from "./lib/storage/paths.js";
 import { tmdbCache } from "./lib/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
@@ -21,8 +21,8 @@ import openUrlRoutes from "./routes/open-url.js";
 import storageRoutes from "./routes/storage.js";
 import { sweepOldFiles } from "./lib/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
-import type { WatchHistory } from "./lib/watch-history.js";
-import type { SavedList } from "./lib/saved-list.js";
+import type { WatchHistory } from "./lib/storage/watch-history.js";
+import type { SavedList } from "./lib/storage/saved-list.js";
 
 interface CreateAppOverrides {
   __dirname?: string;
