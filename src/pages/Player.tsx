@@ -414,6 +414,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: dur,
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     }).catch(() => {});
   };
 
@@ -439,6 +441,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: pos,
       duration: Math.floor(time.duration),
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     });
     // Synchronous XHR blocks until complete — guarantees delivery during unmount
     try {
@@ -478,6 +482,8 @@ export default function Player() {
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
       position: 0,
       duration: 0,
+      imdbId: state.imdbId ?? undefined,
+      year: state.year != null ? Number(state.year) : undefined,
     };
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

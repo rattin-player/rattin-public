@@ -20,7 +20,7 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
 
   // Accept both PUT (normal) and POST (sync XHR on unmount)
   function handleProgress(req: Request, res: Response) {
-    const { tmdbId, mediaType, title, posterPath, season, episode, episodeTitle, seasonEpisodeCount, position, duration } = req.body;
+    const { tmdbId, mediaType, title, posterPath, season, episode, episodeTitle, seasonEpisodeCount, position, duration, imdbId, year } = req.body;
     if (!tmdbId || !mediaType || !title || position == null) {
       res.status(400).json({ error: "missing_fields" });
       return;
@@ -48,6 +48,8 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
       duration: dur,
       finished: false, // computed by recordProgress
       updatedAt: "",   // set by recordProgress
+      imdbId: imdbId ?? undefined,
+      year: year != null ? Number(year) : undefined,
     });
     res.json({ ok: true });
   }
