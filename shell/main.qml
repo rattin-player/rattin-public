@@ -357,7 +357,11 @@ Window {
                         anchors.fill: parent
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { console.log("[shell] loading overlay back clicked"); root.loadingOverlay = false; bridge.stop(); transport.backRequested() }
+                        onClicked: {
+                            root.loadingOverlay = false; bridge.stop()
+                            webView.runJavaScript("window.__rattinCancelPlay = true")
+                            transport.backRequested()
+                        }
                     }
                 }
 
@@ -603,10 +607,19 @@ Window {
             }
         }
 
+        // ── Click-outside dismisser for popups ──
+        MouseArea {
+            anchors.fill: parent
+            visible: subPopup.visible || audioPopup.visible
+            z: 0
+            onClicked: { subPopup.visible = false; audioPopup.visible = false }
+        }
+
         // ── Subtitle picker popup ──
         Rectangle {
             id: subPopup
             visible: false
+            z: 1
             anchors.right: parent.right
             anchors.bottom: bottomBar.top
             anchors.rightMargin: 16
@@ -665,6 +678,14 @@ Window {
                     width: subFlick.width
                     spacing: 4
 
+                    Text {
+                        text: "Subtitles"
+                        color: "#c9a84c"
+                        font.pixelSize: 12
+                        font.bold: true
+                        bottomPadding: 4
+                    }
+
                     Rectangle {
                         width: parent.width; height: 28; radius: 4
                         color: root.activeSub === 0 ? "#30c9a84c" : "transparent"
@@ -712,6 +733,7 @@ Window {
         Rectangle {
             id: audioPopup
             visible: false
+            z: 1
             anchors.right: parent.right
             anchors.bottom: bottomBar.top
             anchors.rightMargin: 16
@@ -736,6 +758,14 @@ Window {
                     id: audioListCol
                     width: audioFlick.width
                     spacing: 4
+
+                    Text {
+                        text: "Audio Track"
+                        color: "#c9a84c"
+                        font.pixelSize: 12
+                        font.bold: true
+                        bottomPadding: 4
+                    }
 
                     Repeater {
                         model: root.audioTracks

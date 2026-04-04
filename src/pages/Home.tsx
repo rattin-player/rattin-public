@@ -52,6 +52,8 @@ export default function Home() {
     });
     let result;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
       result = await autoPlay(
         item.title,
         item.year,
@@ -60,6 +62,8 @@ export default function Home() {
         item.episode,
         item.imdbId,
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; mpvSetLoading(false); return; }
     } catch (err) {
       mpvSetLoading(false);
       throw err; // re-throw so WatchHistoryRow falls back to Detail

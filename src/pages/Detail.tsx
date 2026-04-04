@@ -158,7 +158,10 @@ export default function Detail() {
       });
     }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
       const result = await playTorrent(stream.infoHash, stream.name, pickerSeason, pickerEpisode, stream.fileIdx);
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (isRemote) {
         sendRemoteStart(result, result.tags || stream.tags, pickerSeason, pickerEpisode);
         return;
@@ -211,7 +214,10 @@ export default function Detail() {
           mpvSetLoading(true);
         });
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinCancelPlay = false;
       const result = await autoPlay(title, year, type, season, episode, imdbId);
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (isRemote) {
         sendRemoteStart(result, result.tags, season, episode);
       } else {
