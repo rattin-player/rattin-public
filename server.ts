@@ -94,18 +94,30 @@ const idleTracker = createIdleTracker({
     }
   },
   onHardIdle() {
-    // Nuclear option: clear everything
+    // Aggressive cleanup — but respect active streams
     durationCache.clear();
     seekIndexCache.clear();
     seekIndexPending.clear();
     activeFiles.clear();
     availabilityCache.clear();
     tmdbCache.clear();
-    for (const [, st] of streamTracker) { if (st.idleTimer) clearTimeout(st.idleTimer); }
-    streamTracker.clear();
     probeCache.clear();
     introCache.clear();
+    const activeHashes = new Set<string>();
+    for (const [hash, st] of streamTracker) {
+      if (st.count > 0) {
+        activeHashes.add(hash);
+      } else {
+        if (st.idleTimer) clearTimeout(st.idleTimer);
+        streamTracker.delete(hash);
+      }
+    }
     for (const torrent of [...ctx.client.torrents]) {
+      if (activeHashes.has(torrent.infoHash)) {
+        log("info", "Hard idle: keeping actively-streamed torrent", { name: torrent.name });
+        continue;
+      }
+      cleanupTorrentCaches(torrent.infoHash, torrent);
       log("info", "Hard idle: removing torrent", { name: torrent.name });
       torrent.destroy({ destroyStore: false });
     }
@@ -119,7 +131,7 @@ idleTracker.start();
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   res.on("finish", () => {
-    if (!req.url.startsWith("/api/status") && !req.url.startsWith("/api/rc/")) {
+    if (!req.url.startsWith("/api/status") && !req.url.startsWith("/api/rc/") && !req.url.startsWith("/api/heartbeat")) {
       log("info", `${req.method} ${req.url} ${res.statusCode} ${Date.now() - start}ms`);
     }
   });
