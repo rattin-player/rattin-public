@@ -313,7 +313,7 @@ export default function Player() {
     if (isNaN(tmdbId)) return;
     const pos = Math.floor(time.time);
     const dur = Math.floor(time.duration);
-    if (pos <= 0) return;
+    if (pos < 10) return; // don't overwrite good history with near-zero on initial load
     reportWatchProgress({
       tmdbId,
       mediaType: state.type || "movie",
@@ -337,7 +337,7 @@ export default function Player() {
     const tmdbId = Number(state.tmdbId);
     if (isNaN(tmdbId)) return;
     const pos = Math.floor(time.time);
-    if (pos <= 0) return;
+    if (pos < 10) return; // don't overwrite good history with near-zero on initial load
     const payload = JSON.stringify({
       tmdbId,
       mediaType: state.type || "movie",

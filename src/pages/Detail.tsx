@@ -163,6 +163,12 @@ export default function Detail() {
         navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === pickerEpisode)?.name;
       }
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
+      // Pass resume position so switching sources doesn't lose progress
+      if (resumePoint?.position > 0) {
+        const isMatch = type === "movie"
+          || (resumePoint.season === pickerSeason && resumePoint.episode === pickerEpisode);
+        if (isMatch) navState.resumePosition = resumePoint.position;
+      }
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
       setPlayState("error");
