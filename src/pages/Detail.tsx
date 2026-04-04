@@ -172,8 +172,8 @@ export default function Detail() {
       const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const navState: any = {
-        tags: result.tags || stream.tags, title: displayTitle(pickerSeason, pickerEpisode), tmdbId: id,
-        year, type, imdbId, sources: streams, posterPath: data.poster_path ?? null,
+        tags: result.tags || stream.tags, title: displayTitle(pickerSeason, pickerEpisode), baseName: data.title || data.name,
+        tmdbId: id, year, type, imdbId, sources: streams, posterPath: data.poster_path ?? null,
       };
       if (pickerSeason != null) {
         navState.season = pickerSeason;
@@ -222,7 +222,7 @@ export default function Detail() {
         sendRemoteStart(result, result.tags, season, episode);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const navState: any = { tags: result.tags, title: displayTitle(season, episode), tmdbId: id, year, type, imdbId, posterPath: data.poster_path ?? null };
+        const navState: any = { tags: result.tags, title: displayTitle(season, episode), baseName: data.title || data.name, tmdbId: id, year, type, imdbId, posterPath: data.poster_path ?? null };
         if (season != null) {
           navState.season = season;
           navState.episode = episode;
