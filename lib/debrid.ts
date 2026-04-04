@@ -28,7 +28,7 @@ export interface DebridProvider {
   validateKey(): Promise<{ valid: boolean; premium: boolean; expiration: string | null; username: string | null }>;
 }
 
-export type DebridMode = "always" | "cached";
+export type DebridMode = "on" | "off";
 
 interface DebridConfig {
   provider: string;
@@ -77,14 +77,17 @@ export function loadConfig(): DebridConfig | null {
   }
 }
 
-export function saveConfig(provider: string, apiKey: string, mode: DebridMode = "always"): void {
+export function saveConfig(provider: string, apiKey: string, mode: DebridMode = "on"): void {
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   writeFileSync(CONFIG_PATH, JSON.stringify({ provider, apiKey, mode }), { mode: 0o600 });
 }
 
 export function getDebridMode(): DebridMode {
   const cfg = loadConfig();
-  return cfg?.mode || "always";
+  // Migrate old config values ("always"/"cached" → "on")
+  const mode = cfg?.mode as string | undefined;
+  if (!mode || mode === "always" || mode === "cached") return "on";
+  return mode as DebridMode;
 }
 
 export function deleteConfig(): void {
@@ -142,35 +145,11 @@ class RealDebridProvider implements DebridProvider {
     }
   }
 
-  async checkCached(infoHashes: string[]): Promise<Map<string, boolean>> {
-    const result = new Map<string, boolean>();
-    if (infoHashes.length === 0) return result;
-
-    // Batch up to 50 hashes per request
-    const batches: string[][] = [];
-    for (let i = 0; i < infoHashes.length; i += 50) {
-      batches.push(infoHashes.slice(i, i + 50));
-    }
-
-    for (const batch of batches) {
-      try {
-        const hashPath = batch.map((h) => h.toLowerCase()).join("/");
-        const res = await this.rdFetch(`/torrents/instantAvailability/${hashPath}`);
-        if (!res.ok) {
-          for (const h of batch) result.set(h.toLowerCase(), false);
-          continue;
-        }
-        const data = await res.json() as Record<string, { rd?: Record<string, { filename: string; filesize: number }>[] }>;
-        for (const h of batch) {
-          const entry = data[h.toLowerCase()];
-          const cached = !!(entry && entry.rd && entry.rd.length > 0);
-          result.set(h.toLowerCase(), cached);
-        }
-      } catch {
-        for (const h of batch) result.set(h.toLowerCase(), false);
-      }
-    }
-    return result;
+  async checkCached(_infoHashes: string[]): Promise<Map<string, boolean>> {
+    // Real-Debrid removed /torrents/instantAvailability (error_code 37, "disabled_endpoint").
+    // No replacement endpoint exists. Cache status can only be determined by attempting
+    // to add the magnet — if it completes instantly, it was cached.
+    return new Map();
   }
 
   warmCache(magnetURI: string, fileIdx?: number): void {
@@ -185,7 +164,7 @@ class RealDebridProvider implements DebridProvider {
       const { id } = await addRes.json() as { id: string };
       // Poll briefly for file selection, then select and let RD download
       try {
-        const info = await this.pollTorrentStatus(id, ["waiting_files_selection", "downloaded"], 15000);
+        const info = await this.pollTorrentStatus(id, ["waiting_files_selection", "downloaded"], 10000);
         if (info.status === "waiting_files_selection") {
           const files = this.pickFiles(info.files, fileIdx);
           await this.rdFetch(`/torrents/selectFiles/${id}`, {
@@ -227,7 +206,7 @@ class RealDebridProvider implements DebridProvider {
           body: this.formBody({ files: filesToSelect }),
         });
 
-        // Step 4: Poll until downloaded — give it 30s for near-cached content
+        // Step 4: Poll until downloaded
         info = await this.pollTorrentStatus(id, ["downloaded"], 30000);
       }
 
@@ -397,7 +376,7 @@ class TorBoxProvider implements DebridProvider {
 
     try {
       // Step 2: Poll until download_finished is true
-      const torrent = await this.pollTorrentReady(torrentId, 60000);
+      const torrent = await this.pollTorrentReady(torrentId, 30000);
 
       // Step 3: Pick the video file
       const allFiles: DebridFileInfo[] = torrent.files.map((f: TBFileInfo) => ({

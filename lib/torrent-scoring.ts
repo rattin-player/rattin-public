@@ -12,6 +12,13 @@ interface FileMatch {
   index: number;
 }
 
+// Extended result type with optional Torrentio metadata
+interface ScoringResult extends TorrentResult {
+  foreignOnly?: boolean;
+  hasSubs?: boolean;
+  multiAudio?: boolean;
+}
+
 export function scoreTorrent(result: TorrentResult, title: string, year: number | undefined, type: string): number {
   let score = 0;
   const name = result.name.toLowerCase();
@@ -23,19 +30,34 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   const matchedWords = titleWords.filter((w) => name.includes(w)).length;
   score += (matchedWords / titleWords.length) * 50;
 
-  if (year && name.includes(String(year))) score += 15;
+  // Year match is only meaningful for movies — TV torrent names rarely include the show's first-air year
+  if (year && type === "movie" && name.includes(String(year))) score += 15;
 
   if (/1080p/.test(name)) score += 20;
   if (/2160p|4k/i.test(name)) score += 15;
   if (/720p/.test(name)) score += 10;
-  if (/blu-?ray|bdrip|bdremux/i.test(name)) score += 15;
+  if (/blu-?ray|bdrip|bdremux/i.test(name)) score += 8;
   if (/web-?dl|webrip/i.test(name)) score += 12;
-  if (/remux/i.test(name)) score += 10;
+  if (/remux/i.test(name)) score += 3;
 
   if (/\bcam\b|hdcam|telecine|\bts\b|hdts|telesync/i.test(name)) score -= 50;
 
   if (result.seeders === 0) return -1;
-  score += Math.min(30, Math.log2(result.seeders + 1) * 3);
+  // Seeders are the strongest signal for availability and debrid cache likelihood.
+  // log2 curve: 10s→10, 50s→17, 100s→20, 500s→27, 1000s→30, 5000s→37
+  score += Math.min(40, Math.log2(result.seeders + 1) * 3);
+
+  // Language/subtitle scoring (from Torrentio metadata)
+  // Only penalize when we're confident there's no English — foreignOnly alone
+  // is unreliable (many "foreign" torrents have dual audio + English subs).
+  // Check the torrent name itself for English indicators.
+  const meta = result as ScoringResult;
+  const hasEnglishInName = /\beng\b|\benglish\b|\bENG\b/i.test(name)
+    || /\biTA[_.-]ENG\b|\bENG[_.-]iTA\b/i.test(result.name)
+    || /\bDUAL\b|\bdual.audio\b|\bmulti.audio\b/i.test(name);
+  if (meta.foreignOnly && !meta.multiAudio && !meta.hasSubs && !hasEnglishInName) score -= 20;
+  if (meta.hasSubs) score += 5;
+  if (meta.multiAudio) score += 5;
 
   return score;
 }

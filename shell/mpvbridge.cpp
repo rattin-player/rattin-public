@@ -25,6 +25,7 @@ void MpvBridge::play(const QString &url)
     }
     fprintf(stderr, "[bridge] loadfile: %s (wasPlaying=%d)\n", url.toUtf8().constData(), m_isPlaying);
     m_loadPending = true;  // Suppress stale EOF until new file produces time updates
+    m_mpv->setProperty("pause", false);  // Ensure mpv is unpaused before loading
     m_mpv->command(QVariantList{"loadfile", url});
     m_isPlaying = true;
     emit isPlayingChanged(true);
@@ -73,9 +74,9 @@ void MpvBridge::setSubtitleTrack(int index)
 void MpvBridge::stop()
 {
     if (!m_mpv) return;
-    fprintf(stderr, "[bridge] stop()\n");
+    fprintf(stderr, "[bridge] stop() — pausing + hiding (surface kept alive)\n");
     m_loadPending = false;
-    m_mpv->command(QVariantList{"stop"});
+    m_mpv->setProperty("pause", true);
     m_isPlaying = false;
     emit isPlayingChanged(false);
 }

@@ -35,6 +35,8 @@ export class SavedList {
     return this.store.values().sort((a, b) => b.savedAt.localeCompare(a.savedAt));
   }
 
+  get size(): number { return this.store.size; }
+  clear(): void { this.store.clear(); }
   flush(): void { this.store.flush(); }
   shutdown(): void { this.store.shutdown(); }
 }

@@ -210,6 +210,12 @@
   cursor: default;
 }
 
+.settings-data-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* TMDB Setup — full-screen blocking overlay */
 .tmdb-setup-overlay {
   position: fixed;

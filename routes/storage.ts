@@ -127,4 +127,24 @@ export default function storageRoutes(app: Express, ctx: ServerContext): void {
     const tmdbId = req.params.tmdbId as string;
     res.json({ saved: savedList.isSaved(mediaType, Number(tmdbId)) });
   });
+
+  // ── Reset endpoints ──
+
+  app.get("/api/watch-history/count", (_req: Request, res: Response) => {
+    res.json({ count: watchHistory.size });
+  });
+
+  app.get("/api/saved/count", (_req: Request, res: Response) => {
+    res.json({ count: savedList.size });
+  });
+
+  app.delete("/api/watch-history", (_req: Request, res: Response) => {
+    watchHistory.clear();
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/saved", (_req: Request, res: Response) => {
+    savedList.clear();
+    res.json({ ok: true });
+  });
 }

@@ -74,6 +74,34 @@ export function subtitleMatchesVideo(subPath: string, videoPath: string): boolea
   return false;
 }
 
+// Tags that indicate a subtitle track is NOT plain dialogue
+const NON_DIALOGUE_TAGS = /\b(sdh|forced|sign|song|commentary|comment|cc|closed.?caption|hearing.?impair|hard.?of.?hearing|descriptive|karaoke|dubtitle)\b/i;
+
+function isEnglish(lang: string): boolean {
+  const l = lang.toLowerCase();
+  return l === "eng" || l === "en" || l === "english";
+}
+
+/** From embedded tracks (with lang/title fields), pick the English dialogue sub. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pickBestEnglishSub(tracks: any[]): any | null {
+  const eng = tracks.filter((t) => isEnglish(t.lang || "") || isEnglish(t.title || ""));
+  if (eng.length === 0) return null;
+  if (eng.length === 1) return eng[0];
+  // Prefer the one without SDH/forced/signs tags — that's plain dialogue
+  const dialogue = eng.filter((t) => !NON_DIALOGUE_TAGS.test(t.title || ""));
+  return dialogue[0] || eng[0];
+}
+
+/** From external subs (with label strings), pick the English dialogue sub. */
+function pickBestEnglishLabel(subs: { value: string; label: string }[]): { value: string; label: string } | null {
+  const eng = subs.filter((s) => s.label.toLowerCase().includes("english"));
+  if (eng.length === 0) return null;
+  if (eng.length === 1) return eng[0];
+  const dialogue = eng.filter((s) => !NON_DIALOGUE_TAGS.test(s.label));
+  return dialogue[0] || eng[0];
+}
+
 export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
   const { infoHash, fileIndex, subsRef, activeSubRef, preSelectedSub } = deps;
 
@@ -173,12 +201,18 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
               streamIndex: t.streamIndex,
             }));
           });
-          // Auto-select pre-selected subtitle from navigation state
-          if (preSelectedSub && !activeSubRef.current) {
+          // Auto-select: pre-selected from nav state, or English if multiple tracks.
+          // Check activeSubRef inside the timeout to avoid racing with external sub auto-select.
+          if (preSelectedSub) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const match = data.tracks.find((t: any) => `embedded:${t.streamIndex}` === preSelectedSub);
             if (match) {
-              setTimeout(() => switchSubtitle(preSelectedSub), 500);
+              setTimeout(() => { if (!activeSubRef.current) switchSubtitle(preSelectedSub); }, 500);
+            }
+          } else if (data.tracks.length > 1) {
+            const pick = pickBestEnglishSub(data.tracks);
+            if (pick) {
+              setTimeout(() => { if (!activeSubRef.current) switchSubtitle(`embedded:${pick.streamIndex}`); }, 500);
             }
           }
           clearInterval(timer);
@@ -205,15 +239,22 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
       // If no match (e.g. single video with loose subs), fall back to all
       if (matched.length === 0 && allSubs.length > 0) matched = allSubs;
       if (matched.length > 0) {
+        const external = matched.map((f) => ({
+          value: `file:${f.index}`,
+          label: guessLabel(f.name || "") + " (external)",
+          fileIndex: f.index,
+        }));
         setSubs((prev) => {
-          const external = matched.map((f) => ({
-            value: `file:${f.index}`,
-            label: guessLabel(f.name || "") + " (external)",
-            fileIndex: f.index,
-          }));
           const embedded = prev.filter((s) => s.value.startsWith("embedded:"));
           return [...external, ...embedded];
         });
+        // Auto-select English external sub if nothing selected yet
+        if (!preSelectedSub && external.length > 1) {
+          const pick = pickBestEnglishLabel(external);
+          if (pick) {
+            setTimeout(() => { if (!activeSubRef.current) switchSubtitle(pick.value); }, 500);
+          }
+        }
       }
     }).catch(() => {});
   }, [infoHash, fileIndex]);

@@ -1,3 +1,31 @@
+// ── Player.tsx — Logic wrapper for native mpv playback ──
+//
+// IMPORTANT: This is NOT a web video player. Video playback is handled by a
+// native mpv process rendered via an OpenGL surface in the Qt/QML shell
+// (shell/main.qml). The mpv surface sits on top of this WebEngineView at z:3.
+//
+// What this component DOES:
+//   - Tells mpv what to play (mpvPlay) via the QWebChannel bridge (lib/native-bridge.ts)
+//   - Manages React state: stream lifecycle, watch history, subtitle/audio track
+//     selection, source switching, remote control session, intro skip detection
+//   - Syncs React state ↔ QML state via bridge signals (e.g. when QML's native
+//     overlay changes the subtitle track, React is notified via onNativeSubChanged)
+//   - Renders the source picker panel (React UI shown when mpv surface is hidden)
+//
+// What this component does NOT do:
+//   - Render video — mpv does that natively in QML (MpvObject in main.qml)
+//   - Show playback controls — the QML controlsOverlay handles play/pause,
+//     seek bar, volume, CC, fullscreen (all rendered on top of the mpv surface)
+//   - Show loading/buffering UI — QML splash overlay handles that
+//
+// Architecture:
+//   React (Player.tsx) ←→ native-bridge.ts ←→ QWebChannel ←→ QML (main.qml) ←→ mpv (C++)
+//   Commands flow left→right (mpvPlay, mpvSeek, mpvStop)
+//   Events flow right→left (onMpvTimeChanged, onMpvPauseChanged, onBackRequested)
+//
+// See also: shell/main.qml (QML overlay + mpv), shell/mpvbridge.cpp (C++ mpv wrapper),
+//           src/lib/native-bridge.ts (JS↔QML bridge layer)
+
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { usePlayer } from "../lib/PlayerContext";
@@ -6,10 +34,10 @@ import { useSubtitles } from "../lib/useSubtitles";
 import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
-import { formatTime, formatBytes } from "../lib/utils";
+import { formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -17,11 +45,11 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize, togglePlay } = usePlayer();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, sourcesRef, subSize, adjustSubSize } = usePlayer();
   // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
-  // to the same URL in Qt WebEngine
-  const state = (() => {
+  // to the same URL in Qt WebEngine. Memoized to prevent new object reference every render.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const state = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ls = location.state as any;
     const key = `playerState:${infoHash}:${fileIndex}`;
@@ -34,7 +62,7 @@ export default function Player() {
       if (saved) return JSON.parse(saved);
     } catch {}
     return ls;
-  })();
+  }, [infoHash, fileIndex, location.state]);
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
   const tags: string[] = currentTags.length > 0 ? currentTags : (active?.tags || []);
   const mediaTitle: string = state?.title || active?.title || "";
@@ -42,7 +70,6 @@ export default function Player() {
   const preSelectedSub: string | null = state?.subtitle ?? null;
   const pageRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLDivElement>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,6 +90,16 @@ export default function Player() {
       .then((results) => { if (results.length > 0) setSources(results); })
       .catch(() => {});
   }, [infoHash]);
+
+  // Tell QML how many sources are available (for showing/hiding source button)
+  useEffect(() => {
+    mpvSetSourceCount(sources.length);
+  }, [sources.length]);
+
+  // Notify QML when source panel opens/closes (hides/shows mpv surface)
+  useEffect(() => {
+    mpvNotifySourcePanel(showSources);
+  }, [showSources]);
 
   // Poll live peers only for the currently playing torrent
   useEffect(() => {
@@ -122,12 +159,10 @@ export default function Player() {
   } = usePlayerLoading({ infoHash: infoHash!, fileIndex: fileIndex!, reloadActiveSub: null });
 
   const {
-    currentTime, duration, playing,
-    dlProgress, dlSpeed, numPeers, fileName,
-    tooltipTime, tooltipX,
+    dlProgress, dlSpeed,
     getEffectiveTime,
-    seekTo, handleSeekClick, handleSeekHover,
-    setPlaying, setTooltipTime,
+    seekTo,
+    setPlaying,
   } = useSeek({
     infoHash: infoHash!, fileIndex: fileIndex!,
     effectiveTimeRef, dlProgressRef, dlSpeedRef, dlPeersRef,
@@ -148,6 +183,28 @@ export default function Player() {
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
     preSelectedAudio,
   });
+
+  // Apply auto-selected audio track to mpv (hooks pick English, mpv needs to be told)
+  const appliedAudio = useRef(false);
+  useEffect(() => {
+    if (appliedAudio.current || activeAudio === null || audioTracks.length < 2) return;
+    const idx = audioTracks.findIndex(t => t.value === activeAudio);
+    if (idx >= 0) {
+      mpvSetAudioTrack(idx);
+      appliedAudio.current = true;
+    }
+  }, [activeAudio, audioTracks]);
+
+  // Apply auto-selected subtitle track to mpv
+  const appliedSub = useRef(false);
+  useEffect(() => {
+    if (appliedSub.current || !activeSub || subs.length < 2) return;
+    const idx = subs.findIndex(s => s.value === activeSub);
+    if (idx >= 0) {
+      mpvSetSubtitleTrack(idx);
+      appliedSub.current = true;
+    }
+  }, [activeSub, subs]);
 
   const { introRange, showSkipIntro, handleSkipIntro } = useIntro({
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
@@ -249,11 +306,14 @@ export default function Player() {
         // Only update React state — mpv already switched the track.
         activeAudioRef.current = mpvId;
       });
-      onNativeVolumeChanged((percent) => {
-        if (percent > 0) setMuted(false);
-      });
       onNativeSubSizeChanged((size) => {
         adjustSubSize(size - subSize);
+      });
+      onBackRequested(() => {
+        goBackRef.current();
+      });
+      onToggleSourcePanel(() => {
+        setShowSources((v) => !v);
       });
     }).catch((e) => console.error("[native-bridge] waitForBridge error:", e));
 
@@ -266,8 +326,9 @@ export default function Player() {
         window.mpvEvents.onPauseChanged = null;
         window.mpvEvents.onNativeSubChanged = null;
         window.mpvEvents.onNativeAudioChanged = null;
-        window.mpvEvents.onNativeVolumeChanged = null;
         window.mpvEvents.onNativeSubSizeChanged = null;
+        window.mpvEvents.onBackRequested = null;
+        window.mpvEvents.onToggleSourcePanel = null;
       }
       // Don't call mpvStop() here — mpv handles loadfile transitions natively.
       // Stopping tears down the video surface and causes black screen on next play.
@@ -375,11 +436,15 @@ export default function Player() {
     savedOnExit.current = true;
   };
 
-  // Save progress then navigate back — ensures data is persisted before unmount
+  // Save progress, stop mpv, then navigate back
   const goBack = useCallback(() => {
     beaconProgressRef.current();
+    mpvStop();
     navigate(-1);
   }, [navigate]);
+  // Stable ref for use inside bridge callbacks (avoids stale closure)
+  const goBackRef = useRef(goBack);
+  goBackRef.current = goBack;
 
   // Set window.__rattinWatchState immediately so QML can save progress before bridge.stop()
   // Metadata set eagerly; position/duration are filled by QML from its own properties
@@ -417,59 +482,7 @@ export default function Player() {
     return () => { beaconProgressRef.current(); };
   }, []);
 
-  const [showControls, setShowControls] = useState(true);
-  const [muted, setMuted] = useState(false);
-
-  function showControlsBriefly() {
-    setShowControls(true);
-    clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => setShowControls(false), 3000);
-  }
-
-  // Use document-level mousemove for fullscreen reliability
-  useEffect(() => {
-    function onMove() { showControlsBriefly(); }
-    document.addEventListener("mousemove", onMove);
-    return () => document.removeEventListener("mousemove", onMove);
-  }, []);
-
-  function handlePageClick(e: React.MouseEvent) {
-    // If clicking the video area (not a control), toggle play and show controls
-    if (loading) return;
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === "BUTTON" || tag === "SELECT" || tag === "OPTION" || tag === "SVG" || tag === "PATH") return;
-    togglePlay();
-    showControlsBriefly();
-  }
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (loading) return;
-      if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
-      switch (e.key) {
-        case " ": e.preventDefault();
-          mpvTogglePause();
-          break;
-        case "ArrowLeft":
-          mpvSeek(Math.max(0, getEffectiveTime() - 10));
-          break;
-        case "ArrowRight":
-          mpvSeek(getEffectiveTime() + 10);
-          break;
-        case "f": case "F":
-          if (document.fullscreenElement) document.exitFullscreen();
-          else pageRef.current?.requestFullscreen?.();
-          break;
-        case "Escape":
-          if (document.fullscreenElement) document.exitFullscreen();
-          break;
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  // Keyboard and playback controls are handled by the native QML overlay
 
   // Auto-create a new session when remote disconnects during playback
   // This ensures a QR is always available for the phone to scan
@@ -553,7 +566,7 @@ export default function Player() {
   }, [showReconnectQr, reconnectOrigin, rcSessionId, rcAuthToken]);
 
   return (
-    <div className="player-page" ref={pageRef} onClick={handlePageClick}>
+    <div className="player-page" ref={pageRef}>
 
       {remoteToast && (
         <div className={`player-remote-toast ${remoteToast}`} key={remoteToast}>
@@ -562,29 +575,7 @@ export default function Player() {
         </div>
       )}
 
-      {loading && (
-        <div className={`player-loading${showSources ? " sources-open" : ""}`}>
-          <button className="player-loading-back" onClick={goBack}>
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-            </svg>
-          </button>
-          {sources.length > 1 && (
-            <button className="player-loading-sources" onClick={() => setShowSources(true)}>
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-              </svg>
-              Switch Source
-            </button>
-          )}
-          <div className="player-loading-center">
-            <div className="player-loading-spinner" />
-            <p className="player-loading-msg" key={`${loadingReason}-${loadingMsg}`}>
-              {currentMessage}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Loading/buffering UI is handled by QML splash overlay */}
 
       {showSkipIntro && introRange && (
         <button
@@ -605,140 +596,7 @@ export default function Player() {
         </div>
       )}
 
-      <div className={`player-overlay ${showControls ? "visible" : ""}${loading ? " disabled" : ""}`}>
-        <div className="player-top" onClick={(e) => e.stopPropagation()}>
-          <button className="player-back" onClick={goBack}>
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-            </svg>
-          </button>
-          <span className="player-title">{mediaTitle || fileName}</span>
-          {tags.length > 0 && (
-            <div className="player-tags">
-              {tags.map((t) => <span key={t} className="player-tag">{t}</span>)}
-            </div>
-          )}
-        </div>
-
-        <div className="player-bottom" onClick={(e) => e.stopPropagation()}>
-          <div
-            className="player-seek"
-            ref={seekRef}
-            onClick={handleSeekClick}
-            onMouseMove={handleSeekHover}
-            onMouseLeave={() => setTooltipTime(null)}
-          >
-            <div className="seek-downloaded" style={{ width: `${dlProgress * 100}%` }} />
-            <div className="seek-played" style={{ width: `${playedPct}%` }} />
-            {tooltipTime !== null && (
-              <div className="seek-tooltip" style={{ left: `${tooltipX}%` }}>
-                {formatTime(tooltipTime)}
-              </div>
-            )}
-          </div>
-
-          <div className="player-controls">
-            <button className="player-playpause" onClick={togglePlay}>
-              {playing ? (
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-              )}
-            </button>
-            <span className="player-time">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
-            {dlProgress < 1 && (
-              <span className="player-dl-info">
-                {formatBytes(dlSpeed)}/s &middot; {numPeers} peer{numPeers !== 1 ? "s" : ""} &middot; {Math.round(dlProgress * 100)}%
-              </span>
-            )}
-            <div className="player-spacer" />
-            <div className="player-volume">
-              <button className="player-volume-icon" onClick={() => {
-                if (muted) {
-                  mpvSetVolume(Math.round(volume * 100) || 50);
-                  setMuted(false);
-                } else {
-                  mpvSetVolume(0);
-                  setMuted(true);
-                }
-              }}>
-                {muted || volume === 0 ? (
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" /></svg>
-                ) : volume < 0.5 ? (
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" /></svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" /></svg>
-                )}
-              </button>
-              <input
-                type="range"
-                className="player-volume-slider"
-                min="0" max="1" step="0.05"
-                value={muted ? 0 : volume}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  mpvSetVolume(Math.round(val * 100));
-                  if (val > 0) setMuted(false);
-                }}
-              />
-            </div>
-            {subs.length > 0 && (
-              <select
-                className="player-sub-select"
-                value={activeSub}
-                onChange={(e) => switchSubtitle(e.target.value)}
-              >
-                <option value="">Subtitles Off</option>
-                {subs.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            )}
-            {subs.length > 0 && (
-              <div className="player-sub-size">
-                <button className="player-sub-size-btn" onClick={() => adjustSubSize(-5)} title="Decrease subtitle size">A−</button>
-                <span className="player-sub-size-val">{subSize}</span>
-                <button className="player-sub-size-btn" onClick={() => adjustSubSize(5)} title="Increase subtitle size">A+</button>
-              </div>
-            )}
-            {audioTracks.length > 1 && (
-              <select
-                className="player-sub-select"
-                value={activeAudio ?? ""}
-                onChange={(e) => switchAudio(e.target.value)}
-              >
-                {audioTracks.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            )}
-            {sources.length > 1 && (
-              <button
-                className="player-source-btn"
-                onClick={() => setShowSources((v) => !v)}
-                title="Switch source"
-              >
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                  <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-                </svg>
-              </button>
-            )}
-            <button
-              className="player-fullscreen"
-              onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen();
-                else pageRef.current?.requestFullscreen?.();
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Playback controls are handled by the native QML overlay (main.qml) */}
 
       {showSources && sources.length > 1 && (
         <div className="player-sources-overlay" onClick={() => setShowSources(false)}>
@@ -764,12 +622,15 @@ export default function Player() {
                       <span className="player-source-item-name">{s.name}</span>
                       <div className="player-source-item-tags">
                         {isCurrent && <span className="player-source-tag current">Playing</span>}
+                        {s.cached && <span className="player-source-tag cached">Cached</span>}
                         {s.seasonPack && <span className="player-source-tag season-pack">Season Pack</span>}
                         {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
                           <span key={t} className="player-source-tag">{t}</span>
                         ))}
                         {s.multiAudio && <span className="player-source-tag multi-audio">Multi Audio</span>}
-                        {s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}
+                        {s.subLanguages?.length > 0
+                          ? <span className="player-source-tag has-subs">Subs: {s.subLanguages.join(", ")}</span>
+                          : s.hasSubs && <span className="player-source-tag has-subs">Subs</span>}
                         {s.foreignOnly && <span className="player-source-tag foreign">Foreign</span>}
                         {s.languages?.length > 0 && (
                           <span className="player-source-tag languages">{s.languages.join(" ")}</span>

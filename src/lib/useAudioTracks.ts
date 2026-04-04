@@ -62,7 +62,13 @@ export function useAudioTracks(deps: UseAudioTracksDeps): UseAudioTracksReturn {
             }));
           });
           if (activeAudioRef.current === null) {
-            const initial = preSelectedAudio ?? data.tracks[0]?.streamIndex ?? null;
+            // Prefer pre-selected, then English, then first track
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const englishTrack = data.tracks.length > 1 ? data.tracks.find((t: any) => {
+              const lang = (t.lang || "").toLowerCase();
+              return lang === "eng" || lang === "en" || lang === "english";
+            }) : null;
+            const initial = preSelectedAudio ?? englishTrack?.streamIndex ?? data.tracks[0]?.streamIndex ?? null;
             setActiveAudio(initial);
           }
           clearInterval(timer);

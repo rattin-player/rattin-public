@@ -29,17 +29,17 @@ export default function debridRoutes(app: Express, ctx: ServerContext): void {
       return res.status(400).json({ error: "Unsupported provider. Supported: realdebrid, torbox" });
     }
 
-    saveConfig(provider, apiKey, mode || "always");
+    saveConfig(provider, apiKey, mode || "on");
     reloadDebridProvider();
-    log("info", "Debrid config saved", { provider, mode: mode || "always" });
+    log("info", "Debrid config saved", { provider, mode: mode || "on" });
     res.json({ ok: true });
   });
 
   // Update mode without changing API key
   app.post("/api/debrid/mode", async (req: Request, res: Response) => {
     const { mode } = req.body as { mode?: DebridMode };
-    if (mode !== "always" && mode !== "cached") {
-      return res.status(400).json({ error: "mode must be 'always' or 'cached'" });
+    if (mode !== "on" && mode !== "off") {
+      return res.status(400).json({ error: "mode must be 'on' or 'off'" });
     }
     const cfg = loadConfig();
     if (!cfg) return res.status(400).json({ error: "Debrid not configured" });

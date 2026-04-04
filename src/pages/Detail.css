@@ -543,7 +543,6 @@
 }
 
 @media (max-width: 768px) {
-  /* Episode cards stack on mobile */
   .episode-card {
     flex-direction: column;
   }
@@ -551,6 +550,16 @@
     width: 100%;
     height: auto;
     aspect-ratio: 16 / 9;
+  }
+  .episode-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .episode-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
