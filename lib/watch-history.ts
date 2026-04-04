@@ -101,13 +101,16 @@ export class WatchHistory {
     const episodes = this.getSeriesProgress(tmdbId);
     if (episodes.length === 0) return null;
 
-    // Find the first unfinished episode (by season/episode order)
-    const unfinished = episodes.find((e) => !e.finished);
-    if (unfinished) {
-      return { season: unfinished.season ?? 1, episode: unfinished.episode ?? 1, position: unfinished.position };
+    // Most recently watched unfinished episode (by updatedAt)
+    const unfinished = [...episodes]
+      .filter((e) => !e.finished)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    if (unfinished.length > 0) {
+      const ep = unfinished[0];
+      return { season: ep.season ?? 1, episode: ep.episode ?? 1, position: ep.position };
     }
 
-    // All recorded episodes are finished — suggest the next one after the last
+    // All recorded episodes are finished — suggest the next one after the last in order
     const last = episodes[episodes.length - 1];
     return {
       season: last.season ?? 1,
