@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
 import WatchHistoryRow from "../components/WatchHistoryRow";
-import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved } from "../lib/api";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved, autoPlay } from "../lib/api";
 import "./Home.css";
 
 function recentDateRange() {
@@ -36,6 +36,37 @@ export default function Home() {
     fetchGenres().then((data) => setGenres(data.genres || [])).catch(() => {});
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleContinuePlay = useCallback(async (item: any) => {
+    const result = await autoPlay(
+      item.title,
+      item.year,
+      item.mediaType,
+      item.season,
+      item.episode,
+      item.imdbId,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const navState: any = {
+      tags: result.tags,
+      title: item.mediaType === "tv" && item.season != null
+        ? `${item.title} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
+        : item.title,
+      tmdbId: item.tmdbId,
+      year: item.year,
+      type: item.mediaType,
+      imdbId: item.imdbId,
+      posterPath: item.posterPath,
+      season: item.season,
+      episode: item.episode,
+      episodeTitle: item.episodeTitle,
+      seasonEpisodeCount: item.seasonEpisodeCount,
+      resumePosition: item.position > 0 ? item.position : undefined,
+    };
+    if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
+    navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
+  }, [navigate]);
+
   return (
     <div className="home">
       <HeroSection item={hero} />
@@ -65,6 +96,7 @@ export default function Home() {
         title="Continue Watching"
         fetchFn={fetchContinueWatching}
         showProgress
+        onPlay={handleContinuePlay}
         onRemove={(item) => dismissWatchHistory({ tmdbId: item.tmdbId, mediaType: item.mediaType, season: item.season, episode: item.episode })}
       />
       <WatchHistoryRow
