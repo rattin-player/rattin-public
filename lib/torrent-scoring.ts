@@ -50,6 +50,15 @@ export function scoreTorrent(result: TorrentResult, title: string, year: number 
   const seederScore = Math.min(70, Math.log2(result.seeders + 1) * 5 + result.seeders / 100);
   score += seederScore;
 
+  // Size efficiency: smaller files at the same resolution download faster.
+  // Bonus for files under ~4GB, slight penalty for very large files (>8GB).
+  // Ignored when size is unknown (0).
+  if (result.size && result.size > 0) {
+    const gb = result.size / (1024 ** 3);
+    if (gb <= 4) score += Math.round((4 - gb) * 3);       // 1GB→+9, 2GB→+6, 3GB→+3, 4GB→0
+    else if (gb > 8) score -= Math.round(Math.min(10, (gb - 8) * 2)); // 10GB→-4, 15GB→-10(cap)
+  }
+
   return score;
 }
 
