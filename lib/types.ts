@@ -4,6 +4,8 @@
 import type { ChildProcess } from "child_process";
 import type { Request, Response, NextFunction } from "express";
 import type { Readable } from "stream";
+import type { WatchHistory } from "./watch-history.js";
+import type { SavedList } from "./saved-list.js";
 
 // ── Log ───────────────────────────────────────────────────────────────
 
@@ -275,6 +277,8 @@ export interface ServerContext {
   probeCache: Map<string, ProbeResult>;
   pcAuthToken: string;
   rcSessions: Map<string, RCSession>;
+  watchHistory: WatchHistory;
+  savedList: SavedList;
   log: LogFn;
   diskPath(torrent: Torrent, file: TorrentFile): string;
   isFileComplete(torrent: Torrent, file: TorrentFile): boolean;

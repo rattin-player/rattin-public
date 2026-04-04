@@ -7,7 +7,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatTime, formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvTogglePause, mpvSeek, mpvSetVolume, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeVolumeChanged, onNativeSubSizeChanged } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -19,7 +19,22 @@ export default function Player() {
   const location = useLocation();
   const { startStream, stopStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, volume, sourcesRef, subSize, adjustSubSize, togglePlay } = usePlayer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const state = location.state as any;
+  // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
+  // to the same URL in Qt WebEngine
+  const state = (() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ls = location.state as any;
+    const key = `playerState:${infoHash}:${fileIndex}`;
+    if (ls?.tmdbId) {
+      try { sessionStorage.setItem(key, JSON.stringify(ls)); } catch {}
+      return ls;
+    }
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ls;
+  })();
   const [currentTags, setCurrentTags] = useState<string[]>(state?.tags || []);
   const tags: string[] = currentTags.length > 0 ? currentTags : (active?.tags || []);
   const mediaTitle: string = state?.title || active?.title || "";
@@ -196,19 +211,26 @@ export default function Player() {
         effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
         setLoading(false);
         // Restore saved playback position once we know the duration
+        // sessionStorage (updated every 3s) is freshest within a session;
+        // resumePosition from watch history persists across app restarts
         if (!positionRestored && d > 0) {
           positionRestored = true;
-          const saved = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
+          const sessionPos = parseFloat(sessionStorage.getItem(playbackKey(infoHash!, fileIndex!)) || "0");
+          const historyPos = state?.resumePosition ? parseFloat(state.resumePosition) : 0;
+          const saved = sessionPos > 0 ? sessionPos : historyPos;
           if (shouldRestorePosition(saved, d)) {
             mpvSeek(saved);
           }
         }
       });
       onMpvEofReached(() => {
-        if (playbackStarted) navigate(-1);
+        if (playbackStarted) {
+          goBack();
+        }
       });
       onMpvPauseChanged((paused) => {
         setPlaying(!paused);
+        if (paused) reportProgressRef.current();
       });
       // Sync React subtitle/audio state when QML native overlay changes tracks
       onNativeSubChanged((mpvId) => {
@@ -280,6 +302,102 @@ export default function Player() {
   }
   useEffect(() => {
     return () => { if (commandRef) commandRef.current = null; };
+  }, []);
+
+  // ── Watch history progress reporting (periodic + on pause/unmount) ──
+  const reportProgressRef = useRef(() => {});
+  reportProgressRef.current = () => {
+    const time = effectiveTimeRef.current;
+    if (!time || !state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    const pos = Math.floor(time.time);
+    const dur = Math.floor(time.duration);
+    if (pos < 10) return; // don't overwrite good history with near-zero on initial load
+    reportWatchProgress({
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: pos,
+      duration: dur,
+    }).catch(() => {});
+  };
+
+  // Save progress on unmount — sync XHR guarantees delivery during unmount
+  const savedOnExit = useRef(false);
+  const beaconProgressRef = useRef(() => {});
+  beaconProgressRef.current = () => {
+    if (savedOnExit.current) return;
+    const time = effectiveTimeRef.current;
+    if (!time || !state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    const pos = Math.floor(time.time);
+    if (pos < 10) return; // don't overwrite good history with near-zero on initial load
+    const payload = JSON.stringify({
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: pos,
+      duration: Math.floor(time.duration),
+    });
+    // Synchronous XHR blocks until complete — guarantees delivery during unmount
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/watch-history/progress", false);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(payload);
+    } catch { /* best effort */ }
+    savedOnExit.current = true;
+  };
+
+  // Save progress then navigate back — ensures data is persisted before unmount
+  const goBack = useCallback(() => {
+    beaconProgressRef.current();
+    navigate(-1);
+  }, [navigate]);
+
+  // Set window.__rattinWatchState immediately so QML can save progress before bridge.stop()
+  // Metadata set eagerly; position/duration are filled by QML from its own properties
+  useEffect(() => {
+    if (!state?.tmdbId) return;
+    const tmdbId = Number(state.tmdbId);
+    if (isNaN(tmdbId)) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__rattinWatchState = {
+      tmdbId,
+      mediaType: state.type || "movie",
+      title: mediaTitle,
+      posterPath: state.posterPath ?? null,
+      season: state.season != null ? Number(state.season) : undefined,
+      episode: state.episode != null ? Number(state.episode) : undefined,
+      episodeTitle: state.episodeTitle ?? undefined,
+      position: 0,
+      duration: 0,
+    };
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__rattinWatchState = null;
+    };
+  }, [state, mediaTitle]);
+
+  // Periodic reporting every 30s
+  useEffect(() => {
+    const interval = setInterval(() => reportProgressRef.current(), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Report on unmount (leaving player)
+  useEffect(() => {
+    return () => { beaconProgressRef.current(); };
   }, []);
 
   const [showControls, setShowControls] = useState(true);
@@ -429,7 +547,7 @@ export default function Player() {
 
       {loading && (
         <div className={`player-loading${showSources ? " sources-open" : ""}`}>
-          <button className="player-loading-back" onClick={() => navigate(-1)}>
+          <button className="player-loading-back" onClick={goBack}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
             </svg>
@@ -472,7 +590,7 @@ export default function Player() {
 
       <div className={`player-overlay ${showControls ? "visible" : ""}${loading ? " disabled" : ""}`}>
         <div className="player-top" onClick={(e) => e.stopPropagation()}>
-          <button className="player-back" onClick={() => navigate(-1)}>
+          <button className="player-back" onClick={goBack}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
             </svg>

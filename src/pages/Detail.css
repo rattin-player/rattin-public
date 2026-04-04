@@ -167,6 +167,35 @@
   cursor: wait;
 }
 
+.detail-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 22px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+
+.detail-save-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+
+.detail-save-btn.saved {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.detail-save-btn.saved:hover {
+  background: rgba(201, 168, 76, 0.1);
+}
+
 .detail-source-btn {
   padding: 14px 26px;
   background: rgba(255, 255, 255, 0.06);
@@ -373,17 +402,40 @@
   flex: 0 0 auto;
 }
 
-.episode-pick {
-  width: 34px;
-  height: 34px;
+.episode-watched-toggle {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.episode-watched-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.episode-card.watched .episode-watched-toggle {
+  color: var(--accent);
+}
+
+.episode-pick {
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
   transition: all var(--transition);
+  white-space: nowrap;
 }
 
 .episode-pick:hover {
@@ -415,6 +467,47 @@
 .episode-play:disabled {
   opacity: 0.5;
   cursor: wait;
+}
+
+.episode-card.watched {
+  opacity: 0.65;
+}
+
+.episode-card.watched:hover {
+  opacity: 0.85;
+}
+
+.episode-card {
+  position: relative;
+}
+
+.episode-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.episode-progress-fill {
+  height: 100%;
+  background: var(--accent-bright);
+  border-radius: 0 2px 2px 0;
+}
+
+.episode-watched-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {

@@ -18,8 +18,11 @@ import debridRoutes from "./routes/debrid.js";
 import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
+import storageRoutes from "./routes/storage.js";
 import { sweepOldFiles } from "./lib/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
+import type { WatchHistory } from "./lib/watch-history.js";
+import type { SavedList } from "./lib/saved-list.js";
 
 interface CreateAppOverrides {
   __dirname?: string;
@@ -41,6 +44,8 @@ interface AppContext {
   probeCache: ServerContext["probeCache"];
   introCache: ServerContext["introCache"];
   rcSessions: ServerContext["rcSessions"];
+  watchHistory: WatchHistory;
+  savedList: SavedList;
   idleTracker: IdleTracker;
   pcAuthToken: string;
   initClient: ServerContext["initClient"];
@@ -131,6 +136,7 @@ debridRoutes(app, ctx);
 vpnRoutes(app, ctx);
 cacheRoutes(app, ctx);
 openUrlRoutes(app, ctx);
+storageRoutes(app, ctx);
 
 // Cache janitor — every 5 min, prune entries for removed torrents
 const _cacheJanitor = setInterval(() => {
@@ -154,7 +160,9 @@ app.get("/{*splat}", (_req: Request, res: Response) => {
     app, get client() { return ctx.client; }, initClient: ctx.initClient,
     durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes, availabilityCache,
-    probeCache, introCache, rcSessions, idleTracker, pcAuthToken,
+    probeCache, introCache, rcSessions,
+    watchHistory: ctx.watchHistory, savedList: ctx.savedList,
+    idleTracker, pcAuthToken,
   };
 }
 
@@ -203,6 +211,9 @@ if (isMain) {
 
   function cleanup() {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Shutting down...`);
+    // Flush persistent stores before exit
+    ctx.watchHistory.shutdown();
+    ctx.savedList.shutdown();
     dumpSessions(ctx.client);
     // Kill any active ffmpeg transcode processes so they don't linger as orphans
     for (const [key, entry] of activeTranscodes) {

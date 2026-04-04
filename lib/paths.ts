@@ -18,6 +18,10 @@ export function transcodeDir(): string {
   return process.env.TRANSCODE_PATH || path.join(os.tmpdir(), "rattin-transcoded");
 }
 
+export function dataDir(profile = "default"): string {
+  return path.join(configDir(), "data", profile);
+}
+
 export function sessionsPath(): string {
   return path.join(configDir(), "sessions.json");
 }
