@@ -74,6 +74,32 @@ Window {
         return m + ":" + (sec < 10 ? "0" : "") + sec
     }
 
+    property var langMap: ({
+        eng: "English", en: "English", spa: "Spanish", es: "Spanish",
+        fre: "French", fr: "French", ger: "German", de: "German",
+        por: "Portuguese", pt: "Portuguese", ita: "Italian", it: "Italian",
+        jpn: "Japanese", ja: "Japanese", kor: "Korean", ko: "Korean",
+        chi: "Chinese", zh: "Chinese", ara: "Arabic", ar: "Arabic",
+        rus: "Russian", ru: "Russian", dut: "Dutch", nl: "Dutch",
+        pol: "Polish", pl: "Polish", tur: "Turkish", tr: "Turkish"
+    })
+
+    function formatTrackLabel(lang, title, fallback) {
+        var base = lang ? lang.split(/[-_]/)[0] : ""
+        var language = langMap[base] || lang || fallback
+        if (!title) return language
+        // Extract known type tags from title
+        var typeMatch = title.match(/\b(sdh|forced|signs?\s*(?:&\s*songs?)?|songs?|commentary|cc|full|dialogue)\b/i)
+        if (typeMatch) {
+            var tag = typeMatch[1].toUpperCase() === "SDH" ? "SDH" : typeMatch[1].charAt(0).toUpperCase() + typeMatch[1].slice(1).toLowerCase()
+            return language + " (" + tag + ")"
+        }
+        // If title is just a language name, skip it
+        if (langMap[title.toLowerCase()] || langMap[base]) return language
+        // Custom info — append it
+        return language + " \u2014 " + title
+    }
+
     function refreshTracks() {
         var tracks = bridge.getProperty("track-list")
         if (!tracks || tracks.length === undefined) return
@@ -81,13 +107,9 @@ Window {
         for (var i = 0; i < tracks.length; i++) {
             var t = tracks[i]
             if (t.type === "sub") {
-                var label = t.title || t.lang || ("Subtitle " + t.id)
-                if (t.lang && t.title) label = t.title + " (" + t.lang + ")"
-                subs.push({ id: t.id, label: label })
+                subs.push({ id: t.id, label: formatTrackLabel(t.lang, t.title, "Subtitle " + t.id) })
             } else if (t.type === "audio") {
-                var alabel = t.title || t.lang || ("Audio " + t.id)
-                if (t.lang && t.title) alabel = t.title + " (" + t.lang + ")"
-                audios.push({ id: t.id, label: alabel })
+                audios.push({ id: t.id, label: formatTrackLabel(t.lang, t.title, "Audio " + t.id) })
             }
         }
         root.subTracks = subs
