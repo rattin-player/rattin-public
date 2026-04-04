@@ -1,6 +1,6 @@
 {
   "name": "rattin",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "description": "",
   "type": "module",
   "main": "server.ts",
