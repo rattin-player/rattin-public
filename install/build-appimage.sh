@@ -311,6 +311,16 @@ build_appimage() {
     rm -f "$APPDIR"/usr/lib/libsmime3.so*
     rm -f "$APPDIR"/usr/lib/libssl3.so*
 
+    # Remove JACK audio dependency — libmpv on some distros links against
+    # libjack.so.0, but JACK is optional (PulseAudio/PipeWire handle audio).
+    # Without this, the AppImage crashes on systems without JACK installed:
+    # "error while loading shared libraries: libjack.so.0"
+    log "Removing optional JACK audio dependency..."
+    find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -print0 | \
+        xargs -0 -I{} sh -c 'readelf -d "$1" 2>/dev/null | grep -q "libjack" && patchelf --remove-needed libjack.so.0 "$1" 2>/dev/null || true' _ {}
+    patchelf --remove-needed libjack.so.0 "$APPDIR/usr/bin/rattin-shell" 2>/dev/null || true
+    rm -f "$APPDIR"/usr/lib/libjack*.so*
+
     # Now produce the AppImage
     log "Packaging AppImage..."
 
@@ -342,9 +352,10 @@ main() {
     [ -f "$REPO_ROOT/shell/CMakeLists.txt" ] || die "Qt shell source not found"
 
     # Check build prerequisites
-    command -v cmake >/dev/null 2>&1 || die "cmake not found. Install: sudo apt install cmake"
-    command -v g++ >/dev/null 2>&1   || die "g++ not found. Install: sudo apt install g++"
-    command -v npm >/dev/null 2>&1   || die "npm not found. Install Node.js 20+"
+    command -v cmake >/dev/null 2>&1    || die "cmake not found. Install: sudo apt install cmake"
+    command -v g++ >/dev/null 2>&1      || die "g++ not found. Install: sudo apt install g++"
+    command -v npm >/dev/null 2>&1      || die "npm not found. Install Node.js 20+"
+    command -v patchelf >/dev/null 2>&1 || die "patchelf not found. Install: sudo apt install patchelf"
     local qml_dir
     qml_dir="$(qmake6 -query QT_INSTALL_QML 2>/dev/null || true)"
     if [ -z "$qml_dir" ] || [ ! -d "$qml_dir/QtWebEngine" ]; then
