@@ -406,7 +406,7 @@ export default function Player() {
     reportWatchProgress({
       tmdbId,
       mediaType: state.type || "movie",
-      title: state.baseName || mediaTitle,
+      title: mediaTitle,
       posterPath: state.posterPath ?? null,
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
@@ -433,7 +433,7 @@ export default function Player() {
     const payload = JSON.stringify({
       tmdbId,
       mediaType: state.type || "movie",
-      title: state.baseName || mediaTitle,
+      title: mediaTitle,
       posterPath: state.posterPath ?? null,
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
@@ -474,7 +474,7 @@ export default function Player() {
     (window as any).__rattinWatchState = {
       tmdbId,
       mediaType: state.type || "movie",
-      title: state.baseName || mediaTitle,
+      title: mediaTitle,
       posterPath: state.posterPath ?? null,
       season: state.season != null ? Number(state.season) : undefined,
       episode: state.episode != null ? Number(state.episode) : undefined,
