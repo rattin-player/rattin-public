@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Controls
 import QtWebEngine
 import QtWebChannel
 import com.rattin.mpv 1.0
