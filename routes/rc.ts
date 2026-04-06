@@ -3,6 +3,7 @@ import os from "os";
 import type { Express, Request, Response } from "express";
 import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
 import type { ServerContext, RCSession, RCClient } from "../lib/types.js";
+import { dumpRcSessions } from "../lib/storage/rc-sessions.js";
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
   const { log, pcAuthToken, rcSessions } = ctx;
@@ -67,6 +68,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       authToken,
     });
     log("info", "RC session created", { sessionId });
+    dumpRcSessions(rcSessions);
     res.json({ sessionId, authToken });
   });
 
@@ -133,6 +135,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     for (const c of auth.session.remoteClients) c.end();
     rcSessions.delete(auth.sessionId);
     log("info", "RC session deleted", { sessionId: auth.sessionId });
+    dumpRcSessions(rcSessions);
     res.setHeader("Set-Cookie", [
       clearCookie("rc_auth", { httpOnly: true }),
       clearCookie("rc_token", { httpOnly: true }),
