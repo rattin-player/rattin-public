@@ -285,8 +285,14 @@ Window {
         onTriggered: {
             root.refreshTracks()
             // Stop retrying once we have tracks
-            if (root.subTracks.length > 0 || root.audioTracks.length > 1)
+            if (root.subTracks.length > 0 || root.audioTracks.length > 1) {
                 trackRefreshTimer.stop()
+                // Sync QML indicators with what mpv actually selected
+                var sid = bridge.getProperty("sid")
+                if (sid !== undefined && sid !== false) root.activeSub = sid
+                var aid = bridge.getProperty("aid")
+                if (aid !== undefined && aid !== false) root.activeAudio = aid
+            }
         }
     }
 
