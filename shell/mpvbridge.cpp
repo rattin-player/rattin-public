@@ -109,8 +109,8 @@ QVariant MpvBridge::getProperty(const QString &name) const
 void MpvBridge::setProperty(const QString &name, const QVariant &value)
 {
     if (!m_mpv) return;
-    // mpv's sid/aid expect int64 — JS sends doubles, so force conversion
-    if (name == "sid" || name == "aid") {
+    // mpv integer properties need int64 — JS sends doubles via QWebChannel
+    if (name == "sid" || name == "aid" || name == "sub-font-size") {
         m_mpv->setProperty(name, QVariant(value.toLongLong()));
     } else {
         m_mpv->setProperty(name, value);
