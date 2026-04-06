@@ -228,7 +228,12 @@ Window {
     // Refresh QML track list when C++ loads an external subtitle
     Connections {
         target: bridge
-        function onExternalSubtitleLoaded() { root.refreshTracks() }
+        function onExternalSubtitleLoaded() {
+            root.refreshTracks()
+            // sub-add "select" activates the track — sync QML indicator
+            var sid = bridge.getProperty("sid")
+            if (sid !== undefined && sid !== false) root.activeSub = sid
+        }
     }
 
     MpvObject {
