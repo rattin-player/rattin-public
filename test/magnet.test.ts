@@ -42,4 +42,14 @@ describe("parseMagnet", () => {
       name: "Some Movie 2024",
     });
   });
+
+  it("handles percent-encoded percent sign in dn", () => {
+    const result = parseMagnet(
+      "magnet:?xt=urn:btih:aabbccddeeff0011223344556677889900aabbcc&dn=100%25+Done"
+    );
+    assert.deepEqual(result, {
+      infoHash: "aabbccddeeff0011223344556677889900aabbcc",
+      name: "100% Done",
+    });
+  });
 });
