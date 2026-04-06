@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Detail from "./pages/Detail";
 import Player from "./pages/Player";
 import Search from "./pages/Search";
+import MyList from "./pages/MyList";
 import Remote from "./pages/Remote";
 import { getTmdbStatus } from "./lib/api";
 import { setupExternalLinkInterceptor } from "./lib/external-links";
@@ -86,6 +87,7 @@ function AppRoutes() {
           <Route path="/movie/:id" element={<Detail />} />
           <Route path="/tv/:id" element={<Detail />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/my-list" element={<MyList />} />
         </Routes>
         {!isRemote && <MiniPlayer />}
         {isRemote && <RemoteNowPlaying />}
