@@ -248,7 +248,7 @@ Window {
         title: "Load subtitle file"
         nameFilters: ["Subtitle files (*.srt *.ass *.ssa *.vtt *.sub)", "All files (*)"]
         onAccepted: {
-            var filePath = selectedFile.toString().replace("file://", "")
+            var filePath = selectedFile.toLocalFile()
             var fileName = filePath.split("/").pop()
             bridge.loadExternalSubtitle(filePath, fileName)
             webView.runJavaScript("window.__rattinCustomSubLoaded && window.__rattinCustomSubLoaded(" + JSON.stringify(fileName) + ")")
