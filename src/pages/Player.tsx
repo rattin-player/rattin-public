@@ -36,7 +36,7 @@ import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -189,13 +189,22 @@ export default function Player() {
   // Apply auto-selected subtitle track to mpv
   const appliedSub = useRef(false);
   useEffect(() => {
-    if (appliedSub.current || !activeSub || subs.length < 2) return;
+    if (appliedSub.current || !activeSub) return;
     const idx = subs.findIndex(s => s.value === activeSub);
-    if (idx >= 0) {
+    if (idx < 0) return;
+    const sub = subs[idx];
+    // External subtitle: load via HTTP URL (sub-add with "select" activates it automatically)
+    if (sub.value.startsWith("file:")) {
+      const port = window.location.port;
+      const subUrl = `http://127.0.0.1:${port}/api/subtitle/${infoHash}/${sub.fileIndex}`;
+      mpvLoadExternalSubtitle(subUrl);
+      appliedSub.current = true;
+    } else {
+      // Embedded subtitle: use existing track selection
       mpvSetSubtitleTrack(idx);
       appliedSub.current = true;
     }
-  }, [activeSub, subs]);
+  }, [activeSub, subs, infoHash]);
 
   const { introRange, showSkipIntro, handleSkipIntro } = useIntro({
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
@@ -378,7 +387,15 @@ export default function Player() {
       },
       switchSubtitle: (val: string) => {
         const idx = subs.findIndex(s => s.value === val);
-        mpvSetSubtitleTrack(idx);
+        if (idx < 0) return;
+        const sub = subs[idx];
+        if (sub.value.startsWith("file:")) {
+          const port = window.location.port;
+          const subUrl = `http://127.0.0.1:${port}/api/subtitle/${infoHash}/${sub.fileIndex}`;
+          mpvLoadExternalSubtitle(subUrl);
+        } else {
+          mpvSetSubtitleTrack(idx);
+        }
         activeSubRef.current = val;
       },
       switchAudio: (streamIndex: string | number) => {

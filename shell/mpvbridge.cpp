@@ -72,6 +72,20 @@ void MpvBridge::setSubtitleTrack(int index)
     }
 }
 
+void MpvBridge::loadExternalSubtitle(const QString &url)
+{
+    if (!m_mpv) return;
+    if (m_loadPending) {
+        // File not ready yet — queue for when first time-pos arrives
+        fprintf(stderr, "[bridge] queuing external subtitle (load pending): %s\n", url.toUtf8().constData());
+        m_pendingSubUrl = url;
+        return;
+    }
+    fprintf(stderr, "[bridge] loading external subtitle: %s\n", url.toUtf8().constData());
+    m_mpv->command(QVariantList{"sub-add", url, "select"});
+    emit externalSubtitleLoaded();
+}
+
 void MpvBridge::stop()
 {
     if (!m_mpv) return;
@@ -103,6 +117,12 @@ void MpvBridge::onMpvEvent(const QString &eventName, const QVariant &value)
 {
     if (eventName == "time-pos" && value.canConvert<double>()) {
         m_loadPending = false;  // New file is producing frames — EOF is real from now on
+        if (!m_pendingSubUrl.isEmpty()) {
+            fprintf(stderr, "[bridge] loading queued external subtitle: %s\n", m_pendingSubUrl.toUtf8().constData());
+            m_mpv->command(QVariantList{"sub-add", m_pendingSubUrl, "select"});
+            m_pendingSubUrl.clear();
+            emit externalSubtitleLoaded();
+        }
         emit timeChanged(value.toDouble());
     } else if (eventName == "duration" && value.canConvert<double>()) {
         emit durationChanged(value.toDouble());

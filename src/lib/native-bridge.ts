@@ -29,6 +29,7 @@ interface MpvBridge {
   setVolume(percent: number): void;
   setAudioTrack(index: number): void;
   setSubtitleTrack(index: number): void;
+  loadExternalSubtitle(url: string): void;
   stop(): void;
   setTitle(title: string): void;
   setProperty(name: string, value: unknown): void;
@@ -188,6 +189,10 @@ export function mpvSetAudioTrack(index: number): void {
 
 export function mpvSetSubtitleTrack(index: number): void {
   window.mpvBridge?.setSubtitleTrack(index);
+}
+
+export function mpvLoadExternalSubtitle(url: string): void {
+  window.mpvBridge?.loadExternalSubtitle(url);
 }
 
 export function mpvSetSubFontSize(size: number): void {

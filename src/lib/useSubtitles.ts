@@ -273,12 +273,10 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
           const embedded = prev.filter((s) => s.value.startsWith("embedded:"));
           return [...external, ...embedded];
         });
-        // Auto-select English external sub if nothing selected yet
-        if (!preSelectedSub && external.length > 1) {
-          const pick = pickBestEnglishLabel(external);
-          if (pick) {
-            setTimeout(() => { if (!activeSubRef.current) switchSubtitle(pick.value); }, 500);
-          }
+        // Auto-select external sub if nothing selected yet (prefer English, fall back to first)
+        if (!preSelectedSub && external.length >= 1) {
+          const pick = pickBestEnglishLabel(external) || external[0];
+          setTimeout(() => { if (!activeSubRef.current) switchSubtitle(pick.value); }, 500);
         }
       }
     }).catch(() => {});

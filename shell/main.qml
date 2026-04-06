@@ -156,6 +156,7 @@ Window {
             // mpv uses 1-based IDs, index < 0 means off (sid=0 in QML)
             transport.subtitleTrackChanged(index < 0 ? 0 : index + 1)
         }
+        function loadExternalSubtitle(url) { bridge.loadExternalSubtitle(url) }
         function stop() { bridge.stop() }
         function setTitle(title) { root.mediaTitle = title }
         function setProperty(name, value) { bridge.setProperty(name, value) }
@@ -221,6 +222,12 @@ Window {
             mpvPlayer.visible = !open && root.playing
             controlsOverlay.visible = !open && root.playing && !root.loadingOverlay
         }
+    }
+
+    // Refresh QML track list when C++ loads an external subtitle
+    Connections {
+        target: bridge
+        function onExternalSubtitleLoaded() { root.refreshTracks() }
     }
 
     MpvObject {
