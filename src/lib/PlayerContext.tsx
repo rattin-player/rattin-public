@@ -113,7 +113,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const playingRef = useRef(false);
-  playingRef.current = playing;
   const volumeRef = useRef(1);
   volumeRef.current = volume;
   const effectiveTimeRef = useRef<EffectiveTime | null>(null);
@@ -208,6 +207,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     introRangeRef.current = null;
     setActive(null);
     setPlaying(false);
+    playingRef.current = false;
     effectiveTimeRef.current = null;
   }, [active]);
 
