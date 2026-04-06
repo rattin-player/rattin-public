@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { ServerContext } from "../lib/types.js";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -50,9 +50,13 @@ function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-const CURRENT_VERSION = JSON.parse(
-  readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
-).version as string;
+// In dev, package.json is one level up from routes/; when esbuild bundles
+// into app/server.js it sits next to package.json, so try both locations.
+const _updateDir = path.dirname(fileURLToPath(import.meta.url));
+const _pkgPath = existsSync(path.join(_updateDir, "package.json"))
+  ? path.join(_updateDir, "package.json")
+  : path.join(_updateDir, "..", "package.json");
+const CURRENT_VERSION = JSON.parse(readFileSync(_pkgPath, "utf8")).version as string;
 
 export default function updateRoutes(app: Express, ctx: ServerContext): void {
   const { log } = ctx;
