@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { BoundedMap } from "../cache/bounded-map.js";
 import { registerCache, cleanupHash } from "../cache/torrent-caches.js";
 import { downloadDir, transcodeDir, dataDir } from "../storage/paths.js";
+import { dumpRcSessions } from "../storage/rc-sessions.js";
 import { JsonStore } from "../storage/store.js";
 import { WatchHistory } from "../storage/watch-history.js";
 import { SavedList } from "../storage/saved-list.js";
@@ -82,14 +83,17 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
   // Expire sessions after 24h of inactivity
   const _rcExpiry = setInterval(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    let deleted = false;
     for (const [id, s] of rcSessions) {
       if (s.lastActivity < cutoff) {
         if (s.playerClient) s.playerClient.end();
         for (const c of s.remoteClients) c.end();
         rcSessions.delete(id);
+        deleted = true;
         log("info", "RC session expired", { sessionId: id });
       }
     }
+    if (deleted) dumpRcSessions(rcSessions);
   }, 60 * 1000);
   if (_rcExpiry.unref) _rcExpiry.unref();
 
