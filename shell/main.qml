@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Dialogs
+import Qt.labs.folderlistmodel // needed so linuxdeploy bundles it for FileDialog
 import QtWebEngine
 import QtWebChannel
 import com.rattin.mpv 1.0
