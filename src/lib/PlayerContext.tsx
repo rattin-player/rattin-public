@@ -39,7 +39,6 @@ type NavigateFn = (...args: any[]) => void;
 interface PlayerContextValue {
   active: ActiveStream | null;
   playing: boolean;
-  playingRef: MutableRefObject<boolean>;
   currentTime: number;
   duration: number;
   volume: number;
@@ -112,7 +111,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
-  const playingRef = useRef(false);
   const volumeRef = useRef(1);
   volumeRef.current = volume;
   const effectiveTimeRef = useRef<EffectiveTime | null>(null);
@@ -207,7 +205,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     introRangeRef.current = null;
     setActive(null);
     setPlaying(false);
-    playingRef.current = false;
     effectiveTimeRef.current = null;
   }, [active]);
 
@@ -433,7 +430,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
 
   return (
     <PlayerContext.Provider value={{
-      active, playing, playingRef, currentTime, duration, volume,
+      active, playing, currentTime, duration, volume,
       startStream, stopStream, togglePlay,
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
