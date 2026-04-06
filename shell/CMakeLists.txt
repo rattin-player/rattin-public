@@ -7,7 +7,11 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # Qt6 modules
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickDialogs2 WebEngineQuick WebChannel Network)
+if(WIN32)
+    find_package(Qt6 REQUIRED COMPONENTS Quick QuickDialogs2 WebEngineQuick WebChannel Network)
+else()
+    find_package(Qt6 REQUIRED COMPONENTS Quick WebEngineQuick WebChannel Network)
+endif()
 
 # libmpv — platform-specific discovery
 if(WIN32)
@@ -46,12 +50,15 @@ add_executable(rattin-shell ${SOURCES})
 
 target_link_libraries(rattin-shell PRIVATE
     Qt6::Quick
-    Qt6::QuickDialogs2
     Qt6::WebEngineQuick
     Qt6::WebChannel
     Qt6::Network
     PkgConfig::MPV
 )
+
+if(WIN32)
+    target_link_libraries(rattin-shell PRIVATE Qt6::QuickDialogs2)
+endif()
 
 if(WIN32)
     target_link_libraries(rattin-shell PRIVATE dwmapi)
