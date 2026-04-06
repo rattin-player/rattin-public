@@ -266,23 +266,8 @@ export default function Player() {
       const streamUrl = debridStreamKey
         ? `http://127.0.0.1:${port}/api/debrid-stream?streamKey=${encodeURIComponent(debridStreamKey)}`
         : `http://127.0.0.1:${port}/api/stream/${infoHash}/${fileIndex}`;
-      console.log("[native-bridge] mpvPlay:", streamUrl);
-      try {
-        // Set poster for loading overlay before starting playback
-        const posterPath = state?.posterPath;
-        if (posterPath) {
-          mpvSetPoster(`https://image.tmdb.org/t/p/w1280${posterPath}`);
-        }
-        mpvSetTitle(mediaTitle || "");
-        mpvPlay(streamUrl);
-        console.log("[native-bridge] mpvPlay sent");
-      } catch (e) {
-        console.error("[native-bridge] mpvPlay error:", e);
-      }
-
-      // Register event handlers AFTER bridge is ready (window.mpvEvents
-      // doesn't exist until waitForBridge resolves)
-      // Track when playback actually starts to ignore stale EOF from previous mpvStop
+      // Register event handlers BEFORE mpvPlay so the initial pauseChanged(false)
+      // event isn't lost (it fires as soon as mpv processes the play command).
       let playbackStarted = false;
       let positionRestored = false;
       onMpvTimeChanged((t) => {
@@ -316,6 +301,20 @@ export default function Player() {
         playingRef.current = !paused;
         if (paused) reportProgressRef.current();
       });
+
+      console.log("[native-bridge] mpvPlay:", streamUrl);
+      try {
+        // Set poster for loading overlay before starting playback
+        const posterPath = state?.posterPath;
+        if (posterPath) {
+          mpvSetPoster(`https://image.tmdb.org/t/p/w1280${posterPath}`);
+        }
+        mpvSetTitle(mediaTitle || "");
+        mpvPlay(streamUrl);
+        console.log("[native-bridge] mpvPlay sent");
+      } catch (e) {
+        console.error("[native-bridge] mpvPlay error:", e);
+      }
       // Sync React subtitle/audio state when QML native overlay changes tracks
       onNativeSubChanged((mpvId) => {
         if (mpvId === 0) {
