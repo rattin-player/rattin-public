@@ -1,5 +1,14 @@
 .settings-modal {
   max-width: 460px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-modal .pair-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .settings-section {

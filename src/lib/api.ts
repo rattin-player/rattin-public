@@ -314,6 +314,28 @@ export function fetchSavedList(): Promise<{ items: any[] }> {
   return get("/api/saved");
 }
 
+// ── Update ────────────────────────────────────────────────────────
+
+export interface UpdateRelease {
+  version: string;
+  name: string;
+  body: string;
+  url: string;
+  date: string;
+  assets: Array<{ name: string; url: string; size: number }>;
+}
+
+export interface UpdateInfo {
+  available: boolean;
+  current: string;
+  latest: string;
+  releases: UpdateRelease[];
+}
+
+export function checkForUpdate(): Promise<UpdateInfo> {
+  return get("/api/update/check");
+}
+
 // ── VPN ────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
