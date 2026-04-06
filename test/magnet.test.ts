@@ -52,4 +52,14 @@ describe("parseMagnet", () => {
       name: "100% Done",
     });
   });
+
+  it("preserves literal plus signs in dn (e.g. C++)", () => {
+    const result = parseMagnet(
+      "magnet:?xt=urn:btih:aabbccddeeff0011223344556677889900aabbcc&dn=C%2B%2B%20Movie"
+    );
+    assert.deepEqual(result, {
+      infoHash: "aabbccddeeff0011223344556677889900aabbcc",
+      name: "C++ Movie",
+    });
+  });
 });

@@ -20,7 +20,7 @@ export function parseMagnet(uri: string): ParsedMagnet | null {
   if (!infoHash) return null;
 
   const dn = params.get("dn");
-  const name = dn ? dn.replace(/\+/g, " ") : infoHash;
+  const name = dn ?? infoHash;
 
   return { infoHash, name };
 }
