@@ -264,6 +264,24 @@
   display: none;
 }
 
+/* ── Update indicator dot on Settings button ── */
+.navbar-update-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 8px rgba(201, 168, 76, 0.5);
+  animation: updatePulse 2.5s ease-in-out infinite;
+}
+
+@keyframes updatePulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(201, 168, 76, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(201, 168, 76, 0.6); }
+}
+
 @media (max-width: 768px) {
   .navbar {
     padding: 14px 16px;

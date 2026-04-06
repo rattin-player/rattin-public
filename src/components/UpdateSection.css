@@ -1,0 +1,174 @@
+.update-checking {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Version badge — warm amber glow ── */
+.update-version-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 10px;
+  letter-spacing: 0.4px;
+  background: rgba(201, 168, 76, 0.12);
+  color: var(--accent-bright);
+  border: 1px solid rgba(201, 168, 76, 0.2);
+}
+
+/* ── Download button — prominent gold CTA ── */
+.update-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  background: var(--accent);
+  color: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+  transition: all var(--transition);
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.2);
+}
+
+.update-download-btn:hover {
+  background: var(--accent-bright);
+  box-shadow: 0 6px 22px rgba(201, 168, 76, 0.3);
+  color: var(--bg-deep);
+}
+
+.update-download-size {
+  font-weight: 400;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+/* ── Changelog toggle ── */
+.update-changelog {
+  display: flex;
+  flex-direction: column;
+}
+
+.update-changelog-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  transition: color var(--transition);
+}
+
+.update-changelog-toggle:hover {
+  color: var(--text-primary);
+}
+
+.update-chevron {
+  transition: transform var(--transition);
+}
+
+.update-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.update-release-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+
+/* ── Changelog body ── */
+.update-changelog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.update-release {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+
+.update-release-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.update-release-version {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-bright);
+}
+
+.update-release-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Rendered markdown ── */
+.update-release-body {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.update-release-body p {
+  margin: 4px 0;
+}
+
+.update-release-body ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.update-release-body li {
+  margin: 2px 0;
+}
+
+.update-release-body li::marker {
+  color: var(--accent);
+}
+
+.update-release-body strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.update-md-heading {
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 6px 0 2px;
+  font-size: 12px;
+}
+
+.update-md-code {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  color: var(--accent-bright);
+}
+
+.update-release-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
