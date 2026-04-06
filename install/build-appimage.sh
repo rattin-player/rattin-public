@@ -362,7 +362,7 @@ main() {
     qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \\
     qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtwebchannel \\
     qml6-module-qtqml qml6-module-qtqml-models qml6-module-qtqml-workerscript \\
-    qml6-module-qtcore"
+    qml6-module-qtcore qml6-module-qtquick-dialogs"
     fi
 
     download_tools
