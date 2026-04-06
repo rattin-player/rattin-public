@@ -151,7 +151,24 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
     for (const [code, lang] of Object.entries(LANG_MAP)) {
       if (base.includes("." + code) || base.includes("_" + code) || base.includes("-" + code)) return lang;
     }
-    return name.replace(/\.[^.]+$/, "").split(/[/\\]/).pop() || name;
+    // Check parent directory for language hints (e.g. "Subs/English/subtitle.srt")
+    const parts = name.split(/[/\\]/);
+    if (parts.length > 1) {
+      const dir = parts[parts.length - 2].toLowerCase();
+      for (const [code, lang] of Object.entries(LANG_MAP)) {
+        if (dir === code || dir === lang.toLowerCase()) return lang;
+      }
+      // Common patterns: "2_English.srt", "3_French.srt"
+      const fileBase = parts[parts.length - 1].replace(/\.[^.]+$/, "");
+      const langMatch = fileBase.match(/[_\-.\s]([a-zA-Z]{2,})$/);
+      if (langMatch) {
+        const candidate = langMatch[1].toLowerCase();
+        for (const [code, lang] of Object.entries(LANG_MAP)) {
+          if (candidate === code || candidate === lang.toLowerCase()) return lang;
+        }
+      }
+    }
+    return "Subtitle";
   }
 
   // Shift VTT cue timestamps and remove cues before the offset
