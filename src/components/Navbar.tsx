@@ -114,7 +114,7 @@ export default function Navbar() {
               </svg>
               Settings
             </button>
-              <button className="navbar-pair-btn" onClick={() => setShowPairing(true)}>
+            <button className="navbar-pair-btn" onClick={() => setShowPairing(true)}>
               {rcSessionId ? (
                 <span className="navbar-pair-connected">
                   <span className="navbar-pair-dot" />
