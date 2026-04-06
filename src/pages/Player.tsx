@@ -69,6 +69,7 @@ export default function Player() {
   const preSelectedSub: string | null = state?.subtitle ?? null;
   const pageRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLDivElement>(null);
+  const subFileRef = useRef<HTMLInputElement>(null);
 
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,11 +165,17 @@ export default function Player() {
   });
 
   const {
-    subs, activeSub, switchSubtitle, reloadActiveSub,
+    subs, activeSub, switchSubtitle, reloadActiveSub, addCustomSubtitle,
   } = useSubtitles({
     infoHash: infoHash!, fileIndex: fileIndex!, subsRef, activeSubRef,
     preSelectedSub,
   });
+
+  const handleSubFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) addCustomSubtitle(file).catch(() => {});
+    e.target.value = "";
+  }, [addCustomSubtitle]);
 
   const { audioTracks, activeAudio, switchAudio } = useAudioTracks({
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
@@ -197,6 +204,11 @@ export default function Player() {
     if (sub.value.startsWith("file:")) {
       const port = window.location.port;
       const subUrl = `http://127.0.0.1:${port}/api/subtitle/${infoHash}/${sub.fileIndex}`;
+      mpvLoadExternalSubtitle(subUrl, sub.label);
+      appliedSub.current = true;
+    } else if (sub.value.startsWith("custom:")) {
+      const port = window.location.port;
+      const subUrl = `http://127.0.0.1:${port}${sub.value.replace("custom:", "")}`;
       mpvLoadExternalSubtitle(subUrl, sub.label);
       appliedSub.current = true;
     } else {
@@ -363,6 +375,11 @@ export default function Player() {
     };
   }, [infoHash, fileIndex]);
 
+  useEffect(() => {
+    (window as any).__rattinOpenSubFile = () => subFileRef.current?.click();
+    return () => { delete (window as any).__rattinOpenSubFile; };
+  }, []);
+
   // Stop mpv on unmount (leaving the player page). The native mpv overlay
   // covers the WebEngine view, so it must be fully stopped to show the UI.
   useEffect(() => {
@@ -397,6 +414,10 @@ export default function Player() {
         if (sub.value.startsWith("file:")) {
           const port = window.location.port;
           const subUrl = `http://127.0.0.1:${port}/api/subtitle/${infoHash}/${sub.fileIndex}`;
+          mpvLoadExternalSubtitle(subUrl, sub.label);
+        } else if (sub.value.startsWith("custom:")) {
+          const port = window.location.port;
+          const subUrl = `http://127.0.0.1:${port}${sub.value.replace("custom:", "")}`;
           mpvLoadExternalSubtitle(subUrl, sub.label);
         } else {
           mpvSetSubtitleTrack(idx);
@@ -690,6 +711,14 @@ export default function Player() {
           </div>
         </div>
       )}
+
+      <input
+        ref={subFileRef}
+        type="file"
+        accept=".srt,.ass,.ssa,.vtt,.sub"
+        style={{ display: "none" }}
+        onChange={handleSubFileChange}
+      />
     </div>
   );
 }

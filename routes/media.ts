@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { createReadStream, statSync } from "fs";
+import { createReadStream, statSync, mkdirSync } from "fs";
 import { spawn } from "child_process";
 import type { Express, Request, Response } from "express";
 import { jobKey } from "../lib/cache/torrent-caches.js";
@@ -422,6 +422,117 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Sub extract: " + d.toString().trim()));
     ffmpeg.on("close", (code: number | null) => {
       if (code !== 0) log("err", "Sub extract failed", { stream: streamIdx, code });
+    });
+    res.on("close", () => ffmpeg.kill());
+  });
+
+  // Upload a custom subtitle file
+  app.post("/api/subtitle/upload", (req: Request, res: Response) => {
+    const originalName = (req.query.filename as string) || "subtitle.srt";
+    const ext = path.extname(originalName).toLowerCase();
+
+    if (!SUBTITLE_EXTENSIONS.includes(ext)) {
+      return res.status(400).json({ error: "Unsupported subtitle format" });
+    }
+
+    const subsDir = path.join(DOWNLOAD_PATH, ".custom-subs");
+    try {
+      mkdirSync(subsDir, { recursive: true });
+    } catch (err) {
+      log("err", "Failed to create custom-subs dir", { error: (err as Error).message });
+      return res.status(500).json({ error: "Could not create upload directory" });
+    }
+
+    const sanitized = path.basename(originalName).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const safeName = `${Date.now()}-${sanitized}`;
+    const destPath = path.join(subsDir, safeName);
+
+    const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+    let received = 0;
+    const chunks: Buffer[] = [];
+
+    req.on("data", (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > MAX_SIZE) {
+        req.destroy();
+        if (!res.headersSent) {
+          res.status(413).json({ error: "File too large (max 10 MB)" });
+        }
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      if (res.headersSent) return;
+      try {
+        fs.writeFileSync(destPath, Buffer.concat(chunks));
+        log("info", "Custom subtitle uploaded", { safeName, size: received });
+        res.json({ url: `/api/subtitle/custom/${safeName}` });
+      } catch (err) {
+        log("err", "Failed to write subtitle file", { error: (err as Error).message });
+        res.status(500).json({ error: "Failed to save subtitle file" });
+      }
+    });
+
+    req.on("error", (err: Error) => {
+      log("err", "Subtitle upload stream error", { error: err.message });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Upload failed" });
+      }
+    });
+  });
+
+  // Serve an uploaded custom subtitle file, converting to VTT
+  app.get("/api/subtitle/custom/:filename", (req: Request, res: Response) => {
+    const { filename } = req.params as Record<string, string>;
+
+    // Prevent directory traversal
+    if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+      return res.status(400).json({ error: "Invalid filename" });
+    }
+
+    const ext = path.extname(filename).toLowerCase();
+    if (!SUBTITLE_EXTENSIONS.includes(ext)) {
+      return res.status(400).json({ error: "Unsupported subtitle format" });
+    }
+
+    const filePath = path.join(DOWNLOAD_PATH, ".custom-subs", filename);
+
+    try {
+      statSync(filePath);
+    } catch {
+      return res.status(404).json({ error: "Subtitle file not found" });
+    }
+
+    res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+
+    if (ext === ".vtt") {
+      return createReadStream(filePath).pipe(res);
+    }
+
+    if (ext === ".srt") {
+      try {
+        const srtContent = fs.readFileSync(filePath, "utf-8");
+        return res.send(srtToVtt(srtContent));
+      } catch (err) {
+        log("err", "SRT read failed for custom subtitle", { error: (err as Error).message });
+        return res.status(500).json({ error: "Failed to read subtitle file" });
+      }
+    }
+
+    // .ass, .ssa, .sub — convert via ffmpeg
+    log("info", "Converting custom subtitle via ffmpeg", { filename, ext });
+    const ffmpeg = spawn("ffmpeg", [
+      "-i", filePath,
+      "-f", "webvtt",
+      "-v", "warning",
+      "pipe:1",
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    ffmpeg.stdout!.pipe(res);
+    ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Custom sub ffmpeg: " + d.toString().trim()));
+    ffmpeg.on("close", (code: number | null) => {
+      if (code !== 0) log("err", "Custom subtitle conversion failed", { filename, code });
     });
     res.on("close", () => ffmpeg.kill());
   });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, type MutableRefObject } from "react";
 import { fetchStatus, fetchSubtitleTracks } from "./api.js";
+import { mpvLoadExternalSubtitle } from "./native-bridge.js";
 
 export const LANG_MAP: Record<string, string> = {
   eng: "English", en: "English", spa: "Spanish", es: "Spanish",
@@ -58,6 +59,7 @@ interface UseSubtitlesReturn {
   setActiveSub: (val: string) => void;
   switchSubtitle: (val: string) => void;
   reloadActiveSub: (seekOffset: number) => void;
+  addCustomSubtitle: (file: File) => Promise<void>;
   shiftVtt: (vttText: string, offsetSeconds: number) => string;
   LANG_MAP: Record<string, string>;
 }
@@ -223,6 +225,22 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
     setActiveSub(val);
   }
 
+  async function addCustomSubtitle(file: File) {
+    const { uploadSubtitle } = await import("./api.js");
+    const { url } = await uploadSubtitle(file);
+    const port = window.location.port;
+    const fullUrl = `http://127.0.0.1:${port}${url}`;
+    const label = guessLabel(file.name) + " (custom)";
+    const customValue = `custom:${url}`;
+
+    setSubs((prev) => {
+      if (prev.some((s) => s.value === customValue)) return prev;
+      return [{ value: customValue, label }, ...prev];
+    });
+    setActiveSub(customValue);
+    mpvLoadExternalSubtitle(fullUrl, label);
+  }
+
   // Load embedded subtitles
   useEffect(() => {
     loadSubs();
@@ -235,13 +253,15 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
         if (data.tracks?.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           setSubs((prev: SubtitleOption[]) => {
-            if (prev.length === data.tracks.length) return prev;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return data.tracks.map((t: any) => ({
+            const custom = prev.filter((s) => s.value.startsWith("custom:"));
+            const embedded = data.tracks.map((t: any) => ({
               value: `embedded:${t.streamIndex}`,
               label: formatSubLabel(t.lang, t.title, t.streamIndex),
               streamIndex: t.streamIndex,
             }));
+            const nonCustomPrev = prev.filter((s) => !s.value.startsWith("custom:"));
+            if (nonCustomPrev.length === embedded.length && custom.length === 0) return prev;
+            return [...custom, ...embedded];
           });
           // Auto-select: pre-selected from nav state, or English if multiple tracks.
           // Check activeSubRef inside the timeout to avoid racing with external sub auto-select.
@@ -287,8 +307,9 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
           fileIndex: f.index,
         }));
         setSubs((prev) => {
+          const custom = prev.filter((s) => s.value.startsWith("custom:"));
           const embedded = prev.filter((s) => s.value.startsWith("embedded:"));
-          return [...external, ...embedded];
+          return [...custom, ...external, ...embedded];
         });
         // Auto-select external sub if nothing selected yet (prefer English, fall back to first)
         if (!preSelectedSub && external.length >= 1) {
@@ -301,7 +322,7 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
 
   return {
     subs, activeSub, setSubs, setActiveSub,
-    switchSubtitle, reloadActiveSub,
+    switchSubtitle, reloadActiveSub, addCustomSubtitle,
     shiftVtt, LANG_MAP,
   };
 }

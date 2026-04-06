@@ -775,6 +775,38 @@ Window {
                         }
                     }
 
+                    Rectangle {
+                        width: parent.width; height: 28; radius: 4
+                        color: "transparent"
+                        Row {
+                            anchors.left: parent.left; anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+                            Text {
+                                text: "\u2795"
+                                color: "#888"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: "Load file..."
+                                color: "#888"
+                                font.pixelSize: 13
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: true
+                            onEntered: parent.color = "#20ffffff"
+                            onExited: parent.color = "transparent"
+                            onClicked: {
+                                subPopup.visible = false
+                                webView.runJavaScript("window.__rattinOpenSubFile && window.__rattinOpenSubFile()")
+                            }
+                        }
+                    }
+
                     Repeater {
                         model: root.reversedSubTracks
                         Rectangle {
