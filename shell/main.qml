@@ -38,8 +38,7 @@ Window {
     property bool hasAlternateSources: false
 
     function togglePause() {
-        if (root.paused) bridge.resume()
-        else bridge.pause()
+        bridge.togglePause()
     }
 
     function toggleFullscreen() {
@@ -154,6 +153,7 @@ Window {
         function setSlowWarning(show, hasAlt) { root.slowWarning = show; root.hasAlternateSources = hasAlt; if (!show) root.slowWarningDismissed = false }
         function pause() { bridge.pause() }
         function resume() { bridge.resume() }
+        function togglePause() { bridge.togglePause() }
         function seek(seconds) { bridge.seek(seconds) }
         function setVolume(percent) { bridge.setVolume(percent); transport.volumeChanged(percent) }
         function setAudioTrack(index) { bridge.setAudioTrack(index); transport.audioTrackChanged(index + 1) }

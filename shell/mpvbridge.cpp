@@ -46,6 +46,12 @@ void MpvBridge::resume()
     m_mpv->setProperty("pause", false);
 }
 
+void MpvBridge::togglePause()
+{
+    if (!m_mpv) return;
+    m_mpv->command(QVariantList{"cycle", "pause"});
+}
+
 void MpvBridge::seek(double seconds)
 {
     if (!m_mpv) return;

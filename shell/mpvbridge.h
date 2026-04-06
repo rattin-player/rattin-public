@@ -18,6 +18,7 @@ public slots:
     void play(const QString &url);
     void pause();
     void resume();
+    void togglePause();
     void seek(double seconds);
     void setVolume(int percent);
     void setAudioTrack(int index);

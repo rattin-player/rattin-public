@@ -25,6 +25,7 @@ interface MpvBridge {
   play(url: string): void;
   pause(): void;
   resume(): void;
+  togglePause(): void;
   seek(seconds: number): void;
   setVolume(percent: number): void;
   setAudioTrack(index: number): void;
@@ -164,8 +165,7 @@ export let mpvPaused = false;
 // ── Commands (send to mpv) ──────────────────────────────────────────
 
 export function mpvTogglePause(): void {
-  if (mpvPaused) window.mpvBridge?.resume();
-  else window.mpvBridge?.pause();
+  window.mpvBridge?.togglePause();
 }
 
 export function mpvPlay(url: string): void {
