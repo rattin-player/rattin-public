@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode, type MutableRefObject } from "react";
 import type { SubtitleOption } from "./useSubtitles";
 import type { AudioTrackOption } from "./useAudioTracks";
-import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStop, mpvStopAndWait } from "./native-bridge";
+import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStop, mpvStopAndWait, mpvPaused } from "./native-bridge";
 import { getRemoteSessionId, REMOTE_SESSION_EVENT } from "./remote-session";
 import { playbackKey } from "./playback-position";
 
@@ -379,7 +379,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       const state = {
         sessionId: rcSessionId,
         authToken: rcAuthToken,
-        playing: playingRef.current,
+        playing: !mpvPaused,
         currentTime: ct,
         duration: dur,
         title: active?.title || "",
