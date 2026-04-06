@@ -69,7 +69,6 @@ export default function Player() {
   const preSelectedSub: string | null = state?.subtitle ?? null;
   const pageRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLDivElement>(null);
-  const subFileRef = useRef<HTMLInputElement>(null);
 
   // Source switcher state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,17 +164,12 @@ export default function Player() {
   });
 
   const {
-    subs, activeSub, switchSubtitle, reloadActiveSub, addCustomSubtitle,
+    subs, activeSub, switchSubtitle, reloadActiveSub,
   } = useSubtitles({
     infoHash: infoHash!, fileIndex: fileIndex!, subsRef, activeSubRef,
     preSelectedSub,
   });
 
-  const handleSubFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) addCustomSubtitle(file).catch(() => {});
-    e.target.value = "";
-  }, [addCustomSubtitle]);
 
   const { audioTracks, activeAudio, switchAudio } = useAudioTracks({
     infoHash: infoHash!, fileIndex: fileIndex!, audioTracksRef, activeAudioRef,
@@ -375,9 +369,15 @@ export default function Player() {
     };
   }, [infoHash, fileIndex]);
 
+  // QML FileDialog calls this after user picks a subtitle file and mpv loads it
   useEffect(() => {
-    (window as any).__rattinOpenSubFile = () => subFileRef.current?.click();
-    return () => { delete (window as any).__rattinOpenSubFile; };
+    (window as any).__rattinCustomSubLoaded = (fileName: string) => {
+      const label = fileName || "Custom subtitle";
+      const customValue = `custom:local:${fileName}`;
+      subsRef.current = [{ value: customValue, label: label + " (custom)" }, ...subsRef.current.filter(s => s.value !== customValue)];
+      activeSubRef.current = customValue;
+    };
+    return () => { delete (window as any).__rattinCustomSubLoaded; };
   }, []);
 
   // Stop mpv on unmount (leaving the player page). The native mpv overlay
@@ -712,13 +712,7 @@ export default function Player() {
         </div>
       )}
 
-      <input
-        ref={subFileRef}
-        type="file"
-        accept=".srt,.ass,.ssa,.vtt,.sub"
-        style={{ display: "none" }}
-        onChange={handleSubFileChange}
-      />
+
     </div>
   );
 }

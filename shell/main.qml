@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtWebEngine
 import QtWebChannel
 import com.rattin.mpv 1.0
@@ -239,6 +240,18 @@ Window {
             // sub-add "select" activates the track — sync QML indicator
             var sid = bridge.getProperty("sid")
             if (sid !== undefined && sid !== false) root.activeSub = sid
+        }
+    }
+
+    FileDialog {
+        id: subFileDialog
+        title: "Load subtitle file"
+        nameFilters: ["Subtitle files (*.srt *.ass *.ssa *.vtt *.sub)", "All files (*)"]
+        onAccepted: {
+            var filePath = selectedFile.toString().replace("file://", "")
+            var fileName = filePath.split("/").pop()
+            bridge.loadExternalSubtitle(filePath, fileName)
+            webView.runJavaScript("window.__rattinCustomSubLoaded && window.__rattinCustomSubLoaded(" + JSON.stringify(fileName) + ")")
         }
     }
 
@@ -802,7 +815,7 @@ Window {
                             onExited: parent.color = "transparent"
                             onClicked: {
                                 subPopup.visible = false
-                                webView.runJavaScript("window.__rattinOpenSubFile && window.__rattinOpenSubFile()")
+                                subFileDialog.open()
                             }
                         }
                     }
