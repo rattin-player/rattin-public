@@ -139,7 +139,12 @@ Window {
         signal toggleSourcePanel()               // QML→JS: open/close source panel
         signal sourcePanelChanged(bool open)     // JS→QML: source panel state changed
 
-        function play(url) { root.subDelay = 0.0; bridge.setProperty("sub-delay", 0); bridge.play(url) }
+        function play(url) {
+            root.subDelay = 0.0; bridge.setProperty("sub-delay", 0)
+            root.subTracks = []; root.reversedSubTracks = []; root.activeSub = 0
+            root.audioTracks = []; root.activeAudio = 1
+            bridge.play(url)
+        }
         function setSourceCount(count) { root.sourceCount = count }
         function notifySourcePanel(open) { transport.sourcePanelChanged(open) }
         function setPoster(url) { root.posterUrl = url }

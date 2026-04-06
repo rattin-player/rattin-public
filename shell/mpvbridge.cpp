@@ -26,6 +26,8 @@ void MpvBridge::play(const QString &url)
     }
     fprintf(stderr, "[bridge] loadfile: %s (wasPlaying=%d)\n", url.toUtf8().constData(), m_isPlaying);
     m_loadPending = true;  // Suppress stale EOF until new file produces time updates
+    m_pendingSubUrl.clear();  // Clear any stale queued subtitle from previous session
+    m_pendingSubTitle.clear();
     m_mpv->setProperty("pause", false);  // Ensure mpv is unpaused before loading
     m_mpv->command(QVariantList{"loadfile", url});
     m_isPlaying = true;
