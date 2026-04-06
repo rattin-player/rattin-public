@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount } from "../lib/api";
+import UpdateSection from "./UpdateSection";
 import "./SettingsModal.css";
 
 interface SettingsModalProps {
@@ -126,6 +127,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
 
         <div className="pair-body">
+          <UpdateSection />
+
+          <div className="settings-divider" />
           <div className="settings-section">
             <div className="settings-section-header">
               <h4>Debrid Service</h4>

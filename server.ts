@@ -19,6 +19,7 @@ import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
 import storageRoutes from "./routes/storage.js";
+import updateRoutes from "./routes/update.js";
 import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker, RCSession } from "./lib/types.js";
 import type { WatchHistory } from "./lib/storage/watch-history.js";
@@ -158,6 +159,7 @@ vpnRoutes(app, ctx);
 cacheRoutes(app, ctx);
 openUrlRoutes(app, ctx);
 storageRoutes(app, ctx);
+updateRoutes(app, ctx);
 
 // Disk space janitor — every 60s, evict oldest cache files if free space < 2GB
 const _diskJanitor = setInterval(() => {
