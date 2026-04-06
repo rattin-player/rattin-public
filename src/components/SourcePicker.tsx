@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { formatBytes } from "../lib/utils";
 import "./SourcePicker.css";
 
@@ -24,6 +24,8 @@ interface SourcePickerProps {
 }
 
 export default function SourcePicker({ streams, onPick, onClose }: SourcePickerProps) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const groups = useMemo<ResGroup[]>(() => {
     if (!streams || streams.length === 0) return [];
 
@@ -36,7 +38,6 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
       byRes.set(key, list);
     }
 
-    // Order: 4K, 1080p, 720p, 480p, Other
     const ordered: ResGroup[] = [];
     for (const r of RES_ORDER) {
       const list = byRes.get(r);
@@ -48,6 +49,15 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
     return ordered;
   }, [streams]);
 
+  const handleCopy = useCallback((e: React.MouseEvent, s: Stream) => {
+    e.stopPropagation();
+    const magnet = `magnet:?xt=urn:btih:${s.infoHash}&dn=${encodeURIComponent(s.name)}`;
+    navigator.clipboard.writeText(magnet).then(() => {
+      const id = `${s.infoHash}:${s.fileIdx ?? ""}`;
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="picker-overlay" onClick={onClose}>
@@ -68,11 +78,16 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
               <div key={group.resolution} className="picker-group">
                 <div className="picker-group-label">{group.resolution}</div>
                 {group.streams.map((s: Stream) => {
+                  const rowId = `${s.infoHash}:${s.fileIdx ?? ""}`;
+                  const copied = copiedId === rowId;
                   return (
-                    <button
-                      key={`${s.infoHash}:${s.fileIdx ?? ""}`}
+                    <div
+                      key={rowId}
                       className="picker-item"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onPick(s)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(s); } }}
                     >
                       <div className="picker-item-row">
                         <div className="picker-item-main">
@@ -92,9 +107,16 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                             {s.seeders}
                           </span>
                           <span className="picker-size">{formatBytes(s.size)}</span>
+                          <button
+                            className={`picker-copy-magnet${copied ? " copied" : ""}`}
+                            onClick={(e) => handleCopy(e, s)}
+                            title="Copy magnet link"
+                          >
+                            {copied ? "Copied!" : "Copy magnet"}
+                          </button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
