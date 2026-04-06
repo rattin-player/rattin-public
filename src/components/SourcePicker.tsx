@@ -52,11 +52,19 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
   const handleCopy = useCallback((e: React.MouseEvent, s: Stream) => {
     e.stopPropagation();
     const magnet = `magnet:?xt=urn:btih:${s.infoHash}&dn=${encodeURIComponent(s.name)}`;
-    navigator.clipboard.writeText(magnet).then(() => {
-      const id = `${s.infoHash}:${s.fileIdx ?? ""}`;
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 1500);
-    }).catch(() => {});
+    // navigator.clipboard requires HTTPS — use execCommand fallback for Qt WebEngine
+    const ta = document.createElement("textarea");
+    ta.value = magnet;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand("copy"); } catch {}
+    document.body.removeChild(ta);
+    const id = `${s.infoHash}:${s.fileIdx ?? ""}`;
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
   }, []);
 
   return (
@@ -115,7 +123,10 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                             onClick={(e) => handleCopy(e, s)}
                             title="Copy magnet link"
                           >
-                            {copied ? "Copied!" : "Copy magnet"}
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                            </svg>
+                            {copied && <span className="picker-copy-tooltip">Copied to clipboard</span>}
                           </button>
                         </div>
                       </div>

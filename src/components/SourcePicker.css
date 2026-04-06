@@ -257,24 +257,39 @@
 }
 
 .picker-copy-magnet {
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  padding: 3px 8px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
   color: var(--text-muted);
   transition: background var(--transition), color var(--transition);
-  white-space: nowrap;
   flex-shrink: 0;
 }
 
 .picker-copy-magnet:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
 }
 
 .picker-copy-magnet.copied {
-  background: rgba(74, 222, 128, 0.15);
   color: var(--green);
+}
+
+.picker-copy-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  color: var(--green);
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  animation: fadeIn 0.1s ease-out;
 }
