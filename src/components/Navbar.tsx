@@ -3,7 +3,8 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { usePlayer, useRemoteMode } from "../lib/PlayerContext";
 import PairRemoteModal from "./PairRemoteModal";
 import SettingsModal from "./SettingsModal";
-import { getVpnStatus, toggleVpn } from "../lib/api";
+import { getVpnStatus, toggleVpn, playTorrent } from "../lib/api";
+import { parseMagnet } from "../lib/magnet";
 import "./Navbar.css";
 
 export default function Navbar() {
@@ -13,6 +14,7 @@ export default function Navbar() {
   const [showSettings, setShowSettings] = useState(false);
   const [vpn, setVpn] = useState<{ active: boolean; configured: boolean } | null>(null);
   const [vpnToggling, setVpnToggling] = useState(false);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { rcSessionId } = usePlayer();
@@ -60,9 +62,33 @@ export default function Navbar() {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const magnet = parseMagnet(trimmed);
+    if (magnet) {
+      setLoading(true);
+      try {
+        const result = await playTorrent(magnet.infoHash, magnet.name);
+        navigate(`/play/${result.infoHash}/${result.fileIndex}`, {
+          state: {
+            title: magnet.name,
+            posterPath: null,
+            sources: [],
+            tags: result.tags ?? [],
+          },
+        });
+      } catch {
+        // silently ignore — magnet play is best-effort
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
   }
 
   return (
@@ -84,6 +110,7 @@ export default function Navbar() {
           placeholder="Search movies & shows..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          disabled={loading}
         />
       </form>
       {!isRemote && (
