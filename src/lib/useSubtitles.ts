@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type MutableRefObject } from "react";
-import { fetchStatus, fetchSubtitleTracks } from "./api.js";
+import { fetchStatus, fetchSubtitleTracks, uploadSubtitle } from "./api.js";
 import { mpvLoadExternalSubtitle } from "./native-bridge.js";
 
 export const LANG_MAP: Record<string, string> = {
@@ -226,7 +226,6 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
   }
 
   async function addCustomSubtitle(file: File) {
-    const { uploadSubtitle } = await import("./api.js");
     const { url } = await uploadSubtitle(file);
     const port = window.location.port;
     const fullUrl = `http://127.0.0.1:${port}${url}`;
