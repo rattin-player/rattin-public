@@ -97,14 +97,6 @@ if (Test-Path $MpvDll) {
     Remove-Item $mpv7z
 }
 
-# rcedit (for branding node.exe)
-$RceditExe = Join-Path $ToolsDir "rcedit.exe"
-if (Test-Path $RceditExe) {
-    Skip "rcedit already downloaded"
-} else {
-    Log "Downloading rcedit"
-    Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile $RceditExe
-}
 
 # ---------------------------------------------------------------------------
 # Step 2: Build frontend
@@ -177,19 +169,11 @@ if ($windeployqt) {
     Warn "windeployqt not found — Qt DLLs must be copied manually"
 }
 
-# Node.js → branded as rattin-runtime.exe
+# Node.js → renamed (no resource patching to avoid AV false positives)
 Copy-Item $NodeExe $DistDir
 $RuntimeExe = Join-Path $DistDir "rattin-runtime.exe"
 Rename-Item (Join-Path $DistDir "node.exe") $RuntimeExe
-Log "Branding rattin-runtime.exe"
-& $RceditExe $RuntimeExe `
-    --set-icon (Join-Path $DistDir "rattin.ico") `
-    --set-version-string "ProductName" "RattinRuntime" `
-    --set-version-string "FileDescription" "Rattin Server Runtime" `
-    --set-version-string "OriginalFilename" "rattin-runtime.exe" `
-    --set-version-string "InternalName" "rattin-runtime" `
-    --set-version-string "FileVersion" "$Version" `
-    --set-version-string "ProductVersion" "$Version"
+Log "Copied rattin-runtime.exe"
 
 # libmpv DLL
 Copy-Item $MpvDll $DistDir

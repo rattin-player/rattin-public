@@ -87,11 +87,6 @@ jobs:
           Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip" -OutFile node.zip
           Expand-Archive node.zip -DestinationPath node-build -Force
 
-      - name: Download rcedit
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile rcedit.exe
-
       - name: Build frontend
         run: npm ci && npm run build
 
@@ -129,18 +124,9 @@ jobs:
               exit 1
           }
 
-          # Node.js — copy, rename, and brand before npm ci uses it
+          # Node.js — copy and rename (no resource patching to avoid AV false positives)
           $nodeDir = Get-ChildItem node-build -Directory | Select-Object -First 1
           Copy-Item "$($nodeDir.FullName)/node.exe" "$dist/rattin-runtime.exe"
-          $numVer = "${{ steps.version.outputs.NUMERIC_VERSION }}"
-          & .\rcedit.exe "$dist\rattin-runtime.exe" `
-            --set-icon "$dist\rattin.ico" `
-            --set-version-string "ProductName" "RattinRuntime" `
-            --set-version-string "FileDescription" "Rattin Server Runtime" `
-            --set-version-string "OriginalFilename" "rattin-runtime.exe" `
-            --set-version-string "InternalName" "rattin-runtime" `
-            --set-version-string "FileVersion" "$numVer" `
-            --set-version-string "ProductVersion" "$numVer"
 
           # libmpv
           Copy-Item mpv-dev/libmpv-2.dll $dist/
