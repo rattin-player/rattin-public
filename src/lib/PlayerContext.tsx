@@ -66,6 +66,7 @@ interface PlayerContextValue {
   sourcesRef: MutableRefObject<any[]>;
   subSize: number;
   adjustSubSize: (delta: number) => void;
+  setSubSizeAbsolute: (size: number) => void;
   switching: boolean;
 }
 
@@ -216,6 +217,11 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       mpvSetSubFontSize(next);
       return next;
     });
+  }, []);
+
+  // Sync React state to match QML — mpv is already set, no need to call mpvSetSubFontSize
+  const setSubSizeAbsolute = useCallback((size: number) => {
+    setSubSize(Math.max(20, Math.min(100, size)));
   }, []);
 
   startStreamRef.current = startStream;
@@ -422,7 +428,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
       introRangeRef, sourcesRef,
-      subSize, adjustSubSize, switching,
+      subSize, adjustSubSize, setSubSizeAbsolute, switching,
     }}>
       {children}
     </PlayerContext.Provider>
