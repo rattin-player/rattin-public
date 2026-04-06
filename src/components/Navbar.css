@@ -214,12 +214,7 @@
   transition: border-color var(--transition-slow), color var(--transition-slow), background var(--transition-slow), text-shadow var(--transition-slow);
 }
 
-.navbar-list-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent-bright);
-  background: var(--accent-subtle);
-}
-
+.navbar-list-btn:hover,
 .navbar-list-btn.active {
   border-color: var(--accent);
   color: var(--accent-bright);

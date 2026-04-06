@@ -17,23 +17,17 @@ export default function MyList() {
   const navigate = useNavigate();
   const [items, setItems] = useState<SavedItem[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  function loadItems() {
     fetchSavedList()
-      .then((data) => { if (!cancelled) setItems(data.items || []); })
-      .catch(() => { if (!cancelled) setItems([]); });
-    return () => { cancelled = true; };
-  }, []);
+      .then((data) => setItems(data.items || []))
+      .catch(() => setItems([]));
+  }
+
+  useEffect(() => { loadItems(); }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const onCleared = () => {
-      fetchSavedList()
-        .then((data) => { if (!cancelled) setItems(data.items || []); })
-        .catch(() => { if (!cancelled) setItems([]); });
-    };
-    window.addEventListener("storage-cleared", onCleared);
-    return () => { cancelled = true; window.removeEventListener("storage-cleared", onCleared); };
+    window.addEventListener("storage-cleared", loadItems);
+    return () => window.removeEventListener("storage-cleared", loadItems);
   }, []);
 
   function handleRemove(item: SavedItem) {
@@ -44,7 +38,7 @@ export default function MyList() {
       title: item.title,
       posterPath: item.posterPath,
     }).catch(() => {
-      setItems((prev) => prev ? [...prev, item].sort((a, b) => a.tmdbId - b.tmdbId) : [item]);
+      setItems((prev) => prev ? [...prev, item] : [item]);
     });
   }
 
