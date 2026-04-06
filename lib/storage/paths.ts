@@ -25,3 +25,7 @@ export function dataDir(profile = "default"): string {
 export function sessionsPath(): string {
   return path.join(configDir(), "sessions.json");
 }
+
+export function rcSessionsPath(): string {
+  return path.join(configDir(), "rc-sessions.json");
+}

@@ -134,21 +134,23 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   switchingRef.current = switching;
 
   // Remote control session (TV mode — not remote mode)
-  // Persist in sessionStorage so PC page reload preserves the session
-  const [rcSessionId, setRcSessionId] = useState<string | null>(() => sessionStorage.getItem("rc-sessionId") || null);
-  const [rcAuthToken, setRcAuthToken] = useState<string | null>(() => sessionStorage.getItem("rc-authToken") || null);
+  // On startup, ask the server for the active RC session (survives app restarts)
+  const [rcSessionId, setRcSessionId] = useState<string | null>(null);
+  const [rcAuthToken, setRcAuthToken] = useState<string | null>(null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
   const [rcQrRequested, setRcQrRequested] = useState(false);
 
   useEffect(() => {
-    if (rcSessionId) sessionStorage.setItem("rc-sessionId", rcSessionId);
-    else sessionStorage.removeItem("rc-sessionId");
-  }, [rcSessionId]);
-
-  useEffect(() => {
-    if (rcAuthToken) sessionStorage.setItem("rc-authToken", rcAuthToken);
-    else sessionStorage.removeItem("rc-authToken");
-  }, [rcAuthToken]);
+    fetch("/api/rc/active-session")
+      .then((r) => r.json())
+      .then((data: { sessionId: string | null; authToken: string | null }) => {
+        if (data.sessionId && data.authToken) {
+          setRcSessionId(data.sessionId);
+          setRcAuthToken(data.authToken);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const rcEventSourceRef = useRef<EventSource | null>(null);
   const stateReportTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastReportedState = useRef<string | null>(null);

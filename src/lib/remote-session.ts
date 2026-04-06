@@ -23,7 +23,5 @@ export function clearRemoteSession(): void {
   expireCookie("rc_session");
   expireCookie("rc_token");
   expireCookie("rc_auth");
-  localStorage.removeItem("rc-session");
-  localStorage.removeItem("rc-token");
   notifyRemoteSessionChanged();
 }

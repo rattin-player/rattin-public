@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import path from "path";
 import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
-import { sessionsPath, downloadDir } from "./lib/storage/paths.js";
+import { sessionsPath, rcSessionsPath, downloadDir } from "./lib/storage/paths.js";
 import { tmdbCache } from "./lib/cache/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/cache/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
@@ -20,7 +20,7 @@ import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
 import storageRoutes from "./routes/storage.js";
 import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
-import type { ServerContext, TorrentClient, IdleTracker } from "./lib/types.js";
+import type { ServerContext, TorrentClient, IdleTracker, RCSession } from "./lib/types.js";
 import type { WatchHistory } from "./lib/storage/watch-history.js";
 import type { SavedList } from "./lib/storage/saved-list.js";
 
@@ -196,6 +196,47 @@ const isMain = process.argv[1] && (
   process.argv[1].endsWith("\\server.js") ||
   process.argv[1].endsWith("\\server.ts")
 );
+// ── RC session persistence (survives app restarts) ────────────────
+const RC_SESSIONS_PATH = rcSessionsPath();
+
+interface RCSessionEntry { sessionId: string; authToken: string }
+
+function dumpRcSessions(rcSessions: Map<string, RCSession>): void {
+  try {
+    // Only persist the most recently active session
+    let best: RCSessionEntry | null = null;
+    let bestActivity = 0;
+    for (const [sessionId, s] of rcSessions) {
+      if (!s.authToken) continue;
+      if (s.lastActivity >= bestActivity) {
+        best = { sessionId, authToken: s.authToken };
+        bestActivity = s.lastActivity;
+      }
+    }
+    const entries = best ? [best] : [];
+    mkdirSync(path.dirname(RC_SESSIONS_PATH), { recursive: true });
+    writeFileSync(RC_SESSIONS_PATH, JSON.stringify(entries));
+  } catch {}
+}
+
+function restoreRcSessions(rcSessions: Map<string, RCSession>): void {
+  try {
+    const raw = readFileSync(RC_SESSIONS_PATH, "utf8");
+    const entries = JSON.parse(raw) as RCSessionEntry[];
+    for (const e of entries) {
+      if (e.sessionId && e.authToken && !rcSessions.has(e.sessionId)) {
+        rcSessions.set(e.sessionId, {
+          playerClient: null,
+          remoteClients: [],
+          playbackState: null,
+          lastActivity: Date.now(),
+          authToken: e.authToken,
+        });
+      }
+    }
+  } catch {}
+}
+
 // ── Session persistence (for VPN toggle restarts) ─────────────────
 const SESSIONS_PATH = sessionsPath();
 
@@ -237,6 +278,7 @@ if (isMain) {
     ctx.watchHistory.shutdown();
     ctx.savedList.shutdown();
     dumpSessions(ctx.client);
+    dumpRcSessions(ctx.rcSessions);
     // Kill any active ffmpeg transcode processes so they don't linger as orphans
     for (const [key, entry] of activeTranscodes) {
       entry.cleanup();
@@ -275,5 +317,6 @@ if (isMain) {
     });
 
     restoreSessions(client, dlDir);
+    restoreRcSessions(ctx.rcSessions);
   });
 }

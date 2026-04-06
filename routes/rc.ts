@@ -49,8 +49,14 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     res.json({ ok: true });
   });
 
-  // Create session
+  // Create session (cleans up any previous sessions — one active pairing at a time)
   app.post("/api/rc/session", (req: Request, res: Response) => {
+    // Tear down all existing sessions
+    for (const [oldId, oldSession] of rcSessions) {
+      if (oldSession.playerClient) oldSession.playerClient.end();
+      for (const c of oldSession.remoteClients) c.end();
+      rcSessions.delete(oldId);
+    }
     const sessionId = crypto.randomBytes(16).toString("hex");
     const authToken = crypto.randomBytes(16).toString("hex");
     rcSessions.set(sessionId, {
@@ -62,6 +68,22 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     });
     log("info", "RC session created", { sessionId });
     res.json({ sessionId, authToken });
+  });
+
+  // Active RC session (desktop reclaims its session after restart)
+  // Returns the most recently active session so the frontend can reconnect.
+  app.get("/api/rc/active-session", (_req: Request, res: Response) => {
+    let best: { sessionId: string; authToken: string; lastActivity: number } | null = null;
+    for (const [sessionId, s] of rcSessions) {
+      if (s.authToken && (!best || s.lastActivity > best.lastActivity)) {
+        best = { sessionId, authToken: s.authToken, lastActivity: s.lastActivity };
+      }
+    }
+    if (best) {
+      res.json({ sessionId: best.sessionId, authToken: best.authToken });
+    } else {
+      res.json({ sessionId: null, authToken: null });
+    }
   });
 
   // LAN IP for phone remote pairing (native shell binds to 0.0.0.0 but QR needs a real IP)
