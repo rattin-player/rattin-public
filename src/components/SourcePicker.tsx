@@ -87,7 +87,10 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
                       role="button"
                       tabIndex={0}
                       onClick={() => onPick(s)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(s); } }}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(s); }
+                      }}
                     >
                       <div className="picker-item-row">
                         <div className="picker-item-main">
