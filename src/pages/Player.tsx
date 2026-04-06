@@ -173,7 +173,7 @@ export default function Player() {
 
   const handleSubFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) addCustomSubtitle(file);
+    if (file) addCustomSubtitle(file).catch(() => {});
     e.target.value = "";
   }, [addCustomSubtitle]);
 

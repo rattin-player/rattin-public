@@ -253,13 +253,15 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
         if (data.tracks?.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           setSubs((prev: SubtitleOption[]) => {
-            if (prev.length === data.tracks.length) return prev;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return data.tracks.map((t: any) => ({
+            const custom = prev.filter((s) => s.value.startsWith("custom:"));
+            const embedded = data.tracks.map((t: any) => ({
               value: `embedded:${t.streamIndex}`,
               label: formatSubLabel(t.lang, t.title, t.streamIndex),
               streamIndex: t.streamIndex,
             }));
+            const nonCustomPrev = prev.filter((s) => !s.value.startsWith("custom:"));
+            if (nonCustomPrev.length === embedded.length && custom.length === 0) return prev;
+            return [...custom, ...embedded];
           });
           // Auto-select: pre-selected from nav state, or English if multiple tracks.
           // Check activeSubRef inside the timeout to avoid racing with external sub auto-select.
@@ -305,8 +307,9 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
           fileIndex: f.index,
         }));
         setSubs((prev) => {
+          const custom = prev.filter((s) => s.value.startsWith("custom:"));
           const embedded = prev.filter((s) => s.value.startsWith("embedded:"));
-          return [...external, ...embedded];
+          return [...custom, ...external, ...embedded];
         });
         // Auto-select external sub if nothing selected yet (prefer English, fall back to first)
         if (!preSelectedSub && external.length >= 1) {
