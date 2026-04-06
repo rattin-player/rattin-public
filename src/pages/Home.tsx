@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
 import WatchHistoryRow from "../components/WatchHistoryRow";
-import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, fetchSavedList, dismissWatchHistory, toggleSaved, autoPlay, poster as posterUrl } from "../lib/api";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, dismissWatchHistory, autoPlay, poster as posterUrl } from "../lib/api";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import "./Home.css";
 
@@ -128,11 +128,6 @@ export default function Home() {
         showProgress
         onPlay={handleContinuePlay}
         onRemove={(item) => dismissWatchHistory({ tmdbId: item.tmdbId, mediaType: item.mediaType, season: item.season, episode: item.episode })}
-      />
-      <WatchHistoryRow
-        title="My List"
-        fetchFn={fetchSavedList}
-        onRemove={(item) => toggleSaved({ tmdbId: item.tmdbId, mediaType: item.mediaType, title: item.title, posterPath: item.posterPath }).then(() => {})}
       />
       <ContentRows from={from} to={to} />
     </div>
