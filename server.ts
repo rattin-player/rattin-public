@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import path from "path";
-import { statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import { sessionsPath, rcSessionsPath, downloadDir } from "./lib/storage/paths.js";
 import { tmdbCache } from "./lib/cache/cache.js";
@@ -121,6 +121,15 @@ const idleTracker = createIdleTracker({
       log("info", "Hard idle: removing torrent", { name: torrent.name });
       torrent.destroy({ destroyStore: false });
     }
+    // Clean up uploaded custom subtitles
+    const customSubsDir = path.join(downloadDir(), ".custom-subs");
+    try {
+      const files = readdirSync(customSubsDir);
+      for (const f of files) {
+        try { unlinkSync(path.join(customSubsDir, f)); } catch {}
+      }
+      log("info", "Hard idle: cleaned custom subtitles", { count: files.length });
+    } catch {}
     log("info", "Hard idle cleanup complete");
   },
 });
