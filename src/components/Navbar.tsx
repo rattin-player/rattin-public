@@ -64,6 +64,7 @@ export default function Navbar() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     const trimmed = query.trim();
     if (!trimmed) return;
 
