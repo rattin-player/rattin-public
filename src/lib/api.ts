@@ -333,3 +333,15 @@ export async function toggleVpn(action: "on" | "off"): Promise<void> {
 export function verifyVpn(): Promise<any> {
   return get("/api/vpn/verify");
 }
+
+export async function uploadSubtitle(file: File): Promise<{ url: string }> {
+  const res = await fetch(`/api/subtitle/upload?filename=${encodeURIComponent(file.name)}`, {
+    method: "POST",
+    body: file,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(data.error || "Upload failed");
+  }
+  return res.json();
+}

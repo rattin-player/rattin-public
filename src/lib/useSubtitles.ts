@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, type MutableRefObject } from "react";
 import { fetchStatus, fetchSubtitleTracks } from "./api.js";
+import { mpvLoadExternalSubtitle } from "./native-bridge.js";
 
 export const LANG_MAP: Record<string, string> = {
   eng: "English", en: "English", spa: "Spanish", es: "Spanish",
@@ -58,6 +59,7 @@ interface UseSubtitlesReturn {
   setActiveSub: (val: string) => void;
   switchSubtitle: (val: string) => void;
   reloadActiveSub: (seekOffset: number) => void;
+  addCustomSubtitle: (file: File) => Promise<void>;
   shiftVtt: (vttText: string, offsetSeconds: number) => string;
   LANG_MAP: Record<string, string>;
 }
@@ -223,6 +225,22 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
     setActiveSub(val);
   }
 
+  async function addCustomSubtitle(file: File) {
+    const { uploadSubtitle } = await import("./api.js");
+    const { url } = await uploadSubtitle(file);
+    const port = window.location.port;
+    const fullUrl = `http://127.0.0.1:${port}${url}`;
+    const label = guessLabel(file.name) + " (custom)";
+    const customValue = `custom:${url}`;
+
+    setSubs((prev) => {
+      if (prev.some((s) => s.value === customValue)) return prev;
+      return [{ value: customValue, label }, ...prev];
+    });
+    setActiveSub(customValue);
+    mpvLoadExternalSubtitle(fullUrl, label);
+  }
+
   // Load embedded subtitles
   useEffect(() => {
     loadSubs();
@@ -301,7 +319,7 @@ export function useSubtitles(deps: UseSubtitlesDeps): UseSubtitlesReturn {
 
   return {
     subs, activeSub, setSubs, setActiveSub,
-    switchSubtitle, reloadActiveSub,
+    switchSubtitle, reloadActiveSub, addCustomSubtitle,
     shiftVtt, LANG_MAP,
   };
 }
