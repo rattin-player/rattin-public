@@ -6,8 +6,8 @@
   flex-direction: column;
   align-items: center;
   padding: 20px 20px;
-  padding-top: env(safe-area-inset-top, 20px);
-  gap: 16px;
+  padding-top: calc(env(safe-area-inset-top, 20px) + 8px);
+  gap: 12px;
   user-select: none;
   -webkit-user-select: none;
   position: relative;
@@ -15,7 +15,26 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.remote-page.remote-dimmed > *:not(.remote-reconnecting-overlay) {
+/* ── Poster backdrop ── */
+.remote-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  opacity: 0.08;
+  pointer-events: none;
+  filter: blur(8px) saturate(0.6);
+  transform: scale(1.1); /* hide blur edges */
+}
+
+.remote-page > *:not(.remote-backdrop):not(.remote-reconnecting-overlay):not(.remote-flash) {
+  position: relative;
+  z-index: 1;
+}
+
+.remote-page.remote-dimmed > *:not(.remote-reconnecting-overlay):not(.remote-backdrop) {
   opacity: 0.4;
   pointer-events: none;
 }
@@ -152,6 +171,33 @@
   100% { opacity: 0; }
 }
 
+/* ── Top bar (back + status) ── */
+.remote-top-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 400px;
+  flex-shrink: 0;
+}
+
+.remote-top-bar .remote-back-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+
+.remote-top-bar .remote-back-btn:active:not(:disabled) {
+  background: var(--bg-hover);
+}
+
 /* ── Status indicator ── */
 .remote-status {
   display: flex;
@@ -163,8 +209,8 @@
   color: var(--text-secondary);
   padding: 6px 14px;
   border-radius: 20px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
 }
 
@@ -354,10 +400,11 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .remote-torrent-info span {
@@ -366,14 +413,27 @@
   gap: 4px;
 }
 
-/* ── Volume ── */
-.remote-volume-row {
+/* ── Split row (two-column layout) ── */
+.remote-split-row {
   width: 100%;
   max-width: 400px;
   display: flex;
+  gap: 10px;
   align-items: center;
-  gap: 12px;
-  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.remote-split-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Volume ── */
+.remote-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
   flex-shrink: 0;
 }
 
@@ -420,12 +480,12 @@
 
 .remote-sub-select {
   width: 100%;
-  padding: 12px 16px;
-  background: var(--bg-surface);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 12px;
   font-family: var(--font-body);
   outline: none;
   transition: border-color var(--transition);
@@ -443,17 +503,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 6px;
 }
 
 .remote-sub-size-btn {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 0.95rem;
+  padding: 8px 12px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: color var(--transition), border-color var(--transition);
 }
@@ -469,9 +528,9 @@
 }
 
 .remote-sub-size-val {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  min-width: 30px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  min-width: 28px;
   text-align: center;
 }
 
@@ -503,8 +562,8 @@
 }
 
 .remote-browse-btn {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
 }
 
@@ -513,8 +572,8 @@
 }
 
 .remote-stop-btn {
-  background: rgba(251, 113, 133, 0.1);
-  border: 1px solid rgba(251, 113, 133, 0.15);
+  background: rgba(251, 113, 133, 0.12);
+  border: 1px solid rgba(251, 113, 133, 0.2);
   color: var(--red);
 }
 
@@ -522,28 +581,8 @@
   background: rgba(251, 113, 133, 0.2);
 }
 
-.remote-fullscreen-btn,
-.remote-back-btn {
-  padding: 14px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--transition);
-}
-
-.remote-fullscreen-btn:active:not(:disabled),
-.remote-back-btn:active:not(:disabled) {
-  background: var(--bg-hover);
-}
-
 .remote-browse-btn:disabled,
-.remote-stop-btn:disabled,
-.remote-fullscreen-btn:disabled,
-.remote-back-btn:disabled {
+.remote-stop-btn:disabled {
   opacity: 0.4;
 }
 
@@ -778,18 +817,16 @@
 
 /* ── Next Episode ── */
 .remote-next-episode {
-  width: 100%;
-  max-width: 400px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -812,19 +849,17 @@
 
 .remote-next-episode-label {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 /* ── Source Picker ── */
 .remote-source-toggle {
-  width: 100%;
-  max-width: 400px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
@@ -853,8 +888,8 @@
   width: 100%;
   padding: 12px;
   border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   text-align: left;
   transition: all var(--transition);
 }
@@ -915,4 +950,185 @@
 .remote-source-size {
   font-size: 10px;
   color: var(--text-secondary);
+}
+
+/* ── Episodes toggle button ── */
+.remote-episodes-toggle {
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.remote-episodes-toggle:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.remote-episodes-toggle:disabled {
+  opacity: 0.4;
+}
+
+.remote-episodes-current {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Episodes panel ── */
+.remote-episodes-panel {
+  width: 100%;
+  max-width: 400px;
+  flex-shrink: 0;
+}
+
+.remote-episodes-season-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.remote-episodes-season-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.remote-episodes-season-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-deep);
+}
+
+.remote-episodes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.remote-episodes-loading,
+.remote-episodes-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.remote-episodes-loading {
+  display: flex;
+  justify-content: center;
+}
+
+.remote-ep-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 12px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  transition: all var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.remote-ep-item.current {
+  border-color: var(--accent);
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.remote-ep-item.watched:not(.current) {
+  opacity: 0.55;
+}
+
+.remote-ep-item:active:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.remote-ep-item:disabled {
+  cursor: default;
+}
+
+.remote-ep-num {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+  flex: 0 0 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.remote-ep-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.remote-ep-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-ep-runtime {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.remote-ep-playing {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.remote-ep-check {
+  color: var(--accent);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.remote-ep-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.remote-ep-progress-fill {
+  height: 100%;
+  background: var(--accent-bright);
+  border-radius: 0 1px 1px 0;
 }

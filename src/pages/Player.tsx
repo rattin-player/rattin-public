@@ -224,9 +224,13 @@ export default function Player() {
         season: Number(state.season),
         episode: Number(state.episode),
         seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : 0,
+        tmdbId: state.tmdbId ?? undefined,
+        imdbId: state.imdbId ?? undefined,
+        seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
+        posterPath: state.posterPath ?? undefined,
       };
     } else {
-      episodeInfoRef.current = state?.type ? { mediaType: state.type, season: 0, episode: 0, seasonEpisodeCount: 0 } : null;
+      episodeInfoRef.current = state?.type ? { mediaType: state.type, season: 0, episode: 0, seasonEpisodeCount: 0, tmdbId: state.tmdbId ?? undefined, imdbId: state.imdbId ?? undefined, posterPath: state.posterPath ?? undefined } : null;
     }
     return () => { episodeInfoRef.current = null; };
   }, [state, episodeInfoRef]);
