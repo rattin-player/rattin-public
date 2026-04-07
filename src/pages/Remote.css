@@ -11,6 +11,8 @@
   user-select: none;
   -webkit-user-select: none;
   position: relative;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .remote-page.remote-dimmed > *:not(.remote-reconnecting-overlay) {
@@ -228,14 +230,13 @@
 
 /* ── Play area ── */
 .remote-play-area {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 28px;
   min-height: 100px;
-  max-height: 200px;
   width: 100%;
+  margin-top: auto;
 }
 
 .remote-play-btn {
@@ -378,12 +379,17 @@
 
 .remote-volume-slider {
   flex: 1;
-  height: 5px;
+  height: 44px;
   -webkit-appearance: none;
   appearance: none;
+  background: transparent;
+  outline: none;
+}
+
+.remote-volume-slider::-webkit-slider-runnable-track {
+  height: 5px;
   background: var(--bg-elevated);
   border-radius: 3px;
-  outline: none;
 }
 
 .remote-volume-slider::-webkit-slider-thumb {
@@ -403,11 +409,6 @@
   background: var(--accent-bright);
   border: none;
   cursor: pointer;
-}
-
-.remote-volume-slider::-webkit-slider-runnable-track {
-  height: 5px;
-  border-radius: 3px;
 }
 
 /* ── Subtitle select ── */
@@ -485,6 +486,7 @@
   width: 100%;
   max-width: 400px;
   padding-bottom: env(safe-area-inset-bottom, 12px);
+  margin-top: auto;
   flex-shrink: 0;
 }
 
@@ -520,7 +522,8 @@
   background: rgba(251, 113, 133, 0.2);
 }
 
-.remote-fullscreen-btn {
+.remote-fullscreen-btn,
+.remote-back-btn {
   padding: 14px 16px;
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -532,24 +535,9 @@
   transition: background var(--transition);
 }
 
-.remote-fullscreen-btn:active:not(:disabled) {
+.remote-fullscreen-btn:active:not(:disabled),
+.remote-back-btn:active:not(:disabled) {
   background: var(--bg-hover);
-}
-
-.remote-back-btn {
-  padding: 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-light);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition);
-}
-
-.remote-back-btn:active {
-  transform: scale(0.96);
 }
 
 .remote-browse-btn:disabled,
@@ -791,24 +779,30 @@
 /* ── Next Episode ── */
 .remote-next-episode {
   width: 100%;
-  padding: 12px 16px;
+  max-width: 400px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   transition: all var(--transition);
 }
 
-.remote-next-episode:hover {
-  background: var(--bg-surface);
-  border-color: var(--border);
+.remote-next-episode svg {
+  margin-left: auto;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.remote-next-episode:active:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 
 .remote-next-episode:disabled {
@@ -817,9 +811,10 @@
 }
 
 .remote-next-episode-label {
-  color: var(--text-secondary);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: 12px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Source Picker ── */
