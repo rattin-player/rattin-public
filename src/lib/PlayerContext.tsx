@@ -4,7 +4,6 @@ import type { AudioTrackOption } from "./useAudioTracks";
 import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStop, mpvStopAndWait, mpvPaused } from "./native-bridge";
 import { getRemoteSessionId, REMOTE_SESSION_EVENT } from "./remote-session";
 import { playbackKey } from "./playback-position";
-import { FINISHED_THRESHOLD } from "../../lib/storage/watch-history.js";
 
 interface ActiveStream {
   infoHash: string;
@@ -64,7 +63,7 @@ interface PlayerContextValue {
   rcRemoteConnected: boolean;
   rcQrRequested: boolean;
   introRangeRef: MutableRefObject<IntroRange | null>;
-  nextEpisodeInfoRef: MutableRefObject<{ season: number; episode: number } | null>;
+  episodeInfoRef: MutableRefObject<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number } | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sourcesRef: MutableRefObject<any[]>;
   subSize: number;
@@ -126,7 +125,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const dlSpeedRef = useRef(0);
   const dlPeersRef = useRef(0);
   const introRangeRef = useRef<IntroRange | null>(null);
-  const nextEpisodeInfoRef = useRef<{ season: number; episode: number } | null>(null);
+  const episodeInfoRef = useRef<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sourcesRef = useRef<any[]>([]);
   const [subSize, setSubSize] = useState(55);
@@ -198,7 +197,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     audioTracksRef.current = [];
     activeAudioRef.current = null;
     introRangeRef.current = null;
-    nextEpisodeInfoRef.current = null;
+    episodeInfoRef.current = null;
     subDelayRef.current = 0;
     setActive({ infoHash: ih, fileIndex: fi, title, tags, debridStreamKey });
   }, [active]);
@@ -210,7 +209,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     }
     mpvStop();
     introRangeRef.current = null;
-    nextEpisodeInfoRef.current = null;
+    episodeInfoRef.current = null;
     setActive(null);
     setPlaying(false);
     effectiveTimeRef.current = null;
@@ -406,9 +405,10 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         dlPeers: dlPeersRef.current,
         introActive: !!(introRangeRef.current && ct >= introRangeRef.current.start && ct < introRangeRef.current.end),
         introEnd: introRangeRef.current?.end ?? null,
-        nearEnd: dur > 0 && (ct / dur) >= FINISHED_THRESHOLD,
-        nextSeason: nextEpisodeInfoRef.current?.season ?? 0,
-        nextEpisode: nextEpisodeInfoRef.current?.episode ?? 0,
+        mediaType: episodeInfoRef.current?.mediaType ?? "",
+        season: episodeInfoRef.current?.season ?? 0,
+        episode: episodeInfoRef.current?.episode ?? 0,
+        seasonEpisodeCount: episodeInfoRef.current?.seasonEpisodeCount ?? 0,
         subSize: subSizeRef.current,
         subDelay: subDelayRef.current,
         sources: sourcesRef.current,
@@ -451,7 +451,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
-      introRangeRef, nextEpisodeInfoRef, sourcesRef,
+      introRangeRef, episodeInfoRef, sourcesRef,
       subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, switching,
     }}>
       {children}

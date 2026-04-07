@@ -474,6 +474,10 @@
   text-align: center;
 }
 
+.remote-sub-size-val.active {
+  color: var(--accent, #e8a0bf);
+}
+
 /* ── Bottom actions ── */
 .remote-bottom-row {
   display: flex;
@@ -786,26 +790,25 @@
 
 /* ── Next Episode ── */
 .remote-next-episode {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  padding: 14px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
   cursor: pointer;
-  animation: skipIntroFadeIn 0.3s ease;
-  transition: background 0.15s;
+  transition: all var(--transition);
 }
 
 .remote-next-episode:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-surface);
+  border-color: var(--border);
 }
 
 .remote-next-episode:disabled {
@@ -814,7 +817,7 @@
 }
 
 .remote-next-episode-label {
-  opacity: 0.7;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
 }

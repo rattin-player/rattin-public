@@ -527,20 +527,6 @@ export default function Remote() {
         </button>
       )}
 
-      {state?.nearEnd && state?.nextSeason > 0 && state?.nextEpisode > 0 && (
-        <button
-          className="remote-next-episode"
-          onClick={() => sendCommand("next-episode", { season: state.nextSeason, episode: state.nextEpisode })}
-          disabled={isDisabled}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-          </svg>
-          Next Episode
-          <span className="remote-next-episode-label">S{state.nextSeason}E{state.nextEpisode}</span>
-        </button>
-      )}
-
       <div className="remote-seek-area">
         <span className="remote-time">{formatTime(ct)}</span>
         <div
@@ -557,6 +543,25 @@ export default function Remote() {
         </div>
         <span className="remote-time">{formatTime(dur)}</span>
       </div>
+
+      {state?.mediaType === "tv" && state?.season > 0 && state?.episode > 0 && (() => {
+        const isSeasonFinale = state.seasonEpisodeCount > 0 && state.episode >= state.seasonEpisodeCount;
+        const nextS = isSeasonFinale ? state.season + 1 : state.season;
+        const nextE = isSeasonFinale ? 1 : state.episode + 1;
+        return (
+          <button
+            className="remote-next-episode"
+            onClick={() => sendCommand("next-episode", { season: nextS, episode: nextE })}
+            disabled={isDisabled}
+          >
+            Next Episode
+            <span className="remote-next-episode-label">S{nextS}E{nextE}</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+          </button>
+        );
+      })()}
 
       {(state?.dlProgress ?? 1) < 1 && (
         <div className="remote-torrent-info">
@@ -601,7 +606,7 @@ export default function Remote() {
           </div>
           <div className="remote-sub-size">
             <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", -0.1)} disabled={isDisabled}>−0.1s</button>
-            <span className="remote-sub-size-val" style={{ color: (state.subDelay ?? 0) === 0 ? undefined : "#e8a0bf" }}>{(state.subDelay ?? 0).toFixed(1)}s</span>
+            <span className={`remote-sub-size-val${(state.subDelay ?? 0) !== 0 ? " active" : ""}`}>{(state.subDelay ?? 0).toFixed(1)}s</span>
             <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", 0.1)} disabled={isDisabled}>+0.1s</button>
           </div>
         </div>

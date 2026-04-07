@@ -33,7 +33,6 @@ import { useSubtitles } from "../lib/useSubtitles";
 import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
-import { useNextEpisode } from "../lib/useNextEpisode";
 import { formatBytes } from "../lib/utils";
 import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
@@ -45,7 +44,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, nextEpisodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef } = usePlayer();
+  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, episodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef } = usePlayer();
   // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
   // to the same URL in Qt WebEngine. Memoized to prevent new object reference every render.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -217,22 +216,34 @@ export default function Player() {
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
   });
 
-  // ── Next episode (Netflix-style "play next" near end of episode) ──
-  const onNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
+  // Sync episode metadata to PlayerContext for RC state broadcast
+  useEffect(() => {
+    if (state?.type === "tv" && state?.season != null && state?.episode != null) {
+      episodeInfoRef.current = {
+        mediaType: "tv",
+        season: Number(state.season),
+        episode: Number(state.episode),
+        seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : 0,
+      };
+    } else {
+      episodeInfoRef.current = state?.type ? { mediaType: state.type, season: 0, episode: 0, seasonEpisodeCount: 0 } : null;
+    }
+    return () => { episodeInfoRef.current = null; };
+  }, [state, episodeInfoRef]);
+
+  // ── Next episode (triggered by phone remote) ──
+  const handleNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
     if (!state?.tmdbId) return;
-    // Save progress before leaving
     beaconProgressRef.current();
     const title = state.baseName || mediaTitle;
     const year = state.year != null ? Number(state.year) : undefined;
     const imdbId = state.imdbId ?? undefined;
-    // Show loading overlay — bridge is certainly connected (we've been playing for 90%+)
     await waitForBridge();
     if (state.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${state.posterPath}`);
     mpvSetTitle(`${title} — S${nextSeason}E${nextEpisode}`);
     mpvSetLoadingStatus("Finding best stream...");
     mpvSetLoading(true);
     try {
-      // Fetch season metadata and stream in parallel
       const [result, seasonData] = await Promise.all([
         autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId),
         fetchSeason(state.tmdbId, nextSeason).catch(() => null),
@@ -242,7 +253,6 @@ export default function Player() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (ep: any) => ep.episode_number === nextEpisode
       )?.name;
-      // Navigate away, stop old player, then navigate to new
       navigate("/", { replace: true });
       await mpvStopAndWait();
       startStream(result.infoHash, result.fileIndex, `${title} — S${nextSeason}E${nextEpisode}`, result.tags || [], result.debridStreamKey);
@@ -257,23 +267,8 @@ export default function Player() {
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch {
       mpvSetLoading(false);
-      // If next episode fails, just stay on current
     }
   }, [state, mediaTitle, navigate, startStream]);
-
-  const { showNextEpisode, nextSeason, nextEpisode, handleNextEpisode, dismissNextEpisode } = useNextEpisode({
-    getEffectiveTime, effectiveTimeRef, location, onNextEpisode,
-  });
-
-  // Sync next episode info to PlayerContext for RC state broadcast
-  useEffect(() => {
-    if (nextSeason > 0 && nextEpisode > 0) {
-      nextEpisodeInfoRef.current = { season: nextSeason, episode: nextEpisode };
-    } else {
-      nextEpisodeInfoRef.current = null;
-    }
-    return () => { nextEpisodeInfoRef.current = null; };
-  }, [nextSeason, nextEpisode, nextEpisodeInfoRef]);
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
   const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -489,7 +484,7 @@ export default function Player() {
         activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
       },
       switchSource: handleSwitchSource,
-      nextEpisode: (season: number, episode: number) => onNextEpisode(season, episode),
+      nextEpisode: handleNextEpisode,
     };
   }
   useEffect(() => {
@@ -710,28 +705,6 @@ export default function Player() {
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
         </button>
-      )}
-
-      {showNextEpisode && (
-        <div className="player-next-episode-wrapper">
-          <button
-            className="player-next-episode"
-            onClick={(e) => { e.stopPropagation(); handleNextEpisode(); }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-            </svg>
-            Next Episode
-            <span className="player-next-episode-label">S{nextSeason}E{nextEpisode}</span>
-          </button>
-          <button
-            className="player-next-episode-dismiss"
-            onClick={(e) => { e.stopPropagation(); dismissNextEpisode(); }}
-            title="Dismiss"
-          >
-            &#10005;
-          </button>
-        </div>
       )}
 
       {/* Playback controls are handled by the native QML overlay (main.qml) */}
