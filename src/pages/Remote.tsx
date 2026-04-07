@@ -527,6 +527,20 @@ export default function Remote() {
         </button>
       )}
 
+      {state?.nearEnd && state?.nextSeason > 0 && state?.nextEpisode > 0 && (
+        <button
+          className="remote-next-episode"
+          onClick={() => sendCommand("next-episode", { season: state.nextSeason, episode: state.nextEpisode })}
+          disabled={isDisabled}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+          </svg>
+          Next Episode
+          <span className="remote-next-episode-label">S{state.nextSeason}E{state.nextEpisode}</span>
+        </button>
+      )}
+
       <div className="remote-seek-area">
         <span className="remote-time">{formatTime(ct)}</span>
         <div

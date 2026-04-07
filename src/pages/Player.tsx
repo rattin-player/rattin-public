@@ -33,10 +33,11 @@ import { useSubtitles } from "../lib/useSubtitles";
 import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
+import { useNextEpisode } from "../lib/useNextEpisode";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, reportWatchProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -44,7 +45,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef } = usePlayer();
+  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, nextEpisodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef } = usePlayer();
   // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
   // to the same URL in Qt WebEngine. Memoized to prevent new object reference every render.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -215,6 +216,55 @@ export default function Player() {
   const { introRange, showSkipIntro, handleSkipIntro } = useIntro({
     infoHash: infoHash!, fileIndex: fileIndex!, introRangeRef, getEffectiveTime, seekTo, location, mediaTitle,
   });
+
+  // ── Next episode (Netflix-style "play next" near end of episode) ──
+  const onNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
+    if (!state?.tmdbId) return;
+    // Save progress before leaving
+    beaconProgressRef.current();
+    const title = state.baseName || mediaTitle;
+    const year = state.year != null ? Number(state.year) : undefined;
+    const imdbId = state.imdbId ?? undefined;
+    // Show loading overlay
+    waitForBridge().then(() => {
+      if (state.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${state.posterPath}`);
+      mpvSetTitle(`${title} — S${nextSeason}E${nextEpisode}`);
+      mpvSetLoadingStatus("Finding best stream...");
+      mpvSetLoading(true);
+    });
+    try {
+      const result = await autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId);
+      // Navigate away, stop old player, then navigate to new
+      navigate("/", { replace: true });
+      await mpvStopAndWait();
+      startStream(result.infoHash, result.fileIndex, `${title} — S${nextSeason}E${nextEpisode}`, result.tags || [], result.debridStreamKey);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const navState: any = {
+        tags: result.tags, title: `${title} — S${nextSeason}E${nextEpisode}`, baseName: title,
+        tmdbId: state.tmdbId, year, type: "tv", imdbId, posterPath: state.posterPath ?? null,
+        season: nextSeason, episode: nextEpisode,
+      };
+      if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
+      navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
+    } catch {
+      mpvSetLoading(false);
+      // If next episode fails, just stay on current
+    }
+  }, [state, mediaTitle, navigate, startStream]);
+
+  const { showNextEpisode, nextSeason, nextEpisode, handleNextEpisode } = useNextEpisode({
+    getEffectiveTime, effectiveTimeRef, location, onNextEpisode,
+  });
+
+  // Sync next episode info to PlayerContext for RC state broadcast
+  useEffect(() => {
+    if (nextSeason > 0 && nextEpisode > 0) {
+      nextEpisodeInfoRef.current = { season: nextSeason, episode: nextEpisode };
+    } else {
+      nextEpisodeInfoRef.current = null;
+    }
+    return () => { nextEpisodeInfoRef.current = null; };
+  }, [nextSeason, nextEpisode, nextEpisodeInfoRef]);
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
   const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -430,6 +480,7 @@ export default function Player() {
         activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
       },
       switchSource: handleSwitchSource,
+      nextEpisode: (season: number, episode: number) => onNextEpisode(season, episode),
     };
   }
   useEffect(() => {
@@ -649,6 +700,19 @@ export default function Player() {
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
           </svg>
+        </button>
+      )}
+
+      {showNextEpisode && (
+        <button
+          className="player-next-episode"
+          onClick={(e) => { e.stopPropagation(); handleNextEpisode(); }}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+          </svg>
+          Next Episode
+          <span className="player-next-episode-label">S{nextSeason}E{nextEpisode}</span>
         </button>
       )}
 
