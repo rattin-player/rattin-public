@@ -132,6 +132,7 @@ export default function Detail() {
           tmdbId: id, posterPath: data.poster_path ?? null,
           episodeTitle: season != null ? (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name : undefined,
           seasonEpisodeCount: season != null ? episodes?.episodes?.length : undefined,
+          seasonCount: seasons?.length,
           resumePosition: resumePoint?.position > 0
             && (type === "movie" || (resumePoint.season === season && resumePoint.episode === episode))
             ? resumePoint.position : undefined,
@@ -181,6 +182,7 @@ export default function Detail() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === pickerEpisode)?.name;
         navState.seasonEpisodeCount = episodes?.episodes?.length;
+        navState.seasonCount = seasons?.length;
       }
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       // Pass resume position so switching sources doesn't lose progress
@@ -229,6 +231,7 @@ export default function Detail() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name;
           navState.seasonEpisodeCount = episodes?.episodes?.length;
+          navState.seasonCount = seasons?.length;
         }
         if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
         // Only attach resumePosition when playing the exact episode/movie the resume point refers to

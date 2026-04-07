@@ -63,7 +63,7 @@ interface PlayerContextValue {
   rcRemoteConnected: boolean;
   rcQrRequested: boolean;
   introRangeRef: MutableRefObject<IntroRange | null>;
-  episodeInfoRef: MutableRefObject<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number } | null>;
+  episodeInfoRef: MutableRefObject<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number; tmdbId?: string; imdbId?: string; seasonCount?: number; posterPath?: string } | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sourcesRef: MutableRefObject<any[]>;
   subSize: number;
@@ -125,7 +125,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const dlSpeedRef = useRef(0);
   const dlPeersRef = useRef(0);
   const introRangeRef = useRef<IntroRange | null>(null);
-  const episodeInfoRef = useRef<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number } | null>(null);
+  const episodeInfoRef = useRef<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number; tmdbId?: string; imdbId?: string; seasonCount?: number; posterPath?: string } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sourcesRef = useRef<any[]>([]);
   const [subSize, setSubSize] = useState(55);
@@ -302,7 +302,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
               tags: value.tags, title: value.title, debridStreamKey: value.debridStreamKey,
               year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
               tmdbId: value.tmdbId, posterPath: value.posterPath, episodeTitle: value.episodeTitle,
-              seasonEpisodeCount: value.seasonEpisodeCount, resumePosition: value.resumePosition,
+              seasonEpisodeCount: value.seasonEpisodeCount, seasonCount: value.seasonCount, resumePosition: value.resumePosition,
             };
 
             if (wasOnPlayer) {
@@ -409,6 +409,10 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         season: episodeInfoRef.current?.season ?? 0,
         episode: episodeInfoRef.current?.episode ?? 0,
         seasonEpisodeCount: episodeInfoRef.current?.seasonEpisodeCount ?? 0,
+        tmdbId: episodeInfoRef.current?.tmdbId ?? "",
+        imdbId: episodeInfoRef.current?.imdbId ?? "",
+        seasonCount: episodeInfoRef.current?.seasonCount ?? 0,
+        posterPath: episodeInfoRef.current?.posterPath ?? "",
         subSize: subSizeRef.current,
         subDelay: subDelayRef.current,
         sources: sourcesRef.current,
