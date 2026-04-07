@@ -24,7 +24,7 @@ export interface ResumePoint {
   position: number;
 }
 
-const FINISHED_THRESHOLD = 0.9;  // 90% = finished
+export const FINISHED_THRESHOLD = 0.9;  // 90% = finished
 const MIN_WATCH_SECONDS = 300;   // 5 minutes to count as "meaningful"
 
 function recordKey(mediaType: string, tmdbId: number, season?: number, episode?: number): string {

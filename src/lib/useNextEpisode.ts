@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type MutableRefObject } from "react";
-
-const FINISHED_THRESHOLD = 0.9; // same as watch-history.ts
+import { FINISHED_THRESHOLD } from "../../lib/storage/watch-history.js";
 
 interface EffectiveTime {
   time: number;
@@ -20,7 +19,10 @@ interface UseNextEpisodeReturn {
   nextSeason: number;
   nextEpisode: number;
   handleNextEpisode: () => void;
+  dismissNextEpisode: () => void;
 }
+
+const AUTO_HIDE_MS = 30_000; // auto-hide after 30s if not interacted with
 
 export function useNextEpisode(deps: UseNextEpisodeDeps): UseNextEpisodeReturn {
   const { getEffectiveTime, effectiveTimeRef, location, onNextEpisode } = deps;
@@ -28,6 +30,7 @@ export function useNextEpisode(deps: UseNextEpisodeDeps): UseNextEpisodeReturn {
   const [showNextEpisode, setShowNextEpisode] = useState(false);
   const wasNearEnd = useRef(false);
   const dismissed = useRef(false);
+  const autoHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Extract episode info from navigation state
   const state = location.state as Record<string, unknown> | null;
@@ -58,24 +61,41 @@ export function useNextEpisode(deps: UseNextEpisodeDeps): UseNextEpisodeReturn {
 
       if (nearEnd && !wasNearEnd.current) {
         setShowNextEpisode(true);
+        // Auto-hide after timeout
+        if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
+        autoHideTimer.current = setTimeout(() => {
+          setShowNextEpisode(false);
+          dismissed.current = true;
+        }, AUTO_HIDE_MS);
       }
       wasNearEnd.current = nearEnd;
     }
 
     const interval = setInterval(check, 500);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
+    };
   }, [isTV, effectiveTimeRef]);
 
   const handleNextEpisode = useCallback(() => {
     dismissed.current = true;
     setShowNextEpisode(false);
+    if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
     onNextEpisode(nextSeason, nextEpisode);
   }, [nextSeason, nextEpisode, onNextEpisode]);
+
+  const dismissNextEpisode = useCallback(() => {
+    dismissed.current = true;
+    setShowNextEpisode(false);
+    if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
+  }, []);
 
   return {
     showNextEpisode: showNextEpisode && isTV,
     nextSeason,
     nextEpisode,
     handleNextEpisode,
+    dismissNextEpisode,
   };
 }

@@ -95,11 +95,9 @@
 }
 
 /* Skip Intro Button */
-.player-skip-intro {
-  position: absolute;
-  bottom: 100px;
-  right: 30px;
-  z-index: 20;
+/* ── Shared player overlay button (Skip Intro, Next Episode) ── */
+.player-skip-intro,
+.player-next-episode {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -117,9 +115,17 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
-.player-skip-intro:hover {
+.player-skip-intro:hover,
+.player-next-episode:hover {
   background: rgba(255, 255, 255, 0.25);
   border-color: rgba(255, 255, 255, 0.6);
+}
+
+.player-skip-intro {
+  position: absolute;
+  bottom: 100px;
+  right: 30px;
+  z-index: 20;
 }
 
 @keyframes skipIntroFadeIn {
@@ -128,31 +134,36 @@
 }
 
 /* ── Next episode button (Netflix-style) ── */
-.player-next-episode {
+.player-next-episode-wrapper {
   position: absolute;
   bottom: 100px;
   right: 30px;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
-  border-radius: 6px;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  cursor: pointer;
+  gap: 6px;
   animation: skipIntroFadeIn 0.3s ease;
-  transition: background 0.15s, border-color 0.15s;
 }
 
-.player-next-episode:hover {
-  background: rgba(255, 255, 255, 0.25);
-  border-color: rgba(255, 255, 255, 0.6);
+/* Shift up when skip-intro is also visible */
+.player-skip-intro ~ .player-next-episode-wrapper {
+  bottom: 160px;
+}
+
+.player-next-episode-dismiss {
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.player-next-episode-dismiss:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 .player-next-episode-label {
