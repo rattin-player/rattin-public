@@ -4,6 +4,7 @@ import type { AudioTrackOption } from "./useAudioTracks";
 import { mpvTogglePause, mpvSetVolume, mpvSetSubFontSize, mpvStop, mpvStopAndWait, mpvPaused } from "./native-bridge";
 import { getRemoteSessionId, REMOTE_SESSION_EVENT } from "./remote-session";
 import { playbackKey } from "./playback-position";
+import { FINISHED_THRESHOLD } from "../../lib/storage/watch-history.js";
 
 interface ActiveStream {
   infoHash: string;
@@ -405,7 +406,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
         dlPeers: dlPeersRef.current,
         introActive: !!(introRangeRef.current && ct >= introRangeRef.current.start && ct < introRangeRef.current.end),
         introEnd: introRangeRef.current?.end ?? null,
-        nearEnd: dur > 0 && (ct / dur) >= 0.9,
+        nearEnd: dur > 0 && (ct / dur) >= FINISHED_THRESHOLD,
         nextSeason: nextEpisodeInfoRef.current?.season ?? 0,
         nextEpisode: nextEpisodeInfoRef.current?.episode ?? 0,
         subSize: subSizeRef.current,

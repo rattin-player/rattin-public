@@ -35,7 +35,7 @@ import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { useNextEpisode } from "../lib/useNextEpisode";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, reportWatchProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -225,15 +225,23 @@ export default function Player() {
     const title = state.baseName || mediaTitle;
     const year = state.year != null ? Number(state.year) : undefined;
     const imdbId = state.imdbId ?? undefined;
-    // Show loading overlay
-    waitForBridge().then(() => {
-      if (state.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${state.posterPath}`);
-      mpvSetTitle(`${title} — S${nextSeason}E${nextEpisode}`);
-      mpvSetLoadingStatus("Finding best stream...");
-      mpvSetLoading(true);
-    });
+    // Show loading overlay — bridge is certainly connected (we've been playing for 90%+)
+    await waitForBridge();
+    if (state.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${state.posterPath}`);
+    mpvSetTitle(`${title} — S${nextSeason}E${nextEpisode}`);
+    mpvSetLoadingStatus("Finding best stream...");
+    mpvSetLoading(true);
     try {
-      const result = await autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId);
+      // Fetch season metadata and stream in parallel
+      const [result, seasonData] = await Promise.all([
+        autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId),
+        fetchSeason(state.tmdbId, nextSeason).catch(() => null),
+      ]);
+      const seasonEpisodeCount = seasonData?.episodes?.length ?? undefined;
+      const episodeTitle = seasonData?.episodes?.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ep: any) => ep.episode_number === nextEpisode
+      )?.name;
       // Navigate away, stop old player, then navigate to new
       navigate("/", { replace: true });
       await mpvStopAndWait();
@@ -243,6 +251,7 @@ export default function Player() {
         tags: result.tags, title: `${title} — S${nextSeason}E${nextEpisode}`, baseName: title,
         tmdbId: state.tmdbId, year, type: "tv", imdbId, posterPath: state.posterPath ?? null,
         season: nextSeason, episode: nextEpisode,
+        episodeTitle, seasonEpisodeCount,
       };
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
@@ -252,7 +261,7 @@ export default function Player() {
     }
   }, [state, mediaTitle, navigate, startStream]);
 
-  const { showNextEpisode, nextSeason, nextEpisode, handleNextEpisode } = useNextEpisode({
+  const { showNextEpisode, nextSeason, nextEpisode, handleNextEpisode, dismissNextEpisode } = useNextEpisode({
     getEffectiveTime, effectiveTimeRef, location, onNextEpisode,
   });
 
@@ -704,16 +713,25 @@ export default function Player() {
       )}
 
       {showNextEpisode && (
-        <button
-          className="player-next-episode"
-          onClick={(e) => { e.stopPropagation(); handleNextEpisode(); }}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-          </svg>
-          Next Episode
-          <span className="player-next-episode-label">S{nextSeason}E{nextEpisode}</span>
-        </button>
+        <div className="player-next-episode-wrapper">
+          <button
+            className="player-next-episode"
+            onClick={(e) => { e.stopPropagation(); handleNextEpisode(); }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+            Next Episode
+            <span className="player-next-episode-label">S{nextSeason}E{nextEpisode}</span>
+          </button>
+          <button
+            className="player-next-episode-dismiss"
+            onClick={(e) => { e.stopPropagation(); dismissNextEpisode(); }}
+            title="Dismiss"
+          >
+            &#10005;
+          </button>
+        </div>
       )}
 
       {/* Playback controls are handled by the native QML overlay (main.qml) */}
