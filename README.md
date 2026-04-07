@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/remote-phone-34A853?style=for-the-badge&logo=android&logoColor=white" alt="Remote" />
 </p>
 
+<img width="1918" height="1077" alt="image" src="https://github.com/user-attachments/assets/e1f1aa65-a8d1-494e-8259-a894b198bde7" />
+
 ---
 
 ## Why Rattin
