@@ -125,7 +125,7 @@ export default function Player() {
     try {
       const result = await playTorrent(
         source.infoHash, source.name,
-        state?.pickerSeason, state?.pickerEpisode,
+        state?.season, state?.episode,
       );
       const newTags = result.tags || source.tags || [];
       setCurrentTags(newTags);
