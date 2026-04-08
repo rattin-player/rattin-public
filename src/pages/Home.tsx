@@ -93,6 +93,7 @@ export default function Home() {
             year: item.year, type: item.mediaType, season: item.season, episode: item.episode,
             imdbId: item.imdbId, tmdbId: item.tmdbId, posterPath: item.posterPath,
             episodeTitle: item.episodeTitle, seasonEpisodeCount: item.seasonEpisodeCount,
+            seasonCount: item.seasonCount,
             resumePosition: item.position > 0 ? item.position : undefined,
           },
         }),
@@ -116,6 +117,7 @@ export default function Home() {
       episode: item.episode,
       episodeTitle: item.episodeTitle,
       seasonEpisodeCount: item.seasonEpisodeCount,
+      seasonCount: item.seasonCount,
       resumePosition: item.position > 0 ? item.position : undefined,
     };
     if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;

@@ -154,6 +154,20 @@ describe("WatchHistory.getContinueWatching", () => {
     assert.ok(!items.find((i) => i.tmdbId === 50));
   });
 
+  it("does not include 'next up' past known final season", () => {
+    wh.recordProgress(makeRecord({
+      tmdbId: 51,
+      season: 2,
+      episode: 10,
+      seasonEpisodeCount: 10,
+      seasonCount: 2,
+      position: 2400,
+      duration: 2400,
+    }));
+    const items = wh.getContinueWatching().filter((i) => i.tmdbId === 51);
+    assert.equal(items.length, 0);
+  });
+
   it("limits to 20 items", () => {
     for (let i = 1; i <= 25; i++) {
       wh.recordProgress(makeRecord({ tmdbId: i, episode: i, position: 600 }));
@@ -188,6 +202,19 @@ describe("WatchHistory.getResumePoint", () => {
     assert.equal(rp.season, 1);
     assert.equal(rp.episode, 4);
     assert.equal(rp.position, 0);
+  });
+
+  it("returns null when all recorded are finished at known series finale", () => {
+    wh.recordProgress(makeRecord({
+      tmdbId: 11,
+      season: 3,
+      episode: 8,
+      seasonEpisodeCount: 8,
+      seasonCount: 3,
+      position: 2400,
+      duration: 2400,
+    }));
+    assert.equal(wh.getResumePoint(11, "tv"), null);
   });
 
   it("resumes most recent unfinished even if earlier episodes are also unfinished", async () => {
@@ -296,6 +323,20 @@ describe("WatchHistory.dismiss", () => {
     assert.equal(wh.getProgress("tv", 10, 1, 1)!.dismissed, true);
     // Episode 2 should not be dismissed (dismissed is false because recordProgress sets it)
     assert.equal(wh.getProgress("tv", 10, 1, 2)!.dismissed, false);
+  });
+
+  it("dismisses synthetic next-up items by marking source episode dismissed", () => {
+    wh.recordProgress(makeRecord({ tmdbId: 12, episode: 1, position: 2400, duration: 2400 }));
+    wh.recordProgress(makeRecord({ tmdbId: 12, episode: 2, position: 2400, duration: 2400 }));
+    const before = wh.getContinueWatching().find((i) => i.tmdbId === 12);
+    assert.ok(before);
+    assert.equal(before!.episode, 3);
+
+    wh.dismiss("tv", 12, 1, 3);
+
+    const after = wh.getContinueWatching().find((i) => i.tmdbId === 12);
+    assert.equal(after, undefined);
+    assert.equal(wh.getProgress("tv", 12, 1, 2)?.dismissed, true);
   });
 
   it("no-op for nonexistent record", () => {

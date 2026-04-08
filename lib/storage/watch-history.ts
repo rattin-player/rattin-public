@@ -9,6 +9,7 @@ export interface WatchRecord {
   episode?: number;
   episodeTitle?: string;
   seasonEpisodeCount?: number; // total episodes in this season (from TMDB)
+  seasonCount?: number; // total seasons in the series (from TMDB)
   position: number;   // seconds
   duration: number;   // seconds
   finished: boolean;
@@ -34,6 +35,16 @@ function recordKey(mediaType: string, tmdbId: number, season?: number, episode?:
   return `${mediaType}:${tmdbId}`;
 }
 
+function nextEpisodeFrom(record: WatchRecord): { season: number; episode: number } | null {
+  const season = record.season ?? 1;
+  const episode = record.episode ?? 0;
+  const isSeasonFinale = record.seasonEpisodeCount != null && episode >= record.seasonEpisodeCount;
+  if (!isSeasonFinale) return { season, episode: episode + 1 };
+  const isSeriesFinale = record.seasonCount != null && season >= record.seasonCount;
+  if (isSeriesFinale) return null;
+  return { season: season + 1, episode: 1 };
+}
+
 export class WatchHistory {
   constructor(private store: JsonStore<WatchRecord>) {}
 
@@ -42,8 +53,22 @@ export class WatchHistory {
     const existing = this.store.get(key);
     // If duration is unknown (0), preserve the existing duration if we have one
     const duration = record.duration > 0 ? record.duration : (existing?.duration ?? 0);
+    const seasonEpisodeCount = record.seasonEpisodeCount != null
+      ? record.seasonEpisodeCount
+      : existing?.seasonEpisodeCount;
+    const seasonCount = record.seasonCount != null
+      ? record.seasonCount
+      : existing?.seasonCount;
     const finished = duration > 0 && (record.position / duration) >= FINISHED_THRESHOLD;
-    this.store.set(key, { ...record, duration, finished, dismissed: false, updatedAt: new Date().toISOString() });
+    this.store.set(key, {
+      ...record,
+      duration,
+      seasonEpisodeCount,
+      seasonCount,
+      finished,
+      dismissed: false,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   getProgress(mediaType: string, tmdbId: number, season?: number, episode?: number): WatchRecord | undefined {
@@ -80,12 +105,12 @@ export class WatchHistory {
         });
         const last = sorted[sorted.length - 1];
         if (last.dismissed) continue;
-        const lastEp = last.episode ?? 0;
-        const isSeasonFinale = last.seasonEpisodeCount != null && lastEp >= last.seasonEpisodeCount;
+        const next = nextEpisodeFrom(last);
+        if (!next) continue;
         nextUp.push({
           ...last,
-          season: isSeasonFinale ? (last.season ?? 1) + 1 : (last.season ?? 1),
-          episode: isSeasonFinale ? 1 : lastEp + 1,
+          season: next.season,
+          episode: next.episode,
           position: 0,
           duration: 0,
           finished: false,
@@ -156,11 +181,11 @@ export class WatchHistory {
 
     // All recorded episodes are finished — suggest the next one after the last in order
     const last = episodes[episodes.length - 1];
-    const lastEp = last.episode ?? 0;
-    const isSeasonFinale = last.seasonEpisodeCount != null && lastEp >= last.seasonEpisodeCount;
+    const next = nextEpisodeFrom(last);
+    if (!next) return null;
     return {
-      season: isSeasonFinale ? (last.season ?? 1) + 1 : (last.season ?? 1),
-      episode: isSeasonFinale ? 1 : lastEp + 1,
+      season: next.season,
+      episode: next.episode,
       position: 0,
     };
   }
@@ -169,7 +194,22 @@ export class WatchHistory {
   dismiss(mediaType: string, tmdbId: number, season?: number, episode?: number): void {
     const key = recordKey(mediaType, tmdbId, season, episode);
     const record = this.store.get(key);
-    if (record) this.store.set(key, { ...record, dismissed: true });
+    if (record) {
+      this.store.set(key, { ...record, dismissed: true });
+      return;
+    }
+
+    // Synthetic TV "next up" entries have no direct backing record key.
+    // If the dismissed item matches the computed next episode from the last
+    // finished record, dismiss that source record so the synthetic row stays hidden.
+    if (mediaType !== "tv" || season == null || episode == null) return;
+    const episodes = this.getSeriesProgress(tmdbId);
+    if (episodes.length === 0 || episodes.some((e) => !e.finished)) return;
+    const last = episodes[episodes.length - 1];
+    const next = nextEpisodeFrom(last);
+    if (!next || next.season !== season || next.episode !== episode) return;
+    const lastKey = recordKey("tv", tmdbId, last.season, last.episode);
+    this.store.set(lastKey, { ...last, dismissed: true });
   }
 
   get size(): number { return this.store.size; }

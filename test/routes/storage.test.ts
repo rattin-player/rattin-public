@@ -175,6 +175,40 @@ describe("Storage routes", () => {
       const spBody = await spRes.json() as { episodes: Array<{ episode: number; position: number }> };
       assert.ok(spBody.episodes.some((e) => e.episode === 1 && e.position === 600));
     });
+
+    it("dismisses synthetic next-up entries for completed TV progress", async () => {
+      await fetch(`${baseUrl}/api/watch-history/progress`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tmdbId: 501, mediaType: "tv", title: "Synthetic Dismiss Test",
+          posterPath: null, season: 1, episode: 1, position: 2400, duration: 2400,
+        }),
+      });
+      await fetch(`${baseUrl}/api/watch-history/progress`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tmdbId: 501, mediaType: "tv", title: "Synthetic Dismiss Test",
+          posterPath: null, season: 1, episode: 2, position: 2400, duration: 2400,
+        }),
+      });
+
+      const beforeRes = await fetch(`${baseUrl}/api/watch-history/continue`);
+      const before = await beforeRes.json() as { items: Array<{ tmdbId: number; season?: number; episode?: number }> };
+      assert.ok(before.items.some((i) => i.tmdbId === 501 && i.season === 1 && i.episode === 3));
+
+      const dismissRes = await fetch(`${baseUrl}/api/watch-history/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tmdbId: 501, mediaType: "tv", season: 1, episode: 3 }),
+      });
+      assert.equal(dismissRes.status, 200);
+
+      const afterRes = await fetch(`${baseUrl}/api/watch-history/continue`);
+      const after = await afterRes.json() as { items: Array<{ tmdbId: number }> };
+      assert.ok(!after.items.some((i) => i.tmdbId === 501));
+    });
   });
 
   // ── Saved List ─────────────────────────────────────────────────────
