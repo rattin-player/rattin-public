@@ -484,6 +484,7 @@ export default function Detail() {
                               episode: ep.episode_number,
                               episodeTitle: ep.name,
                               seasonEpisodeCount: episodes?.episodes?.length,
+                              seasonCount: seasons?.length,
                               position: nowFinished ? dur : 0,
                               duration: dur,
                             }).then(() => {

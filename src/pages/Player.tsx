@@ -266,6 +266,7 @@ export default function Player() {
         tmdbId: state.tmdbId, year, type: "tv", imdbId, posterPath: state.posterPath ?? null,
         season: nextSeason, episode: nextEpisode,
         episodeTitle, seasonEpisodeCount,
+        seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
       };
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
@@ -514,6 +515,7 @@ export default function Player() {
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
+      seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
       position: pos,
       duration: dur,
       imdbId: state.imdbId ?? undefined,
@@ -541,6 +543,7 @@ export default function Player() {
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
+      seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
       position: pos,
       duration: Math.floor(time.duration),
       imdbId: state.imdbId ?? undefined,
@@ -582,6 +585,7 @@ export default function Player() {
       episode: state.episode != null ? Number(state.episode) : undefined,
       episodeTitle: state.episodeTitle ?? undefined,
       seasonEpisodeCount: state.seasonEpisodeCount != null ? Number(state.seasonEpisodeCount) : undefined,
+      seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
       position: 0,
       duration: 0,
       imdbId: state.imdbId ?? undefined,
