@@ -29,7 +29,7 @@ jobs:
           version: '6.7.3'
           host: linux
           target: desktop
-          modules: qtwebengine qtwebchannel qtpositioning qtwayland
+          modules: qtwebengine qtwebchannel qtpositioning
 
       - uses: actions/setup-node@v4
         with:
