@@ -779,13 +779,10 @@
 }
 
 .cast-header {
-  margin-bottom: 16px;
-}
-
-.cast-header h3 {
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 16px;
 }
 
 .cast-grid {

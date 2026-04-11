@@ -75,15 +75,7 @@ export default function Detail() {
   function refreshResumePoint() {
     if (!id) return;
     fetchResumePoint(Number(id), type).then((r) => {
-      let point = r.resumePoint;
-      // Validate resume point against available TMDB seasons for TV shows
-      if (point && type === "tv" && data?.seasons) {
-        const availableSeasons = data.seasons.filter((s: any) => s.season_number > 0);
-        const maxSeason = Math.max(...availableSeasons.map((s: any) => s.season_number), 0);
-        if (point.season > maxSeason) {
-          point = null; // Resume point refers to non-existent season
-        }
-      }
+      const point = isValidResumePoint(r.resumePoint, data?.seasons?.filter((s: any) => s.season_number > 0)) ? r.resumePoint : null;
       setResumePoint(point);
       if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
         setSelectedSeason(point.season);
@@ -101,11 +93,9 @@ export default function Detail() {
 
   // Re-validate resume point when data (seasons) loads
   useEffect(() => {
-    if (type !== "tv" || !resumePoint || !data?.seasons) return;
-    const availableSeasons = data.seasons.filter((s: any) => s.season_number > 0);
-    const maxSeason = Math.max(...availableSeasons.map((s: any) => s.season_number), 0);
-    if (resumePoint.season > maxSeason) {
-      setResumePoint(null); // Clear invalid resume point
+    if (type !== "tv" || !resumePoint || !seasons) return;
+    if (!isValidResumePoint(resumePoint, seasons)) {
+      setResumePoint(null);
     }
   }, [data?.seasons, resumePoint, type]);
 
@@ -292,9 +282,7 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seasons = data.seasons?.filter((s: any) => s.season_number > 0);
   const genres = data.genres || [];
-  const cast = [...(data.credits?.cast || [])]
-    .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
-    .slice(0, 20);
+  const cast = (data.credits?.cast || []).slice(0, 20);
 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -569,14 +557,12 @@ export default function Detail() {
 
         {cast && cast.length > 0 && (
           <div className="cast-section">
-            <div className="cast-header">
-              <h3>Cast</h3>
-            </div>
+            <h3 className="cast-header">Cast</h3>
             <div className="cast-grid">
               {(castExpanded ? cast : cast.slice(0, 6)).map((c: any) => (
                 <div key={c.id} className="cast-card">
                   {c.profile_path ? (
-                    <img className="cast-photo" src={castProfile(c.profile_path)!} alt={c.name} loading="lazy" />
+                    <img className="cast-photo" src={castProfile(c.profile_path) ?? ""} alt={c.name} loading="lazy" />
                   ) : (
                     <div className="cast-photo-placeholder">
                       {c.name.charAt(0).toUpperCase()}
