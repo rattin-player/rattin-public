@@ -7,6 +7,14 @@ import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingS
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
+// Helper to check if resume point season exists in available seasons
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isValidResumePoint(resumePoint: any, seasons: any[]): boolean {
+  if (!resumePoint || resumePoint.season <= 0 || !seasons?.length) return false;
+  const maxSeason = Math.max(...seasons.map((s) => s.season_number), 0);
+  return resumePoint.season <= maxSeason;
+}
+
 export default function Detail() {
   const { id } = useParams();
   const location = useLocation();
@@ -65,9 +73,18 @@ export default function Detail() {
   function refreshResumePoint() {
     if (!id) return;
     fetchResumePoint(Number(id), type).then((r) => {
-      setResumePoint(r.resumePoint);
-      if (r.resumePoint?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
-        setSelectedSeason(r.resumePoint.season);
+      let point = r.resumePoint;
+      // Validate resume point against available TMDB seasons for TV shows
+      if (point && type === "tv" && data?.seasons) {
+        const availableSeasons = data.seasons.filter((s: any) => s.season_number > 0);
+        const maxSeason = Math.max(...availableSeasons.map((s: any) => s.season_number), 0);
+        if (point.season > maxSeason) {
+          point = null; // Resume point refers to non-existent season
+        }
+      }
+      setResumePoint(point);
+      if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
+        setSelectedSeason(point.season);
       }
     }).catch(() => {});
   }
@@ -79,6 +96,16 @@ export default function Detail() {
     refreshResumePoint();
     checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
   }, [id, type]);
+
+  // Re-validate resume point when data (seasons) loads
+  useEffect(() => {
+    if (type !== "tv" || !resumePoint || !data?.seasons) return;
+    const availableSeasons = data.seasons.filter((s: any) => s.season_number > 0);
+    const maxSeason = Math.max(...availableSeasons.map((s: any) => s.season_number), 0);
+    if (resumePoint.season > maxSeason) {
+      setResumePoint(null); // Clear invalid resume point
+    }
+  }, [data?.seasons, resumePoint, type]);
 
   // Fetch episode progress for TV
   useEffect(() => {
@@ -324,7 +351,7 @@ export default function Detail() {
               <button
                 className="detail-play-btn"
                 onClick={() => {
-                  if (resumePoint && type === "tv" && resumePoint.season > 0) {
+                  if (type === "tv" && isValidResumePoint(resumePoint, seasons)) {
                     handlePlay(resumePoint.season, resumePoint.episode);
                   } else if (type === "tv") {
                     handlePlay(1, 1);
@@ -341,9 +368,9 @@ export default function Detail() {
                     <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
                       <path d="M8 5v14l11-7z" />
                     </svg>
-                    {resumePoint && type === "tv" && resumePoint.season > 0
+                    {type === "tv" && isValidResumePoint(resumePoint, seasons)
                       ? `Resume S${resumePoint.season}E${resumePoint.episode}`
-                      : resumePoint && type === "movie" && resumePoint.position > 0
+                      : type === "movie" && resumePoint?.position > 0
                         ? "Resume"
                         : "Play"}
                   </>
