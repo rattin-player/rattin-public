@@ -76,6 +76,19 @@ if (Test-Path $NodeExe) {
     $nodeZip = Join-Path $ToolsDir "node.zip"
     $nodeUrl = "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-$Arch.zip"
     Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip
+    # SHA256 verification
+    Log "Verifying Node.js checksum"
+    $shaUrl = "https://nodejs.org/dist/v$NodeVersion/SHASUMS256.txt"
+    $shaFile = Join-Path $ToolsDir "node-shasums.txt"
+    Invoke-WebRequest -Uri $shaUrl -OutFile $shaFile
+    $expected = (Get-Content $shaFile | Select-String "node-v$NodeVersion-win-$Arch.zip").ToString().Split(" ")[0]
+    $actual = (Get-FileHash $nodeZip -Algorithm SHA256).Hash.ToLower()
+    Remove-Item $shaFile
+    if ($expected -ne $actual) {
+        Remove-Item $nodeZip
+        Die "Node.js checksum mismatch! Expected: $expected Got: $actual"
+    }
+    Log "Node.js checksum verified"
     Expand-Archive $nodeZip -DestinationPath $ToolsDir -Force
     Rename-Item (Join-Path $ToolsDir "node-v$NodeVersion-win-$Arch") $NodeDir
     Remove-Item $nodeZip
@@ -223,7 +236,104 @@ Push-Location $AppDir
 Pop-Location
 
 # ---------------------------------------------------------------------------
-# Step 5: Create portable ZIP
+# Step 5: Verify distribution
+# ---------------------------------------------------------------------------
+function Verify-Distribution {
+    Log "Verifying distribution contents..."
+    $errors = 0
+
+    # Core binaries
+    foreach ($bin in @("rattin-shell.exe", "rattin-runtime.exe", "libmpv-2.dll")) {
+        if (-not (Test-Path (Join-Path $DistDir $bin))) {
+            Write-Host "[ERROR] Missing binary: $bin" -ForegroundColor Red
+            $errors++
+        }
+    }
+
+    # VC++ runtime DLLs
+    foreach ($dll in @("vcruntime140.dll", "msvcp140.dll")) {
+        if (-not (Test-Path (Join-Path $DistDir $dll))) {
+            Write-Host "[ERROR] Missing VC++ runtime: $dll" -ForegroundColor Red
+            $errors++
+        }
+    }
+
+    # Qt DLLs (windeployqt should have placed these)
+    foreach ($qt in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Quick.dll",
+                      "Qt6WebEngineCore.dll", "Qt6Network.dll", "Qt6WebChannel.dll")) {
+        if (-not (Test-Path (Join-Path $DistDir $qt))) {
+            Write-Host "[ERROR] Missing Qt DLL: $qt" -ForegroundColor Red
+            $errors++
+        }
+    }
+
+    # QtWebEngineProcess — Chromium subprocess
+    $webEngineProc = Join-Path $DistDir "QtWebEngineProcess.exe"
+    if (-not (Test-Path $webEngineProc)) {
+        Write-Host "[ERROR] Missing QtWebEngineProcess.exe (Chromium subprocess)" -ForegroundColor Red
+        $errors++
+    }
+
+    # Server bundle — must exist and be non-trivial
+    $serverJs = Join-Path $AppDir "server.js"
+    if (-not (Test-Path $serverJs)) {
+        Write-Host "[ERROR] Missing server.js bundle" -ForegroundColor Red
+        $errors++
+    } else {
+        $serverSize = (Get-Item $serverJs).Length
+        if ($serverSize -lt 10000) {
+            Write-Host "[ERROR] server.js suspiciously small ($serverSize bytes) — esbuild likely failed" -ForegroundColor Red
+            $errors++
+        }
+        # Syntax check with bundled node
+        $runtimeExe = Join-Path $DistDir "rattin-runtime.exe"
+        if (Test-Path $runtimeExe) {
+            $checkResult = & $runtimeExe --check $serverJs 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[ERROR] server.js has syntax errors: $checkResult" -ForegroundColor Red
+                $errors++
+            }
+        }
+    }
+
+    # Frontend assets
+    $publicDir = Join-Path $AppDir "public"
+    if (-not (Test-Path (Join-Path $publicDir "index.html"))) {
+        Write-Host "[ERROR] Missing frontend: public/index.html" -ForegroundColor Red
+        $errors++
+    }
+    if (-not (Get-ChildItem (Join-Path $publicDir "assets") -Filter "*.js" -ErrorAction SilentlyContinue)) {
+        Write-Host "[ERROR] Missing frontend JS assets in public/assets/" -ForegroundColor Red
+        $errors++
+    }
+    if (-not (Get-ChildItem (Join-Path $publicDir "assets") -Filter "*.css" -ErrorAction SilentlyContinue)) {
+        Write-Host "[ERROR] Missing frontend CSS assets in public/assets/" -ForegroundColor Red
+        $errors++
+    }
+
+    # node_modules
+    if (-not (Test-Path (Join-Path $AppDir "node_modules"))) {
+        Write-Host "[ERROR] Missing node_modules (npm ci --omit=dev likely failed)" -ForegroundColor Red
+        $errors++
+    }
+
+    # Icon
+    if (-not (Test-Path (Join-Path $DistDir "rattin.ico"))) {
+        Write-Host "[ERROR] Missing rattin.ico" -ForegroundColor Red
+        $errors++
+    }
+
+    if ($errors -gt 0) {
+        Die "Distribution verification failed with $errors error(s) — refusing to package"
+    }
+
+    Log "Distribution verification passed"
+}
+
+Verify-Distribution
+
+# ---------------------------------------------------------------------------
+# Step 6: Create portable ZIP (was Step 5)
 # ---------------------------------------------------------------------------
 $zipOutput = Join-Path $RepoRoot "$AppName-$Arch-Portable.zip"
 Log "Creating portable ZIP: $zipOutput"
@@ -231,7 +341,7 @@ if (Test-Path $zipOutput) { Remove-Item $zipOutput }
 Compress-Archive -Path $DistDir -DestinationPath $zipOutput
 
 # ---------------------------------------------------------------------------
-# Step 6: NSIS installer (optional)
+# Step 7: NSIS installer (optional)
 # ---------------------------------------------------------------------------
 $makensis = Get-Command makensis -ErrorAction SilentlyContinue
 $nsiScript = Join-Path $RepoRoot "packaging/windows/rattin.nsi"
