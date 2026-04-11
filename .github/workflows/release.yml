@@ -174,9 +174,15 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: |
-          $url = "https://sourceforge.net/projects/nsis/files/NSIS%203/3.10/nsis-3.10-setup.exe/download"
-          Invoke-WebRequest -Uri $url -OutFile nsis-setup.exe -MaximumRedirection 5
-          Start-Process -FilePath .\nsis-setup.exe -ArgumentList '/S' -Wait
+          for ($i = 1; $i -le 3; $i++) {
+              choco install nsis -y 2>&1
+              if (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe") { break }
+              Write-Host "NSIS not found after attempt $i, retrying in 15s..."
+              Start-Sleep -Seconds 15
+          }
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+              throw "Failed to install NSIS after 3 attempts"
+          }
 
       - name: Build NSIS installer
         shell: pwsh
