@@ -173,7 +173,10 @@ jobs:
 
       - name: Install NSIS
         shell: pwsh
-        run: choco install nsis -y
+        run: |
+          $url = "https://sourceforge.net/projects/nsis/files/NSIS%203/3.10/nsis-3.10-setup.exe/download"
+          Invoke-WebRequest -Uri $url -OutFile nsis-setup.exe -MaximumRedirection 5
+          Start-Process -FilePath .\nsis-setup.exe -ArgumentList '/S' -Wait
 
       - name: Build NSIS installer
         shell: pwsh
