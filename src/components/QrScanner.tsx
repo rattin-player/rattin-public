@@ -17,6 +17,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const canvasDimsRef = useRef({ width: 0, height: 0 });
   const [error, setError] = useState<string | null>(null);
   const [manualUrl, setManualUrl] = useState("");
   const [scanningMethod, setScanningMethod] = useState<ScanningMethod>(null);
@@ -92,9 +93,14 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
             return;
           }
 
-          // Match canvas size to video
-          canvas.width = v.videoWidth || 640;
-          canvas.height = v.videoHeight || 480;
+          // Resize canvas only when video dimensions change
+          const vw = v.videoWidth || 640;
+          const vh = v.videoHeight || 480;
+          if (canvasDimsRef.current.width !== vw || canvasDimsRef.current.height !== vh) {
+            canvas.width = vw;
+            canvas.height = vh;
+            canvasDimsRef.current = { width: vw, height: vh };
+          }
 
           // Draw video frame to canvas
           ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
@@ -164,7 +170,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
           </button>
         </div>
 
-        {scanningMethod && !error ? (
+        {!error ? (
           <div className="qr-scanner-camera">
             <video ref={videoRef} playsInline muted />
             <div className="qr-scanner-frame" />
