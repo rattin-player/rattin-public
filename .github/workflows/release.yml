@@ -33,7 +33,7 @@ jobs:
           version: '6.7.3'
           host: linux
           target: desktop
-          modules: qtwebengine qtwebchannel qtpositioning
+          modules: qtwebengine qtwebchannel qtpositioning qtserialport
 
       - uses: actions/setup-node@v4
         with:
