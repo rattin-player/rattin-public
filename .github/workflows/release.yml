@@ -61,6 +61,62 @@ jobs:
       - name: Build AppImage
         run: bash install/build-appimage.sh --clean
 
+      - name: Smoke test AppImage
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y xvfb
+          chmod +x Rattin-x86_64.AppImage
+          export APPIMAGE_EXTRACT_AND_RUN=1
+
+          # Start the app with a virtual display and capture all output
+          xvfb-run --auto-servernum ./Rattin-x86_64.AppImage &> /tmp/smoke.log &
+          APP_PID=$!
+
+          # Wait up to 30s for the server to start
+          started=false
+          for i in $(seq 1 30); do
+            if grep -q "Rattin running at" /tmp/smoke.log 2>/dev/null; then
+              started=true
+              break
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "::error::App crashed during startup"
+              cat /tmp/smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$started" != "true" ]; then
+            echo "::error::Server did not start within 30s"
+            cat /tmp/smoke.log
+            kill "$APP_PID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Server started"
+
+          # Verify HTTP response
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9630 || true)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Server responded with HTTP $HTTP_CODE (expected 200)"
+            cat /tmp/smoke.log
+            kill "$APP_PID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "HTTP 200 OK"
+
+          # Check for known failure patterns in logs
+          if grep -qiE "(Cannot load library|module not found|FATAL|Segmentation fault|SIGABRT|SIGILL)" /tmp/smoke.log; then
+            echo "::error::Found error patterns in startup logs:"
+            grep -iE "(Cannot load library|module not found|FATAL|Segmentation fault|SIGABRT|SIGILL)" /tmp/smoke.log
+            kill "$APP_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Smoke test passed"
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
@@ -310,6 +366,77 @@ jobs:
             /DOUTPUT="$output" `
             /X"!addplugindir /x86-unicode $pluginDir\x86-unicode" `
             packaging/windows/rattin.nsi
+
+      - name: Smoke test distribution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = "$env:GITHUB_WORKSPACE/Rattin"
+          $logFile = "$env:TEMP/smoke.log"
+
+          # Start the app and capture output
+          $proc = Start-Process -FilePath "$dist/rattin-shell.exe" `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError "$env:TEMP/smoke-err.log" `
+            -PassThru
+
+          # Wait up to 30s for server to start
+          $started = $false
+          for ($i = 1; $i -le 30; $i++) {
+              Start-Sleep -Seconds 1
+              if ($proc.HasExited) {
+                  Write-Error "App crashed during startup (exit code: $($proc.ExitCode))"
+                  Get-Content $logFile -ErrorAction SilentlyContinue
+                  Get-Content "$env:TEMP/smoke-err.log" -ErrorAction SilentlyContinue
+                  exit 1
+              }
+              $logs = ""
+              if (Test-Path $logFile) { $logs += Get-Content $logFile -Raw -ErrorAction SilentlyContinue }
+              if (Test-Path "$env:TEMP/smoke-err.log") { $logs += Get-Content "$env:TEMP/smoke-err.log" -Raw -ErrorAction SilentlyContinue }
+              if ($logs -match "Rattin running at") {
+                  $started = $true
+                  break
+              }
+          }
+
+          if (-not $started) {
+              Write-Error "Server did not start within 30s"
+              Get-Content $logFile -ErrorAction SilentlyContinue
+              Get-Content "$env:TEMP/smoke-err.log" -ErrorAction SilentlyContinue
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              exit 1
+          }
+          Write-Host "Server started"
+
+          # Verify HTTP response
+          try {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:9630" -UseBasicParsing -TimeoutSec 10
+              if ($response.StatusCode -ne 200) {
+                  Write-Error "Server responded with HTTP $($response.StatusCode)"
+                  Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                  exit 1
+              }
+              Write-Host "HTTP 200 OK"
+          } catch {
+              Write-Error "HTTP request failed: $_"
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              exit 1
+          }
+
+          # Check for error patterns
+          $allLogs = ""
+          if (Test-Path $logFile) { $allLogs += Get-Content $logFile -Raw -ErrorAction SilentlyContinue }
+          if (Test-Path "$env:TEMP/smoke-err.log") { $allLogs += Get-Content "$env:TEMP/smoke-err.log" -Raw -ErrorAction SilentlyContinue }
+          $errorPatterns = "Cannot load library|module not found|FATAL|SIGABRT"
+          if ($allLogs -match $errorPatterns) {
+              Write-Error "Found error patterns in startup logs"
+              Write-Host $allLogs
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              exit 1
+          }
+
+          Write-Host "Smoke test passed"
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v4
