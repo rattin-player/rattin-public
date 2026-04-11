@@ -6,6 +6,24 @@
 
 HERE="$(dirname "$(readlink -f "$0")")"
 
+# ── App directories ─────────────────────────────────────────────────────────
+export MAGNET_APP_DIR="$HERE/usr/share/rattin/app/"
+export MAGNET_NODE_PATH="$HERE/usr/share/rattin/node/bin/node"
+
+# ── Config setup (before LD_LIBRARY_PATH so system commands use host libs) ──
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
+export MAGNET_CONFIG_DIR="$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR"
+
+# First-run: create .env from bundled example
+if [ ! -f "$CONFIG_DIR/.env" ]; then
+    if [ -f "$MAGNET_APP_DIR/.env.example" ]; then
+        cp "$MAGNET_APP_DIR/.env.example" "$CONFIG_DIR/.env"
+    else
+        echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
+    fi
+fi
+
 # ── Library paths (Qt6, libmpv, codecs) ──────────────────────────────────────
 export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
@@ -20,23 +38,5 @@ export QTWEBENGINE_CHROMIUM_FLAGS="${QTWEBENGINE_CHROMIUM_FLAGS:+$QTWEBENGINE_CH
 
 # ── PATH — bundled node, ffmpeg, ffprobe ─────────────────────────────────────
 export PATH="$HERE/usr/share/rattin/node/bin:$HERE/usr/bin:$PATH"
-
-# ── App directories ─────────────────────────────────────────────────────────
-export MAGNET_APP_DIR="$HERE/usr/share/rattin/app/"
-export MAGNET_NODE_PATH="$HERE/usr/share/rattin/node/bin/node"
-
-# Writable config directory (outside the read-only AppImage mount)
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rattin"
-export MAGNET_CONFIG_DIR="$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR"
-
-# First-run: create .env from bundled example
-if [ ! -f "$CONFIG_DIR/.env" ]; then
-    if [ -f "$MAGNET_APP_DIR/.env.example" ]; then
-        cp "$MAGNET_APP_DIR/.env.example" "$CONFIG_DIR/.env"
-    else
-        echo "TMDB_API_KEY=" > "$CONFIG_DIR/.env"
-    fi
-fi
 
 exec "$HERE/usr/bin/rattin-shell" "$@"

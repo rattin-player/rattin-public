@@ -266,6 +266,10 @@ build_appimage() {
     # Don't produce AppImage yet — we need to strip problematic libs first.
     # Disable strip — linuxdeploy's bundled strip is too old for .relr.dyn sections
     # on newer distros (Arch, Fedora 40+, etc.), causing spurious failures.
+    # NOTE: linuxdeploy may exit non-zero even on partial success (known quirk),
+    # so we capture the exit code and warn rather than abort. The verify_appdir()
+    # step below will catch any real missing-library consequences.
+    local ld_exit=0
     DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1 "$TOOLS_DIR/linuxdeploy" \
         --appdir "$APPDIR" \
         --executable "$APPDIR/usr/bin/rattin-shell" \
@@ -273,7 +277,10 @@ build_appimage() {
         --icon-file "$APPDIR/rattin.svg" \
         --custom-apprun "$REPO_ROOT/install/AppRun" \
         --plugin qt \
-        || true
+        || ld_exit=$?
+    if [ "$ld_exit" -ne 0 ]; then
+        warn "linuxdeploy exited with code $ld_exit — verify_appdir will check for consequences"
+    fi
 
     # linuxdeploy --custom-apprun is unreliable — copy manually
     cp "$REPO_ROOT/install/AppRun" "$APPDIR/AppRun"
@@ -319,6 +326,9 @@ build_appimage() {
     rm -f "$APPDIR"/usr/lib/libsmime3.so*
     rm -f "$APPDIR"/usr/lib/libssl3.so*
 
+    # ── Verify AppDir before packaging ─────────────────────────────────────
+    verify_appdir
+
     # Now produce the AppImage
     log "Packaging AppImage..."
 
@@ -335,6 +345,145 @@ build_appimage() {
     local size
     size="$(du -h "$OUTPUT" | cut -f1)"
     log "AppImage ready: $OUTPUT ($size)"
+}
+
+# ---------------------------------------------------------------------------
+# Verify AppDir — catch missing plugins/libs before packaging
+# ---------------------------------------------------------------------------
+verify_appdir() {
+    log "Verifying AppDir contents..."
+    local errors=0
+
+    # Platform plugins (at least xcb is required; wayland for modern desktops)
+    for plugin in libqxcb.so; do
+        if [ ! -f "$APPDIR/usr/plugins/platforms/$plugin" ]; then
+            err "Missing required platform plugin: $plugin"
+            ((errors++))
+        fi
+    done
+    # Wayland is non-fatal but warn loudly
+    if ! ls "$APPDIR"/usr/plugins/platforms/libqwayland*.so >/dev/null 2>&1; then
+        warn "No Wayland platform plugins found — Wayland-only desktops will fall back to XWayland"
+    fi
+
+    # Qt libraries
+    for lib in libQt6Core.so.6 libQt6Gui.so.6 libQt6Quick.so.6 \
+               libQt6WebEngineCore.so.6 libQt6Network.so.6 libQt6WebChannel.so.6; do
+        if ! ls "$APPDIR/usr/lib/$lib"* >/dev/null 2>&1; then
+            err "Missing Qt library: $lib"
+            ((errors++))
+        fi
+    done
+
+    # QtWebEngineProcess — Chromium subprocess, required for web views
+    if [ ! -f "$APPDIR/usr/libexec/QtWebEngineProcess" ]; then
+        err "Missing QtWebEngineProcess (Chromium subprocess)"
+        ((errors++))
+    fi
+
+    # QML modules
+    for mod in QtWebEngine QtQuick; do
+        if [ ! -d "$APPDIR/usr/qml/$mod" ]; then
+            err "Missing QML module: $mod"
+            ((errors++))
+        fi
+    done
+
+    # Binaries
+    for bin in rattin-shell ffmpeg ffprobe; do
+        if [ ! -x "$APPDIR/usr/bin/$bin" ]; then
+            err "Missing binary: $bin"
+            ((errors++))
+        fi
+    done
+
+    # Node.js runtime
+    local node_bin="$APPDIR/usr/share/rattin/node/bin/node"
+    if [ ! -x "$node_bin" ]; then
+        err "Missing Node.js runtime"
+        ((errors++))
+    fi
+
+    # Server bundle — must exist, be non-trivial, and parse without errors
+    local server_js="$APPDIR/usr/share/rattin/app/server.js"
+    if [ ! -f "$server_js" ]; then
+        err "Missing server.js bundle"
+        ((errors++))
+    else
+        local server_size
+        server_size="$(stat -c%s "$server_js")"
+        if [ "$server_size" -lt 10000 ]; then
+            err "server.js bundle suspiciously small (${server_size} bytes) — esbuild likely failed"
+            ((errors++))
+        fi
+        if [ -x "$node_bin" ]; then
+            if ! "$node_bin" --check "$server_js" 2>/dev/null; then
+                err "server.js bundle has syntax errors"
+                ((errors++))
+            fi
+        fi
+    fi
+
+    # Frontend assets — index.html plus at least one JS and CSS file
+    local public_dir="$APPDIR/usr/share/rattin/app/public"
+    if [ ! -f "$public_dir/index.html" ]; then
+        err "Missing frontend: public/index.html"
+        ((errors++))
+    fi
+    if ! ls "$public_dir"/assets/*.js >/dev/null 2>&1; then
+        err "Missing frontend JS assets in public/assets/"
+        ((errors++))
+    fi
+    if ! ls "$public_dir"/assets/*.css >/dev/null 2>&1; then
+        err "Missing frontend CSS assets in public/assets/"
+        ((errors++))
+    fi
+
+    # .env.example — required for first-run config creation
+    if [ ! -f "$APPDIR/usr/share/rattin/app/.env.example" ]; then
+        err "Missing .env.example"
+        ((errors++))
+    fi
+
+    # AppRun — entry point must be present and executable
+    if [ ! -x "$APPDIR/AppRun" ]; then
+        err "Missing or non-executable AppRun"
+        ((errors++))
+    fi
+
+    # node_modules — native addons directory must exist
+    if [ ! -d "$APPDIR/usr/share/rattin/app/node_modules" ]; then
+        err "Missing node_modules (npm ci --omit=dev likely failed)"
+        ((errors++))
+    fi
+
+    # GLIBC version check — ensure all bundled libs work on target distros
+    local max_glibc_target="2.35"
+    local max_glibc
+    max_glibc=$(find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) \
+        -exec readelf -V {} \; 2>/dev/null \
+        | grep -oP 'GLIBC_\K[0-9.]+' | sort -V -u | tail -1)
+    if [ -n "$max_glibc" ]; then
+        # Check if max_glibc > max_glibc_target
+        local highest
+        highest="$(printf '%s\n%s' "$max_glibc" "$max_glibc_target" | sort -V | tail -1)"
+        if [ "$highest" != "$max_glibc_target" ]; then
+            err "Bundled libraries require GLIBC $max_glibc (target: ≤$max_glibc_target)"
+            err "Offending libraries:"
+            find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -exec sh -c '
+                readelf -V "$1" 2>/dev/null | grep -q "GLIBC_'"$max_glibc"'" && printf "  → %s\n" "$1"
+            ' _ {} \;
+            ((errors++))
+        else
+            log "GLIBC check passed (max: ${max_glibc}, target: ≤${max_glibc_target})"
+        fi
+    fi
+
+    if [ "$errors" -gt 0 ]; then
+        die "AppDir verification failed with $errors error(s) — refusing to package broken AppImage"
+    fi
+
+    log "AppDir verification passed"
 }
 
 # ---------------------------------------------------------------------------
