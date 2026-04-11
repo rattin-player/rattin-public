@@ -9,7 +9,26 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
   build-linux:
+    needs: [validate]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +68,7 @@ jobs:
           path: Rattin-x86_64.AppImage
 
   build-windows:
+    needs: [validate]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +111,15 @@ jobs:
       - name: Download Node.js binary
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip" -OutFile node.zip
+          $nodeVer = "20.18.1"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/node-v$nodeVer-win-x64.zip" -OutFile node.zip
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/SHASUMS256.txt" -OutFile node-shasums.txt
+          $expected = (Get-Content node-shasums.txt | Select-String "node-v$nodeVer-win-x64.zip").ToString().Split(" ")[0]
+          $actual = (Get-FileHash node.zip -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) {
+              throw "Node.js checksum mismatch! Expected: $expected Got: $actual"
+          }
+          Write-Host "Node.js checksum verified: $actual"
           Expand-Archive node.zip -DestinationPath node-build -Force
 
       - name: Build frontend
@@ -171,6 +199,88 @@ jobs:
           & "$env:GITHUB_WORKSPACE/$dist/rattin-runtime.exe" "$($nodeDir.FullName)/node_modules/npm/bin/npm-cli.js" ci --omit=dev
           Pop-Location
 
+      - name: Verify distribution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = "Rattin"
+          $app  = "$dist/app"
+          $errors = 0
+
+          # Core binaries
+          foreach ($bin in @("rattin-shell.exe", "rattin-runtime.exe", "libmpv-2.dll")) {
+              if (-not (Test-Path "$dist/$bin")) {
+                  Write-Error "Missing binary: $bin"
+                  $errors++
+              }
+          }
+
+          # VC++ runtime
+          foreach ($dll in @("vcruntime140.dll", "msvcp140.dll")) {
+              if (-not (Test-Path "$dist/$dll")) {
+                  Write-Error "Missing VC++ runtime: $dll"
+                  $errors++
+              }
+          }
+
+          # Qt DLLs
+          foreach ($qt in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Quick.dll",
+                            "Qt6WebEngineCore.dll", "Qt6Network.dll", "Qt6WebChannel.dll")) {
+              if (-not (Test-Path "$dist/$qt")) {
+                  Write-Error "Missing Qt DLL: $qt"
+                  $errors++
+              }
+          }
+
+          # QtWebEngineProcess
+          if (-not (Test-Path "$dist/QtWebEngineProcess.exe")) {
+              Write-Error "Missing QtWebEngineProcess.exe"
+              $errors++
+          }
+
+          # Server bundle
+          $serverJs = "$app/server.js"
+          if (-not (Test-Path $serverJs)) {
+              Write-Error "Missing server.js bundle"
+              $errors++
+          } else {
+              $size = (Get-Item $serverJs).Length
+              if ($size -lt 10000) {
+                  Write-Error "server.js suspiciously small ($size bytes)"
+                  $errors++
+              }
+              & "$dist/rattin-runtime.exe" --check $serverJs
+              if ($LASTEXITCODE -ne 0) {
+                  Write-Error "server.js has syntax errors"
+                  $errors++
+              }
+          }
+
+          # Frontend assets
+          if (-not (Test-Path "$app/public/index.html")) {
+              Write-Error "Missing frontend: public/index.html"
+              $errors++
+          }
+          if (-not (Get-ChildItem "$app/public/assets" -Filter "*.js" -ErrorAction SilentlyContinue)) {
+              Write-Error "Missing frontend JS assets"
+              $errors++
+          }
+          if (-not (Get-ChildItem "$app/public/assets" -Filter "*.css" -ErrorAction SilentlyContinue)) {
+              Write-Error "Missing frontend CSS assets"
+              $errors++
+          }
+
+          # node_modules
+          if (-not (Test-Path "$app/node_modules")) {
+              Write-Error "Missing node_modules"
+              $errors++
+          }
+
+          if ($errors -gt 0) {
+              throw "Distribution verification failed with $errors error(s)"
+          }
+          Write-Host "Distribution verification passed" -ForegroundColor Green
+
       - name: Create portable ZIP
         shell: pwsh
         run: Compress-Archive -Path Rattin -DestinationPath Rattin-x64-Portable.zip
@@ -220,6 +330,48 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
 
+      - name: Verify artifact sizes
+        run: |
+          set -euo pipefail
+          errors=0
+
+          check_size() {
+            local file="$1" min_mb="$2" label="$3"
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing artifact: $label ($file)"
+              errors=$((errors + 1))
+              return
+            fi
+            local size_bytes
+            size_bytes=$(stat -c%s "$file")
+            local size_mb=$((size_bytes / 1048576))
+            if [ "$size_bytes" -lt $((min_mb * 1048576)) ]; then
+              echo "::error::$label is only ${size_mb}MB (minimum: ${min_mb}MB) — likely corrupt or incomplete"
+              errors=$((errors + 1))
+            else
+              echo "$label: ${size_mb}MB ✓"
+            fi
+          }
+
+          check_size "Rattin-x86_64.AppImage/Rattin-x86_64.AppImage" 100 "Linux AppImage"
+          check_size "Rattin-x64-Portable.zip/Rattin-x64-Portable.zip" 100 "Windows Portable ZIP"
+          check_size "Rattin-x64-Setup.exe/Rattin-x64-Setup.exe" 50 "Windows Installer"
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::Artifact size verification failed with $errors error(s)"
+            exit 1
+          fi
+
+      - name: Generate checksums
+        run: |
+          sha256sum \
+            Rattin-x86_64.AppImage/Rattin-x86_64.AppImage \
+            Rattin-x64-Portable.zip/Rattin-x64-Portable.zip \
+            Rattin-x64-Setup.exe/Rattin-x64-Setup.exe \
+            | sed 's|[^ ]*/||' > SHA256SUMS.txt
+          echo "Checksums:"
+          cat SHA256SUMS.txt
+
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -235,4 +387,5 @@ jobs:
             $PRERELEASE \
             Rattin-x86_64.AppImage/Rattin-x86_64.AppImage \
             Rattin-x64-Portable.zip/Rattin-x64-Portable.zip \
-            Rattin-x64-Setup.exe/Rattin-x64-Setup.exe
+            Rattin-x64-Setup.exe/Rattin-x64-Setup.exe \
+            SHA256SUMS.txt

@@ -266,6 +266,10 @@ build_appimage() {
     # Don't produce AppImage yet — we need to strip problematic libs first.
     # Disable strip — linuxdeploy's bundled strip is too old for .relr.dyn sections
     # on newer distros (Arch, Fedora 40+, etc.), causing spurious failures.
+    # NOTE: linuxdeploy may exit non-zero even on partial success (known quirk),
+    # so we capture the exit code and warn rather than abort. The verify_appdir()
+    # step below will catch any real missing-library consequences.
+    local ld_exit=0
     DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1 "$TOOLS_DIR/linuxdeploy" \
         --appdir "$APPDIR" \
         --executable "$APPDIR/usr/bin/rattin-shell" \
@@ -273,7 +277,10 @@ build_appimage() {
         --icon-file "$APPDIR/rattin.svg" \
         --custom-apprun "$REPO_ROOT/install/AppRun" \
         --plugin qt \
-        || true
+        || ld_exit=$?
+    if [ "$ld_exit" -ne 0 ]; then
+        warn "linuxdeploy exited with code $ld_exit — verify_appdir will check for consequences"
+    fi
 
     # linuxdeploy --custom-apprun is unreliable — copy manually
     cp "$REPO_ROOT/install/AppRun" "$APPDIR/AppRun"
@@ -368,6 +375,12 @@ verify_appdir() {
         fi
     done
 
+    # QtWebEngineProcess — Chromium subprocess, required for web views
+    if [ ! -f "$APPDIR/usr/libexec/QtWebEngineProcess" ]; then
+        err "Missing QtWebEngineProcess (Chromium subprocess)"
+        ((errors++))
+    fi
+
     # QML modules
     for mod in QtWebEngine QtQuick; do
         if [ ! -d "$APPDIR/usr/qml/$mod" ]; then
@@ -385,8 +398,62 @@ verify_appdir() {
     done
 
     # Node.js runtime
-    if [ ! -x "$APPDIR/usr/share/rattin/node/bin/node" ]; then
+    local node_bin="$APPDIR/usr/share/rattin/node/bin/node"
+    if [ ! -x "$node_bin" ]; then
         err "Missing Node.js runtime"
+        ((errors++))
+    fi
+
+    # Server bundle — must exist, be non-trivial, and parse without errors
+    local server_js="$APPDIR/usr/share/rattin/app/server.js"
+    if [ ! -f "$server_js" ]; then
+        err "Missing server.js bundle"
+        ((errors++))
+    else
+        local server_size
+        server_size="$(stat -c%s "$server_js")"
+        if [ "$server_size" -lt 10000 ]; then
+            err "server.js bundle suspiciously small (${server_size} bytes) — esbuild likely failed"
+            ((errors++))
+        fi
+        if [ -x "$node_bin" ]; then
+            if ! "$node_bin" --check "$server_js" 2>/dev/null; then
+                err "server.js bundle has syntax errors"
+                ((errors++))
+            fi
+        fi
+    fi
+
+    # Frontend assets — index.html plus at least one JS and CSS file
+    local public_dir="$APPDIR/usr/share/rattin/app/public"
+    if [ ! -f "$public_dir/index.html" ]; then
+        err "Missing frontend: public/index.html"
+        ((errors++))
+    fi
+    if ! ls "$public_dir"/assets/*.js >/dev/null 2>&1; then
+        err "Missing frontend JS assets in public/assets/"
+        ((errors++))
+    fi
+    if ! ls "$public_dir"/assets/*.css >/dev/null 2>&1; then
+        err "Missing frontend CSS assets in public/assets/"
+        ((errors++))
+    fi
+
+    # .env.example — required for first-run config creation
+    if [ ! -f "$APPDIR/usr/share/rattin/app/.env.example" ]; then
+        err "Missing .env.example"
+        ((errors++))
+    fi
+
+    # AppRun — entry point must be present and executable
+    if [ ! -x "$APPDIR/AppRun" ]; then
+        err "Missing or non-executable AppRun"
+        ((errors++))
+    fi
+
+    # node_modules — native addons directory must exist
+    if [ ! -d "$APPDIR/usr/share/rattin/app/node_modules" ]; then
+        err "Missing node_modules (npm ci --omit=dev likely failed)"
         ((errors++))
     fi
 
