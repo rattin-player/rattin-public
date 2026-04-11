@@ -21,6 +21,10 @@ jobs:
             cmake g++ pkg-config \
             libmpv-dev patchelf libjack-jackd2-0 \
             libgl1-mesa-dev libxkbcommon-dev \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-image0 libxcb-xfixes0 libxcb-sync1 libxcb-glx0 \
+            libwayland-cursor0 libwayland-egl1 libegl1 \
             libfuse2
 
       - name: Install Qt6

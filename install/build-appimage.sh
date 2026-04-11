@@ -319,6 +319,9 @@ build_appimage() {
     rm -f "$APPDIR"/usr/lib/libsmime3.so*
     rm -f "$APPDIR"/usr/lib/libssl3.so*
 
+    # ── Verify AppDir before packaging ─────────────────────────────────────
+    verify_appdir
+
     # Now produce the AppImage
     log "Packaging AppImage..."
 
@@ -335,6 +338,85 @@ build_appimage() {
     local size
     size="$(du -h "$OUTPUT" | cut -f1)"
     log "AppImage ready: $OUTPUT ($size)"
+}
+
+# ---------------------------------------------------------------------------
+# Verify AppDir — catch missing plugins/libs before packaging
+# ---------------------------------------------------------------------------
+verify_appdir() {
+    log "Verifying AppDir contents..."
+    local errors=0
+
+    # Platform plugins (at least xcb is required; wayland for modern desktops)
+    for plugin in libqxcb.so; do
+        if [ ! -f "$APPDIR/usr/plugins/platforms/$plugin" ]; then
+            err "Missing required platform plugin: $plugin"
+            ((errors++))
+        fi
+    done
+    # Wayland is non-fatal but warn loudly
+    if ! ls "$APPDIR"/usr/plugins/platforms/libqwayland*.so >/dev/null 2>&1; then
+        warn "No Wayland platform plugins found — Wayland-only desktops will fall back to XWayland"
+    fi
+
+    # Qt libraries
+    for lib in libQt6Core.so.6 libQt6Gui.so.6 libQt6Quick.so.6 \
+               libQt6WebEngineCore.so.6 libQt6Network.so.6 libQt6WebChannel.so.6; do
+        if ! ls "$APPDIR/usr/lib/$lib"* >/dev/null 2>&1; then
+            err "Missing Qt library: $lib"
+            ((errors++))
+        fi
+    done
+
+    # QML modules
+    for mod in QtWebEngine QtQuick; do
+        if [ ! -d "$APPDIR/usr/qml/$mod" ]; then
+            err "Missing QML module: $mod"
+            ((errors++))
+        fi
+    done
+
+    # Binaries
+    for bin in rattin-shell ffmpeg ffprobe; do
+        if [ ! -x "$APPDIR/usr/bin/$bin" ]; then
+            err "Missing binary: $bin"
+            ((errors++))
+        fi
+    done
+
+    # Node.js runtime
+    if [ ! -x "$APPDIR/usr/share/rattin/node/bin/node" ]; then
+        err "Missing Node.js runtime"
+        ((errors++))
+    fi
+
+    # GLIBC version check — ensure all bundled libs work on target distros
+    local max_glibc_target="2.35"
+    local max_glibc
+    max_glibc=$(find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) \
+        -exec readelf -V {} \; 2>/dev/null \
+        | grep -oP 'GLIBC_\K[0-9.]+' | sort -V -u | tail -1)
+    if [ -n "$max_glibc" ]; then
+        # Check if max_glibc > max_glibc_target
+        local highest
+        highest="$(printf '%s\n%s' "$max_glibc" "$max_glibc_target" | sort -V | tail -1)"
+        if [ "$highest" != "$max_glibc_target" ]; then
+            err "Bundled libraries require GLIBC $max_glibc (target: ≤$max_glibc_target)"
+            err "Offending libraries:"
+            find "$APPDIR" -type f \( -name '*.so' -o -name '*.so.*' \) -exec sh -c '
+                readelf -V "$1" 2>/dev/null | grep -q "GLIBC_'"$max_glibc"'" && printf "  → %s\n" "$1"
+            ' _ {} \;
+            ((errors++))
+        else
+            log "GLIBC check passed (max: ${max_glibc}, target: ≤${max_glibc_target})"
+        fi
+    fi
+
+    if [ "$errors" -gt 0 ]; then
+        die "AppDir verification failed with $errors error(s) — refusing to package broken AppImage"
+    fi
+
+    log "AppDir verification passed"
 }
 
 # ---------------------------------------------------------------------------
