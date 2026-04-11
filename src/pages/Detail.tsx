@@ -45,6 +45,7 @@ export default function Detail() {
   useEffect(() => {
     setData(null);
     setPlayState(null);
+    setCastExpanded(false);
     const fetcher = type === "tv" ? fetchTV : fetchMovie;
     fetcher(id!).then(setData).catch(() => {});
   }, [id, type]);
@@ -264,7 +265,7 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seasons = data.seasons?.filter((s: any) => s.season_number > 0);
   const genres = data.genres || [];
-  const cast = (data.credits?.cast || [])
+  const cast = [...(data.credits?.cast || [])]
     .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
     .slice(0, 20);
 
@@ -548,21 +549,21 @@ export default function Detail() {
               {(castExpanded ? cast : cast.slice(0, 6)).map((c: any) => (
                 <div key={c.id} className="cast-card">
                   {c.profile_path ? (
-                    <img className="cast-photo" src={castProfile(c.profile_path)!} alt={c.name} />
+                    <img className="cast-photo" src={castProfile(c.profile_path)!} alt={c.name} loading="lazy" />
                   ) : (
                     <div className="cast-photo-placeholder">
                       {c.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="cast-info">
-                    <span className="cast-character">{c.character}</span>
-                    <span className="cast-name">{c.name}</span>
+                    <span className="cast-character">{c.character || c.name}</span>
+                    <span className="cast-name">{c.character ? c.name : ""}</span>
                   </div>
                 </div>
               ))}
             </div>
             {cast.length > 6 && (
-              <button className="cast-show-more" onClick={() => setCastExpanded(!castExpanded)}>
+              <button className="cast-show-more" onClick={() => setCastExpanded(!castExpanded)} aria-expanded={castExpanded}>
                 {castExpanded ? "Show less" : `Show more (${cast.length - 6})`}
               </button>
             )}

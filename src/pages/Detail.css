@@ -853,7 +853,7 @@
 }
 
 .cast-show-more:hover {
-  color: var(--accent-bright);
+  color: var(--text-primary);
   border-color: var(--accent);
 }
 
