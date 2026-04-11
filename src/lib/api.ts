@@ -4,6 +4,7 @@ const img = (path: string | null, size = "w500"): string | null => (path ? `${TM
 export const backdrop = (path: string | null): string | null => img(path, "original");
 export const poster = (path: string | null, size = "w342"): string | null => img(path, size);
 export const still = (path: string | null): string | null => img(path, "w300");
+export const castProfile = (path: string | null): string | null => img(path, "w185");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function get(url: string): Promise<any> {
