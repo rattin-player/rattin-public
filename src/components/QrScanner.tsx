@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import jsQR from "jsqr";
 
 // BarcodeDetector is not yet in TypeScript's lib.dom
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -9,37 +10,54 @@ interface QrScannerProps {
   onClose: () => void;
 }
 
+type ScanningMethod = "barcode" | "jsqr" | null;
+
 export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualUrl, setManualUrl] = useState("");
-  const hasDetector = typeof globalThis.BarcodeDetector !== "undefined";
+  const [scanningMethod, setScanningMethod] = useState<ScanningMethod>(null);
 
   useEffect(() => {
-    if (!hasDetector) return;
     let stopped = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let detector: any;
 
     async function start() {
       try {
-        detector = new BarcodeDetector({ formats: ["qr_code"] });
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
         });
-        if (stopped) { stream.getTracks().forEach((t: MediaStreamTrack) => t.stop()); return; }
+        if (stopped) { 
+          stream.getTracks().forEach((t: MediaStreamTrack) => t.stop()); 
+          return; 
+        }
         streamRef.current = stream;
         const v = videoRef.current;
-        if (v) { v.srcObject = stream; v.play().catch(() => {}); }
-        scan(detector);
+        if (v) { 
+          v.srcObject = stream; 
+          await v.play().catch(() => {}); 
+        }
+
+        // Use BarcodeDetector if available (Chrome), otherwise fallback to jsQR
+        if (typeof globalThis.BarcodeDetector !== "undefined") {
+          setScanningMethod("barcode");
+          detector = new BarcodeDetector({ formats: ["qr_code"] });
+          scanBarcode(detector);
+        } else {
+          setScanningMethod("jsqr");
+          scanJsQR();
+        }
       } catch {
         if (!stopped) setError("Could not access camera. Check permissions.");
       }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function scan(det: any) {
+    async function scanBarcode(det: any) {
       if (stopped) return;
       const v = videoRef.current;
       if (v && v.readyState >= 2) {
@@ -55,13 +73,54 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
           }
         } catch {}
       }
-      requestAnimationFrame(() => scan(det));
+      animationFrameRef.current = requestAnimationFrame(() => scanBarcode(det));
+    }
+
+    function scanJsQR() {
+      if (stopped) return;
+      const v = videoRef.current;
+      if (v && v.readyState >= 2) {
+        try {
+          // Create canvas on first scan if needed
+          if (!canvasRef.current) {
+            canvasRef.current = document.createElement("canvas");
+          }
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (!ctx) {
+            animationFrameRef.current = requestAnimationFrame(scanJsQR);
+            return;
+          }
+
+          // Match canvas size to video
+          canvas.width = v.videoWidth || 640;
+          canvas.height = v.videoHeight || 480;
+
+          // Draw video frame to canvas
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+
+          // Get image data and scan
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const result = jsQR(imageData.data, imageData.width, imageData.height);
+
+          if (result?.data && result.data.includes("/api/rc/auth")) {
+            cleanup();
+            onScan(result.data);
+            return;
+          }
+        } catch {}
+      }
+      animationFrameRef.current = requestAnimationFrame(scanJsQR);
     }
 
     start();
 
     function cleanup() {
       stopped = true;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -69,7 +128,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     }
 
     return cleanup;
-  }, [hasDetector, onScan]);
+  }, [onScan]);
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,6 +145,10 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     onClose();
   }
 
@@ -101,7 +164,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
           </button>
         </div>
 
-        {hasDetector && !error ? (
+        {scanningMethod && !error ? (
           <div className="qr-scanner-camera">
             <video ref={videoRef} playsInline muted />
             <div className="qr-scanner-frame" />
@@ -118,7 +181,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
               placeholder="https://your-server/api/rc/auth?..."
               value={manualUrl}
               onChange={(e) => setManualUrl(e.target.value)}
-              autoFocus={!hasDetector}
+              autoFocus={!scanningMethod}
             />
             <button type="submit">Connect</button>
           </form>
