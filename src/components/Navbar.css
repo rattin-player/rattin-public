@@ -245,6 +245,17 @@
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 }
 
+.navbar-pair-dot.waiting {
+  background: var(--yellow);
+  box-shadow: 0 0 6px rgba(250, 204, 21, 0.4);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* ── Remote mode: always compact, mobile-optimized ── */
 .navbar.navbar-remote {
   padding: 12px 16px;
