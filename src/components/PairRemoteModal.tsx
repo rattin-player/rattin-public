@@ -9,11 +9,12 @@ interface PairRemoteModalProps {
 }
 
 export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
-  const { rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken } = usePlayer();
+  const { rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcPairingCode, setRcPairingCode, rcRemoteConnected } = usePlayer();
   const [sessionId, setSessionId] = useState(rcSessionId);
   const [authToken, setAuthToken] = useState(rcAuthToken);
+  const [pairingCode, setPairingCode] = useState(rcPairingCode);
   const [remoteUrl, setRemoteUrl] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [lanAddress, setLanAddress] = useState("");
   const [creating, setCreating] = useState(false);
   const [validating, setValidating] = useState(false);
 
@@ -45,9 +46,11 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
       .then(({ ip, port }) => {
         const origin = ip ? `http://${ip}:${port}` : window.location.origin;
         setRemoteUrl(`${origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
+        setLanAddress(ip ? `${ip}:${port}` : new URL(window.location.origin).host);
       })
       .catch(() => {
         setRemoteUrl(`${window.location.origin}/api/rc/auth?session=${sessionId}&token=${authToken}`);
+        setLanAddress(new URL(window.location.origin).host);
       });
   }, [sessionId, authToken]);
 
@@ -58,8 +61,10 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
       const data = await res.json();
       setSessionId(data.sessionId);
       setAuthToken(data.authToken);
+      setPairingCode(data.pairingCode);
       setRcSessionId(data.sessionId);
       setRcAuthToken(data.authToken);
+      setRcPairingCode(data.pairingCode);
     } catch {
       // ignore
     }
@@ -72,8 +77,10 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
     }
     setSessionId(null);
     setAuthToken(null);
+    setPairingCode(null);
     setRcSessionId(null);
     setRcAuthToken(null);
+    setRcPairingCode(null);
     setRemoteUrl("");
   }
 
@@ -90,13 +97,6 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
           paths += `M${margin + x * mod},${margin + y * mod}h${mod}v${mod}h-${mod}z`;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}"><rect width="${total}" height="${total}" fill="#fff" rx="4"/><path d="${paths}" fill="#000"/></svg>`;
   }, [remoteUrl]);
-
-  function copyUrl() {
-    navigator.clipboard.writeText(remoteUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
-  }
 
   const showQr = sessionId && authToken && !validating;
 
@@ -127,16 +127,29 @@ export default function PairRemoteModal({ onClose }: PairRemoteModalProps) {
           </div>
         ) : (
           <div className="pair-body">
-            <p className="pair-desc">Scan with your phone to connect as a remote:</p>
+            {rcRemoteConnected ? (
+              <div className="pair-status pair-status-connected">
+                <span className="pair-status-dot" />
+                Phone connected
+              </div>
+            ) : (
+              <div className="pair-status pair-status-waiting">
+                <span className="pair-status-dot" />
+                Waiting for phone...
+              </div>
+            )}
+            <p className="pair-desc">Scan with your phone or enter the code to connect:</p>
             {qrSvg && (
               <div className="pair-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
             )}
-            <div className="pair-url-box">
-              <code className="pair-url">{remoteUrl}</code>
-              <button className="pair-copy-btn" onClick={copyUrl}>
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            </div>
+            {pairingCode && (
+              <div className="pair-code-box">
+                <span className="pair-code-label">
+                  Or enter this code on your phone{lanAddress ? ` at ${lanAddress}` : ""}:
+                </span>
+                <span className="pair-code">{pairingCode}</span>
+              </div>
+            )}
             <button className="pair-end-btn" onClick={endSession}>
               End Session
             </button>

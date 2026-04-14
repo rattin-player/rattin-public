@@ -133,6 +133,7 @@ export function createApiAccessControl(ctx: ServerContext): RequestHandler {
     if (isLocalRequest(req)) return next();
 
     if (requestPath(req) === "/api/rc/auth") return next();
+    if (req.method === "POST" && requestPath(req) === "/api/rc/pair") return next();
 
     if (!getAuthorizedRcSession(req, ctx.rcSessions, { touch: false })) {
       return res.status(401).json({ error: "remote_auth_required" });

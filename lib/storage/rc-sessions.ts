@@ -5,7 +5,7 @@ import type { RCSession } from "../types.js";
 
 const RC_SESSIONS_PATH = rcSessionsPath();
 
-interface RCSessionEntry { sessionId: string; authToken: string }
+interface RCSessionEntry { sessionId: string; authToken: string; pairingCode?: string }
 
 export function dumpRcSessions(rcSessions: Map<string, RCSession>): void {
   try {
@@ -14,7 +14,7 @@ export function dumpRcSessions(rcSessions: Map<string, RCSession>): void {
     for (const [sessionId, s] of rcSessions) {
       if (!s.authToken) continue;
       if (s.lastActivity >= bestActivity) {
-        best = { sessionId, authToken: s.authToken };
+        best = { sessionId, authToken: s.authToken, pairingCode: s.pairingCode };
         bestActivity = s.lastActivity;
       }
     }
@@ -36,6 +36,7 @@ export function restoreRcSessions(rcSessions: Map<string, RCSession>): void {
           playbackState: null,
           lastActivity: Date.now(),
           authToken: e.authToken,
+          pairingCode: e.pairingCode,
         });
       }
     }
