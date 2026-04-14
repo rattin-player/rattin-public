@@ -53,6 +53,51 @@
   gap: 18px;
 }
 
+.pair-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+}
+
+.pair-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pair-status-connected {
+  color: var(--green);
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+}
+
+.pair-status-connected .pair-status-dot {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+
+.pair-status-waiting {
+  color: var(--yellow);
+  background: rgba(250, 204, 21, 0.06);
+  border: 1px solid rgba(250, 204, 21, 0.12);
+}
+
+.pair-status-waiting .pair-status-dot {
+  background: var(--yellow);
+  box-shadow: 0 0 6px rgba(250, 204, 21, 0.4);
+  animation: pulse-status-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-status-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .pair-desc {
   font-size: 13px;
   color: var(--text-secondary);
@@ -91,41 +136,29 @@
   opacity: 0.6;
 }
 
-.pair-url-box {
+.pair-code-box {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
   align-items: center;
-}
-
-.pair-url {
-  flex: 1;
-  font-size: 11px;
-  padding: 11px 14px;
+  gap: 8px;
+  padding: 16px;
   background: var(--bg-deep);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  color: var(--accent-bright);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: "SF Mono", "Fira Code", monospace;
+  border-radius: var(--radius-sm);
 }
 
-.pair-copy-btn {
-  padding: 11px 16px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
+.pair-code-label {
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  transition: all var(--transition);
+  color: var(--text-muted);
 }
 
-.pair-copy-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-light);
+.pair-code {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  padding-left: 10px; /* compensate trailing letter-spacing */
+  color: var(--accent-bright);
+  font-family: "SF Mono", "Fira Code", monospace;
 }
 
 .pair-session-info {

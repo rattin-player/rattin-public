@@ -46,7 +46,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
   app.get("/api/auth/persist", (req: Request, res: Response) => {
     // Only reachable after nginx basic auth succeeded (or a valid token).
     // Set a long-lived cookie — nginx skips basic auth when rc_auth cookie exists.
-    res.setHeader("Set-Cookie", buildCookie("rc_auth", pcAuthToken, 30 * 24 * 60 * 60, { httpOnly: true }));
+    res.setHeader("Set-Cookie", buildCookie("rc_auth", pcAuthToken, 10 * 365 * 24 * 60 * 60, { httpOnly: true }));
     res.json({ ok: true });
   });
 
@@ -60,29 +60,31 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     }
     const sessionId = crypto.randomBytes(16).toString("hex");
     const authToken = crypto.randomBytes(16).toString("hex");
+    const pairingCode = String(crypto.randomInt(10000)).padStart(4, "0");
     rcSessions.set(sessionId, {
       playerClient: null,
       remoteClients: [],
       playbackState: null,
       lastActivity: Date.now(),
       authToken,
+      pairingCode,
     });
-    log("info", "RC session created", { sessionId });
+    log("info", "RC session created", { sessionId, pairingCode });
     dumpRcSessions(rcSessions);
-    res.json({ sessionId, authToken });
+    res.json({ sessionId, authToken, pairingCode });
   });
 
   // Active RC session (desktop reclaims its session after restart)
   // Returns the most recently active session so the frontend can reconnect.
   app.get("/api/rc/active-session", (_req: Request, res: Response) => {
-    let best: { sessionId: string; authToken: string; lastActivity: number } | null = null;
+    let best: { sessionId: string; authToken: string; pairingCode?: string; lastActivity: number } | null = null;
     for (const [sessionId, s] of rcSessions) {
       if (s.authToken && (!best || s.lastActivity > best.lastActivity)) {
-        best = { sessionId, authToken: s.authToken, lastActivity: s.lastActivity };
+        best = { sessionId, authToken: s.authToken, pairingCode: s.pairingCode, lastActivity: s.lastActivity };
       }
     }
     if (best) {
-      res.json({ sessionId: best.sessionId, authToken: best.authToken });
+      res.json({ sessionId: best.sessionId, authToken: best.authToken, pairingCode: best.pairingCode });
     } else {
       res.json({ sessionId: null, authToken: null });
     }
@@ -120,11 +122,39 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     s.lastActivity = Date.now();
     // Set a long-lived cookie that nginx checks to skip basic auth
     res.setHeader("Set-Cookie", [
-      buildCookie("rc_auth", token, 60 * 60 * 24, { httpOnly: true }),
-      buildCookie("rc_token", token, 60 * 60 * 24, { httpOnly: true }),
-      buildCookie("rc_session", session, 60 * 60 * 24),
+      buildCookie("rc_auth", token, 10 * 365 * 24 * 60 * 60, { httpOnly: true }),
+      buildCookie("rc_token", token, 10 * 365 * 24 * 60 * 60, { httpOnly: true }),
+      buildCookie("rc_session", session, 10 * 365 * 24 * 60 * 60),
     ]);
     res.redirect("/remote");
+  });
+
+  // Pair via 4-digit code (alternative to QR scan — works without camera/HTTPS)
+  app.post("/api/rc/pair", (req: Request, res: Response) => {
+    const { code } = req.body as { code?: string };
+    if (!code) return res.status(400).json({ error: "code required" });
+    const normalized = code.trim();
+
+    // Find the session with the matching pairing code
+    let matchId: string | null = null;
+    let matchSession: RCSession | null = null;
+    for (const [sessionId, s] of rcSessions) {
+      if (s.pairingCode && s.pairingCode === normalized) {
+        matchId = sessionId;
+        matchSession = s;
+        break;
+      }
+    }
+    if (!matchId || !matchSession || !matchSession.authToken) {
+      return res.status(401).json({ error: "invalid_code" });
+    }
+    matchSession.lastActivity = Date.now();
+    res.setHeader("Set-Cookie", [
+      buildCookie("rc_auth", matchSession.authToken, 10 * 365 * 24 * 60 * 60, { httpOnly: true }),
+      buildCookie("rc_token", matchSession.authToken, 10 * 365 * 24 * 60 * 60, { httpOnly: true }),
+      buildCookie("rc_session", matchId, 10 * 365 * 24 * 60 * 60),
+    ]);
+    res.json({ ok: true });
   });
 
   // Delete session

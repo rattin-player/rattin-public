@@ -18,7 +18,7 @@ export default function Navbar() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { rcSessionId } = usePlayer();
+  const { rcSessionId, rcRemoteConnected } = usePlayer();
   const { isRemote } = useRemoteMode();
   const updateAvailable = useUpdateAvailable();
 
@@ -148,8 +148,8 @@ export default function Navbar() {
             <button className="navbar-pair-btn" onClick={() => setShowPairing(true)}>
               {rcSessionId ? (
                 <span className="navbar-pair-connected">
-                  <span className="navbar-pair-dot" />
-                  Remote
+                  <span className={`navbar-pair-dot ${rcRemoteConnected ? "" : "waiting"}`} />
+                  {rcRemoteConnected ? "Remote" : "Waiting"}
                 </span>
               ) : (
                 <>
