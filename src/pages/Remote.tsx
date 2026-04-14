@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
-import { clearRemoteSession, getRemoteSessionId } from "../lib/remote-session";
+import { clearRemoteSession, getRemoteSessionId, notifyRemoteSessionChanged } from "../lib/remote-session";
 import { formatTime, formatBytes } from "../lib/utils";
 import { fetchSeason, fetchSeriesProgress, poster } from "../lib/api";
-import QrScanner from "../components/QrScanner";
 import "./Remote.css";
 
 // ── State machine constants ──
@@ -81,8 +80,11 @@ export default function Remote() {
   // ── Connection flash feedback ──
   const [showConnectedFlash, setShowConnectedFlash] = useState(false);
 
-  // ── QR scanner & panels ──
-  const [showScanner, setShowScanner] = useState(false);
+  // ── Pairing code & panels ──
+  const [digits, setDigits] = useState(["", "", "", ""]);
+  const digitRefs = useRef<(HTMLInputElement | null)[]>([null, null, null, null]);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeLoading, setCodeLoading] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [showEpisodes, setShowEpisodes] = useState(false);
   const [epBrowserSeason, setEpBrowserSeason] = useState(0);
@@ -91,21 +93,59 @@ export default function Remote() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [epProgress, setEpProgress] = useState<Map<string, any>>(new Map());
 
-  function openScanner() {
-    // Tell the player to show its QR code on screen
-    if (sessionId) {
-      fetch("/api/rc/request-qr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      }).catch(() => {});
+  function handleDigitChange(index: number, value: string) {
+    const digit = value.replace(/\D/g, "").slice(-1); // take last char (handles paste-over)
+    setDigits((prev) => {
+      const next = [...prev];
+      next[index] = digit;
+      return next;
+    });
+    setCodeError(null);
+    if (digit && index < 3) {
+      digitRefs.current[index + 1]?.focus();
     }
-    setShowScanner(true);
   }
 
-  function handleQrScan(url: string) {
-    setShowScanner(false);
-    window.location.assign(url);
+  function handleDigitKeyDown(index: number, e: React.KeyboardEvent) {
+    if (e.key === "Backspace" && !digits[index] && index > 0) {
+      digitRefs.current[index - 1]?.focus();
+    }
+  }
+
+  function handleDigitPaste(e: React.ClipboardEvent) {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (!pasted) return;
+    const next = ["", "", "", ""];
+    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i];
+    setDigits(next);
+    setCodeError(null);
+    const focusIdx = Math.min(pasted.length, 3);
+    digitRefs.current[focusIdx]?.focus();
+  }
+
+  async function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const code = digits.join("");
+    if (code.length < 4) return;
+    setCodeError(null);
+    setCodeLoading(true);
+    try {
+      const res = await fetch("/api/rc/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (res.ok) {
+        notifyRemoteSessionChanged();
+        window.location.assign("/remote");
+      } else {
+        setCodeError("Invalid code. Check the code on your PC.");
+      }
+    } catch {
+      setCodeError("Could not connect. Same network?");
+    }
+    setCodeLoading(false);
   }
 
   // ── SSE connection with probe-based expiry detection ──
@@ -236,6 +276,35 @@ export default function Remote() {
     sendCommand("next-episode", { season, episode });
   }
 
+  const codeComplete = digits.every((d) => d !== "");
+  const pairingCodeForm = (
+    <div className="remote-pair-code">
+      <form onSubmit={handleCodeSubmit}>
+        <div className="remote-pair-digits" onPaste={handleDigitPaste}>
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => { digitRefs.current[i] = el; }}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={1}
+              value={d}
+              onChange={(e) => handleDigitChange(i, e.target.value)}
+              onKeyDown={(e) => handleDigitKeyDown(i, e)}
+              className="remote-pair-digit"
+              autoFocus={i === 0}
+            />
+          ))}
+        </div>
+        <button className="remote-action-btn" type="submit" disabled={!codeComplete || codeLoading}>
+          {codeLoading ? "Connecting..." : "Connect"}
+        </button>
+      </form>
+      {codeError && <p className="remote-pair-code-error">{codeError}</p>}
+    </div>
+  );
+
   // ── Actions ──
   function retry() {
     failCount.current = 0;
@@ -364,10 +433,9 @@ export default function Remote() {
             <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 18H7V5h10v14z" />
           </svg>
           <h3>No Session</h3>
-          <p>Scan a QR code from the player on your PC to connect this device as a remote.</p>
-          <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
+          <p>Open the pairing screen on your PC and enter the code below.</p>
+          {pairingCodeForm}
         </div>
-        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
@@ -393,15 +461,13 @@ export default function Remote() {
             <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
           </svg>
           <h3>Session Expired</h3>
-          <p>This remote session no longer exists. The server may have restarted or the session timed out.</p>
-          <p>Open the pairing screen on your PC and scan the new QR code.</p>
+          <p>Open the pairing screen on your PC and enter the new code.</p>
+          {pairingCodeForm}
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
             <button className="remote-clear-link" onClick={retry}>Retry</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>
         </div>
-        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
@@ -416,14 +482,13 @@ export default function Remote() {
             <path d="M2 16l2.83 2.83L12 11.66l7.17 7.17L22 16 12 6 2 16zm10-1.5l4.24 4.24L12 22.98l-4.24-4.24L12 14.5z"/>
           </svg>
           <h3>Connection Lost</h3>
-          <p>Could not reconnect to the player. Open the pairing screen on your PC and scan the new QR code.</p>
+          <p>Could not reconnect. Open the pairing screen on your PC and enter the new code.</p>
+          {pairingCodeForm}
           <div className="remote-state-actions">
-            <button className="remote-action-btn" onClick={openScanner}>Scan QR Code</button>
             <button className="remote-clear-link" onClick={retry}>Retry Connection</button>
             <button className="remote-clear-link" onClick={clearSession}>Clear Session</button>
           </div>
         </div>
-        {showScanner && <QrScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />}
       </div>
     );
   }
@@ -463,7 +528,7 @@ export default function Remote() {
             Connected
           </div>
           <p>No active playback. Browse content to start playing.</p>
-          <button className="remote-action-btn" onClick={() => navigate(`/?session=${sessionId}`)}>
+          <button className="remote-action-btn" onClick={() => navigate("/")}>
             Browse Content
           </button>
         </div>
@@ -806,7 +871,7 @@ export default function Remote() {
       )}
 
       <div className="remote-bottom-row">
-        <button className="remote-browse-btn" onClick={() => navigate(`/?session=${sessionId}`)} disabled={isDisabled}>
+        <button className="remote-browse-btn" onClick={() => navigate("/")} disabled={isDisabled}>
           Browse
         </button>
         <button className="remote-stop-btn" onClick={() => sendCommand("stop-stream")} disabled={isDisabled}>

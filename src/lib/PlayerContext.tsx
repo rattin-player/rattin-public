@@ -60,6 +60,8 @@ interface PlayerContextValue {
   setRcSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   rcAuthToken: string | null;
   setRcAuthToken: React.Dispatch<React.SetStateAction<string | null>>;
+  rcPairingCode: string | null;
+  setRcPairingCode: React.Dispatch<React.SetStateAction<string | null>>;
   rcRemoteConnected: boolean;
   rcQrRequested: boolean;
   introRangeRef: MutableRefObject<IntroRange | null>;
@@ -140,16 +142,18 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   // On startup, ask the server for the active RC session (survives app restarts)
   const [rcSessionId, setRcSessionId] = useState<string | null>(null);
   const [rcAuthToken, setRcAuthToken] = useState<string | null>(null);
+  const [rcPairingCode, setRcPairingCode] = useState<string | null>(null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
   const [rcQrRequested, setRcQrRequested] = useState(false);
 
   useEffect(() => {
     fetch("/api/rc/active-session")
       .then((r) => r.json())
-      .then((data: { sessionId: string | null; authToken: string | null }) => {
+      .then((data: { sessionId: string | null; authToken: string | null; pairingCode?: string | null }) => {
         if (data.sessionId && data.authToken) {
           setRcSessionId(data.sessionId);
           setRcAuthToken(data.authToken);
+          if (data.pairingCode) setRcPairingCode(data.pairingCode);
         }
       })
       .catch(() => {});
@@ -454,7 +458,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       startStream, stopStream, togglePlay,
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
-      rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcRemoteConnected, rcQrRequested,
+      rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcPairingCode, setRcPairingCode, rcRemoteConnected, rcQrRequested,
       introRangeRef, episodeInfoRef, sourcesRef,
       subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, switching,
     }}>

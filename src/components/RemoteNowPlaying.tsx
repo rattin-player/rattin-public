@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useRemoteMode } from "../lib/PlayerContext";
-import { clearRemoteSession } from "../lib/remote-session";
 import { formatTime } from "../lib/utils";
 import "../pages/Remote.css";
 
@@ -41,15 +40,15 @@ export default function RemoteNowPlaying() {
 
     es.onerror = () => {
       failCount.current++;
-      // If too many failures, probe to check if session expired
-      if (failCount.current > 5) {
+      // Probe immediately on first error, then periodically — if session is
+      // gone, redirect to /remote so the user sees the expired/re-pair screen
+      // instead of a broken browse page with 401ing API calls.
+      if (failCount.current === 1 || failCount.current > 5) {
         fetch(`/api/rc/session/${sessionId}`)
           .then((res) => {
-            if (res.status === 404) {
-              // Session expired — clear remote mode
-              clearRemoteSession();
+            if (res.status === 404 || res.status === 401) {
               es.close();
-              setState(null);
+              navigate("/remote", { replace: true });
             }
           })
           .catch(() => {});

@@ -170,6 +170,7 @@ export interface RCSession {
   playbackState: PlaybackState | null;
   lastActivity: number;
   authToken?: string;
+  pairingCode?: string;
 }
 
 // ── Playback State (shared between frontend and backend RC) ──────────
