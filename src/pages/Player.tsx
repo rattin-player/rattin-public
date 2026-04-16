@@ -467,9 +467,11 @@ export default function Player() {
         mpvSeek(Math.max(0, t + delta));
       },
       switchSubtitle: (val: string) => {
-        const idx = subs.findIndex(s => s.value === val);
+        // Use subsRef (always current) instead of subs (render closure, can be stale)
+        const currentSubs = subsRef.current;
+        const idx = currentSubs.findIndex(s => s.value === val);
         if (idx < 0) return;
-        const sub = subs[idx];
+        const sub = currentSubs[idx];
         if (sub.value.startsWith("file:")) {
           const port = window.location.port;
           const subUrl = `http://127.0.0.1:${port}/api/subtitle/${infoHash}/${sub.fileIndex}`;

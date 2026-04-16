@@ -541,7 +541,7 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
           log("info", "Auto-play selected", { name: candidate.name, score: candidate.score, seeders: candidate.seeders });
           const stream = await debrid.unrestrict(magnet, candidate.fileIdx);
           log("info", "Auto-play via debrid", { name: candidate.name, filename: stream.filename });
-          const debridStreamKey = setActiveDebridStream(candidate.infoHash, stream.url, stream.files);
+          const debridStreamKey = setActiveDebridStream(candidate.infoHash, stream.url, stream.files, stream.links, stream.torrentId, stream.provider);
           return res.json({
             infoHash: candidate.infoHash, fileIndex: stream.fileIndex, fileName: stream.filename,
             torrentName: candidate.name, totalSize: stream.filesize, tags, debridStreamKey,
@@ -665,7 +665,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
     try {
       const stream = await debrid.unrestrict(magnet, fileIdx);
       log("info", "Play-torrent via debrid", { infoHash, filename: stream.filename });
-      const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files);
+      const debridStreamKey = setActiveDebridStream(infoHash, stream.url, stream.files, stream.links, stream.torrentId, stream.provider);
       return res.json({
         infoHash,
         fileIndex: stream.fileIndex,

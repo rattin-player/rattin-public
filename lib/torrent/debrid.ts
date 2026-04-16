@@ -17,6 +17,12 @@ export interface DebridStream {
   filesize: number;
   fileIndex: number;  // 0-based index of the selected video file in the torrent
   files: DebridFileInfo[];
+  /** RD: restricted download links for selected files */
+  links?: string[];
+  /** Provider torrent ID — for fetching individual file URLs on demand */
+  torrentId?: string;
+  /** Provider name — "realdebrid" or "torbox" */
+  provider?: string;
 }
 
 export interface DebridProvider {
@@ -115,14 +121,33 @@ class RealDebridProvider implements DebridProvider {
   }
 
   private async rdFetch(endpoint: string, opts: RequestInit = {}): Promise<Response> {
-    const res = await fetch(`${RD_BASE}${endpoint}`, {
-      ...opts,
-      headers: { ...this.headers(), ...opts.headers },
-    });
-    if (res.status === 401) throw new Error("debrid_auth_failed");
-    if (res.status === 403) throw new Error("debrid_premium_required");
-    if (res.status === 429) throw new Error("debrid_rate_limited");
-    return res;
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(`${RD_BASE}${endpoint}`, {
+          ...opts,
+          headers: { ...this.headers(), ...opts.headers },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (res.status === 401) throw new Error("debrid_auth_failed");
+        if (res.status === 403) throw new Error("debrid_premium_required");
+        if (res.status === 429) throw new Error("debrid_rate_limited");
+        return res;
+      } catch (err) {
+        const msg = (err as Error).message || "";
+        // Don't retry auth/permission errors
+        if (msg.startsWith("debrid_")) throw err;
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        const cause = (err as Error).cause as { code?: string; message?: string } | undefined;
+        const code = cause?.code || (err as Error).name || "unknown";
+        const detail = cause?.message || msg || "fetch failed";
+        throw new Error(`debrid_network_error: ${code} ${detail} (${endpoint})`);
+      }
+    }
+    throw new Error("debrid_network_error: unreachable");
   }
 
   private formBody(params: Record<string, string>): URLSearchParams {
@@ -199,7 +224,7 @@ class RealDebridProvider implements DebridProvider {
       let selectedRdId: number | null = null;
       if (info.status === "waiting_files_selection") {
         const filesToSelect = this.pickFiles(info.files, fileIdx);
-        selectedRdId = parseInt(filesToSelect, 10); // first ID in comma-separated list
+        selectedRdId = parseInt(filesToSelect, 10); // first ID in comma-separated list (video)
         await this.rdFetch(`/torrents/selectFiles/${id}`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -222,22 +247,31 @@ class RealDebridProvider implements DebridProvider {
       }));
 
       // Step 5: Unrestrict the video link
+      // Links correspond to selected files ordered by ID — find the video's link
+      const selectedFiles = info.files.filter(f => Number(f.selected)).sort((a, b) => a.id - b.id);
+      const videoRdId = selectedRdId ?? selectedFiles.find(f => isVideoFile(f.path))?.id ?? selectedFiles[0]?.id;
+      const videoLinkIdx = selectedFiles.findIndex(f => f.id === videoRdId);
+      const videoLink = info.links[videoLinkIdx >= 0 ? videoLinkIdx : 0];
+
       const unRes = await this.rdFetch("/unrestrict/link", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: this.formBody({ link: info.links[0] }),
+        body: this.formBody({ link: videoLink }),
       });
       if (!unRes.ok) throw new Error("debrid_unrestrict_failed");
 
       const dl = await unRes.json() as { download: string; filename: string; filesize: number };
       // Convert RD's 1-based file ID to 0-based index
-      const videoFileIndex = selectedRdId ? selectedRdId - 1 : 0;
+      const videoFileIndex = videoRdId ? videoRdId - 1 : 0;
       return {
         url: dl.download,
         filename: dl.filename,
         filesize: dl.filesize,
         fileIndex: videoFileIndex,
         files: allFiles,
+        links: info.links || [],
+        torrentId: id,
+        provider: "realdebrid",
       };
     } catch (err) {
       // Clean up: delete the torrent from RD on failure
@@ -247,14 +281,27 @@ class RealDebridProvider implements DebridProvider {
   }
 
   private pickFiles(files: RDTorrentInfo["files"], preferredIdx?: number): string {
+    let videoId: number;
     if (preferredIdx !== undefined) {
       const target = files.find((f) => f.id === preferredIdx + 1); // RD uses 1-based IDs
-      if (target && isVideoFile(target.path)) return String(target.id);
+      if (target && isVideoFile(target.path)) {
+        videoId = target.id;
+      } else {
+        const videoFiles = files.filter((f) => isVideoFile(f.path));
+        if (videoFiles.length === 0) return "all";
+        videoId = videoFiles.reduce((a, b) => (b.bytes > a.bytes ? b : a)).id;
+      }
+    } else {
+      const videoFiles = files.filter((f) => isVideoFile(f.path));
+      if (videoFiles.length === 0) return "all";
+      videoId = videoFiles.reduce((a, b) => (b.bytes > a.bytes ? b : a)).id;
     }
-    const videoFiles = files.filter((f) => isVideoFile(f.path));
-    if (videoFiles.length === 0) return "all";
-    const largest = videoFiles.reduce((a, b) => (b.bytes > a.bytes ? b : a));
-    return String(largest.id);
+    // Also select subtitle files — they're tiny and needed for sub serving
+    const subIds = files
+      .filter((f) => isSubtitleFile(f.path))
+      .map((f) => f.id);
+    const ids = [videoId, ...subIds];
+    return ids.join(",");
   }
 
   private async pollTorrentStatus(id: string, targetStatuses: string[], timeoutMs: number): Promise<RDTorrentInfo> {
@@ -276,6 +323,40 @@ class RealDebridProvider implements DebridProvider {
     }
 
     throw new Error("debrid_timeout");
+  }
+
+  /** Get an unrestricted download URL for a specific file in a torrent.
+   *  Used for serving subtitle/audio files on demand.
+   *  Subtitle files are selected alongside the video during initial unrestrict,
+   *  so their links should already be available. */
+  async getFileUrl(torrentId: string, fileId: number): Promise<string | null> {
+    try {
+      const info = await this.pollTorrentStatus(torrentId, ["downloaded"], 10000);
+      if (!info.links || info.links.length === 0) return null;
+
+      // Links correspond to selected files ordered by ID
+      const selectedFiles = info.files.filter(f => Number(f.selected)).sort((a, b) => a.id - b.id);
+      const linkIndex = selectedFiles.findIndex(f => f.id === fileId);
+      if (linkIndex < 0 || linkIndex >= info.links.length) {
+        console.warn("[SUB] Could not find link for file", { fileId, selectedCount: selectedFiles.length, linksCount: info.links.length });
+        return null;
+      }
+      const link = info.links[linkIndex];
+      const unRes = await this.rdFetch("/unrestrict/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: this.formBody({ link }),
+      });
+      if (!unRes.ok) {
+        console.warn("[SUB] RD unrestrict failed", { status: unRes.status });
+        return null;
+      }
+      const dl = await unRes.json() as { download: string };
+      return dl.download;
+    } catch (err) {
+      console.error("[SUB] RD getFileUrl error", { error: (err as Error).message });
+      return null;
+    }
   }
 }
 
@@ -401,6 +482,8 @@ class TorBoxProvider implements DebridProvider {
         filesize: videoFile.size,
         fileIndex: fileIdx ?? allFiles.findIndex((f) => f.id === videoFile.id),
         files: allFiles,
+        torrentId: String(torrentId),
+        provider: "torbox",
       };
     } catch (err) {
       // Clean up on failure — delete the torrent
@@ -447,11 +530,28 @@ class TorBoxProvider implements DebridProvider {
 
     throw new Error("debrid_timeout");
   }
+
+  /** Get a direct download URL for a specific file in a TorBox torrent. */
+  async getFileDownloadUrl(torrentId: number, fileId: number): Promise<string | null> {
+    try {
+      const res = await this.tbFetch(`/torrents/requestdl?token=${encodeURIComponent(this.apiKey)}&torrent_id=${torrentId}&file_id=${fileId}`);
+      if (!res.ok) return null;
+      const { data } = await res.json() as { data: string };
+      return data;
+    } catch {
+      return null;
+    }
+  }
 }
 
 function isVideoFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".mpg", ".mpeg"].includes(ext);
+}
+
+function isSubtitleFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return [".srt", ".ass", ".ssa", ".vtt", ".sub"].includes(ext);
 }
 
 // ── Active debrid stream state ───────────────────────────────────
@@ -461,18 +561,24 @@ interface ActiveDebridStream {
   url: string;
   files: DebridFileInfo[];
   streamKey: string;
+  /** RD: restricted download links for selected files; TB: not used */
+  links?: string[];
+  /** Provider torrent ID — for fetching individual file URLs on demand */
+  torrentId?: string;
+  /** Provider name — "realdebrid" or "torbox" */
+  provider?: string;
 }
 
 const _activeDebridStreams = new Map<string, ActiveDebridStream>();
 const _activeDebridKeys = new Map<string, string>();
 
-export function setActiveDebridStream(infoHash: string, url: string, files: DebridFileInfo[]): string {
+export function setActiveDebridStream(infoHash: string, url: string, files: DebridFileInfo[], links?: string[], torrentId?: string, provider?: string): string {
   const normalized = infoHash.toLowerCase();
   const previous = _activeDebridStreams.get(normalized);
   if (previous) _activeDebridKeys.delete(previous.streamKey);
 
   const streamKey = crypto.randomBytes(16).toString("hex");
-  _activeDebridStreams.set(normalized, { url, files, streamKey });
+  _activeDebridStreams.set(normalized, { url, files, streamKey, links, torrentId, provider });
   _activeDebridKeys.set(streamKey, normalized);
   return streamKey;
 }
@@ -489,6 +595,39 @@ export function getActiveDebridStreamByKey(streamKey: string): ActiveDebridStrea
   const infoHash = _activeDebridKeys.get(streamKey);
   if (!infoHash) return null;
   return _activeDebridStreams.get(infoHash) || null;
+}
+
+/** Get an unrestricted download URL for a specific file in an active debrid stream.
+ *  Used to serve subtitle/audio files that aren't the main video. */
+export async function getDebridFileUrl(infoHash: string, fileId: number): Promise<string | null> {
+  const normalized = infoHash.toLowerCase();
+  const stream = _activeDebridStreams.get(normalized);
+  if (!stream) return null;
+
+  // Check if the requested file is the main video (already unrestricted)
+  const isVideo = stream.url && _isVideoByExtension(stream.files, fileId);
+  if (isVideo) return stream.url;
+
+  const provider = getDebridProvider();
+  if (!provider) return null;
+
+  if (stream.provider === "realdebrid" && stream.torrentId) {
+    // Reuse the singleton provider instance
+    const rd = provider as RealDebridProvider;
+    return rd.getFileUrl(stream.torrentId, fileId);
+  }
+
+  if (stream.provider === "torbox" && stream.torrentId) {
+    return await (provider as TorBoxProvider).getFileDownloadUrl(Number(stream.torrentId), fileId);
+  }
+
+  return null;
+}
+
+function _isVideoByExtension(files: DebridFileInfo[], fileId: number): boolean {
+  const file = files.find(f => f.id === fileId);
+  if (!file) return false;
+  return isVideoFile(file.path);
 }
 
 let _provider: DebridProvider | null | undefined; // undefined = not loaded yet
