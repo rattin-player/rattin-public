@@ -251,7 +251,7 @@ export async function deleteTmdbConfig(): Promise<void> {
 // ── Watch History ─────────────────────────────────────────────────
 
 export async function reportWatchProgress(data: {
-  tmdbId: number; mediaType: string; title: string; posterPath: string | null;
+  tmdbId: number; mediaType: string; title: string; baseName?: string; posterPath: string | null;
   season?: number; episode?: number; episodeTitle?: string; seasonEpisodeCount?: number; seasonCount?: number;
   position: number; duration: number;
   imdbId?: string; year?: number;
