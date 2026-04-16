@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import MovieCard from "../components/MovieCard";
 import { searchTMDB, fetchDiscover } from "../lib/api";
+import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import "./Search.css";
 
 export default function Search() {
@@ -17,6 +18,8 @@ export default function Search() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const queryKey = useRef("");
+  const [recoveryKey, setRecoveryKey] = useState(0);
+  useRefetchOnRecovery(useCallback(() => { queryKey.current = ""; setRecoveryKey((k) => k + 1); }, []));
 
   // Reset on query/genre change
   useEffect(() => {
@@ -42,7 +45,7 @@ export default function Search() {
       setResults(filtered);
       setHasMore((data.page || 1) < (data.total_pages || 1));
     }).catch(() => setResults([]));
-  }, [q, genre, mediaType]);
+  }, [q, genre, mediaType, recoveryKey]);
 
   function loadMore() {
     const nextPage = page + 1;

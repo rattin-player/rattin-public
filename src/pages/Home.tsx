@@ -6,6 +6,7 @@ import WatchHistoryRow from "../components/WatchHistoryRow";
 import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, dismissWatchHistory, autoPlay, poster as posterUrl } from "../lib/api";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import { useRemoteMode } from "../lib/PlayerContext";
+import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import "./Home.css";
 
 function recentDateRange() {
@@ -36,7 +37,7 @@ export default function Home() {
     ? withoutAmpersand.filter((g) => g.name.toLowerCase().includes(genreFilter.toLowerCase()))
     : withoutAmpersand;
 
-  useEffect(() => {
+  const loadHomeData = useCallback(() => {
     fetchTrending().then((data) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items = (data.results || []).filter((i: any) => i.backdrop_path && i.overview);
@@ -44,6 +45,9 @@ export default function Home() {
     }).catch(() => {});
     fetchGenres().then((data) => setGenres(data.genres || [])).catch(() => {});
   }, []);
+
+  useEffect(() => { loadHomeData(); }, [loadHomeData]);
+  useRefetchOnRecovery(loadHomeData);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleContinuePlay = useCallback(async (item: any) => {

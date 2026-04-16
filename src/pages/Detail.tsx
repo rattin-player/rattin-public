@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
+import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
@@ -49,21 +50,28 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [episodeProgress, setEpisodeProgress] = useState<Map<string, any>>(new Map());
   const [isSaved, setIsSaved] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState(0);
+  useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
 
+  // Reset visible state on navigation only (not on recovery)
   useEffect(() => {
     setData(null);
     setPlayState(null);
     setCastExpanded(false);
-    const fetcher = type === "tv" ? fetchTV : fetchMovie;
-    fetcher(id!).then(setData).catch(() => {});
-  }, [id, type]);
-
-  useEffect(() => {
     setReviews(null);
     setShowAllReddit(false);
     setShowAllReviews(false);
-    fetchReviews(type, id!).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
+    setResumePoint(null);
   }, [id, type]);
+
+  useEffect(() => {
+    const fetcher = type === "tv" ? fetchTV : fetchMovie;
+    fetcher(id!).then(setData).catch(() => {});
+  }, [id, type, recoveryKey]);
+
+  useEffect(() => {
+    fetchReviews(type, id!).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
+  }, [id, type, recoveryKey]);
 
   useEffect(() => {
     if (type === "tv" && data) {
@@ -86,10 +94,9 @@ export default function Detail() {
   // Fetch resume point and saved state
   useEffect(() => {
     if (!id) return;
-    setResumePoint(null);
     refreshResumePoint();
     checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
-  }, [id, type]);
+  }, [id, type, recoveryKey]);
 
   // Re-validate resume point when data (seasons) loads
   useEffect(() => {
@@ -110,7 +117,7 @@ export default function Detail() {
         setEpisodeProgress(map);
       })
       .catch(() => {});
-  }, [id, type]);
+  }, [id, type, recoveryKey]);
 
   async function openPicker(season?: number, episode?: number) {
     setPickerSeason(season);
