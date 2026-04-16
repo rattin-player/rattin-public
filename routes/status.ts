@@ -38,8 +38,38 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
 
   app.get("/api/status/:infoHash", (req: Request, res: Response) => {
     const { infoHash } = req.params as Record<string, string>;
+    // Debrid takes priority — if an active debrid stream exists, use its file list
+    const debridFiles = getActiveDebridFiles(infoHash);
+    if (debridFiles.length > 0) {
+      const files = debridFiles.map((f, i) => {
+        const ext = path.extname(f.path).toLowerCase();
+        return {
+          index: i, // 0-based positional index (not provider ID)
+          debridId: f.id, // preserve provider ID for on-demand URL fetching
+          name: f.path.replace(/^\//, ""),
+          path: f.path.replace(/^\//, ""),
+          length: f.bytes,
+          downloaded: f.bytes,
+          progress: 1,
+          isVideo: VIDEO_EXTENSIONS.includes(ext),
+          isAudio: AUDIO_EXTENSIONS.includes(ext),
+          isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
+          isAllowed: isAllowedFile(f.path),
+          duration: null,
+        };
+      });
+      return res.json({
+        infoHash, name: "(debrid)",
+        downloadSpeed: 0, uploadSpeed: 0, progress: 1,
+        downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
+        files,
+      });
+    }
+
+    // No debrid — fall back to webtorrent
     const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) {
+      // No active debrid or webtorrent — check completed-on-disk cache
       const diskFiles: Array<Record<string, unknown>> = [];
       for (const [key, info] of completedFiles) {
         if (key.startsWith(infoHash + ":")) {
@@ -62,32 +92,6 @@ export default function statusRoutes(app: Express, ctx: ServerContext): void {
           downloadSpeed: 0, uploadSpeed: 0, progress: 1,
           downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
           files: diskFiles,
-        });
-      }
-      // Debrid fallback: return file list from RD torrent info
-      const debridFiles = getActiveDebridFiles(infoHash);
-      if (debridFiles.length > 0) {
-        const files = debridFiles.map((f, i) => {
-          const ext = path.extname(f.path).toLowerCase();
-          return {
-            index: f.id - 1, // RD uses 1-based, we use 0-based
-            name: f.path.replace(/^\//, ""),
-            path: f.path.replace(/^\//, ""),
-            length: f.bytes,
-            downloaded: f.bytes,
-            progress: 1,
-            isVideo: VIDEO_EXTENSIONS.includes(ext),
-            isAudio: AUDIO_EXTENSIONS.includes(ext),
-            isSubtitle: SUBTITLE_EXTENSIONS.includes(ext),
-            isAllowed: isAllowedFile(f.path),
-            duration: null,
-          };
-        });
-        return res.json({
-          infoHash, name: "(debrid)",
-          downloadSpeed: 0, uploadSpeed: 0, progress: 1,
-          downloaded: 0, totalSize: 0, numPeers: 0, timeRemaining: 0,
-          files,
         });
       }
       return res.status(404).json({ error: "Torrent not found" });
