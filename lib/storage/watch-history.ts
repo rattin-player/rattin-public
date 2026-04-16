@@ -4,6 +4,7 @@ export interface WatchRecord {
   tmdbId: number;
   mediaType: "movie" | "tv";
   title: string;
+  baseName?: string;        // clean show/movie name without episode suffix
   posterPath: string | null;
   season?: number;
   episode?: number;
