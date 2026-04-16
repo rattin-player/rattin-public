@@ -47,8 +47,8 @@ export default function Home() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleContinuePlay = useCallback(async (item: any) => {
-    // Strip any episode suffix from title that may have been saved from a previous session
-    const cleanTitle = item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
+    // Use stored baseName if available; fall back to regex for legacy records without it
+    const cleanTitle = item.baseName ?? item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
     const displayTitle = item.mediaType === "tv" && item.season != null
       ? `${cleanTitle} S${item.season}E${item.episode}${item.episodeTitle ? ` \u2014 ${item.episodeTitle}` : ""}`
       : cleanTitle;
@@ -101,8 +101,8 @@ export default function Home() {
       navigate("/remote", { state: { pendingTitle: displayTitle } });
       return;
     }
-    // Base name: strip any episode suffix that may have been saved from a previous session
-    const baseName = item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
+    // Use stored baseName if available; fall back to regex for legacy records without it
+    const baseName = item.baseName ?? item.title.replace(/\s*[—\-]\s*S\d+E\d+.*$/, "");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const navState: any = {
       tags: result.tags,
