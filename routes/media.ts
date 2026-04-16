@@ -9,7 +9,7 @@ import { hasPiece } from "../lib/torrent/torrent-compat.js";
 import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media/media-utils.js";
 import { detectIntro, lookupExternal } from "../lib/media/intro-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
-import { getActiveDebridUrl } from "../lib/torrent/debrid.js";
+import { getActiveDebridUrl, getActiveDebridFiles, getDebridFileUrl } from "../lib/torrent/debrid.js";
 
 export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   const {
@@ -30,7 +30,11 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     let filePath: string;
 
-    if (torrent) {
+    // Debrid takes priority
+    const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+    if (debridUrl) {
+      filePath = debridUrl;
+    } else if (torrent) {
       const file = torrent.files[parseInt(fileIndex, 10)];
       if (!file) return res.status(404).json({ error: "File not found" });
       filePath = diskPath(torrent, file);
@@ -38,9 +42,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
         return res.json({ duration: null });
       }
     } else {
-      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
-      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
-      filePath = debridUrl;
+      return res.status(404).json({ error: "Torrent not found" });
     }
 
     const probe = spawn("ffprobe", [
@@ -66,8 +68,69 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   });
 
   // Subtitle endpoint - converts any subtitle format to WebVTT
-  app.get("/api/subtitle/:infoHash/:fileIndex", (req: Request, res: Response) => {
+  // CHECKS DEBRID FIRST: if a debrid stream is active, serves subtitle from debrid provider.
+  // Falls back to webtorrent only if no debrid stream is registered.
+  app.get("/api/subtitle/:infoHash/:fileIndex", async (req: Request, res: Response) => {
     const { infoHash, fileIndex } = req.params as Record<string, string>;
+
+    // Debrid takes priority — if an active debrid stream exists, fetch from debrid
+    const debridFiles = getActiveDebridFiles(infoHash);
+    if (debridFiles.length > 0) {
+      const fileIdx = parseInt(fileIndex, 10);
+      // fileIndex is 0-based positional — map directly to debridFiles array
+      const debridFile = fileIdx >= 0 && fileIdx < debridFiles.length ? debridFiles[fileIdx] : undefined;
+      if (!debridFile) return res.status(404).json({ error: "File not found" });
+      const ext = path.extname(debridFile.path).toLowerCase();
+      if (!SUBTITLE_EXTENSIONS.includes(ext)) {
+        return res.status(400).json({ error: "Not a subtitle file" });
+      }
+      const offset = parseFloat(req.query.offset as string) || 0;
+
+      try {
+        // Get unrestricted download URL for this specific file
+        const fileUrl = await getDebridFileUrl(infoHash, debridFile.id);
+        if (!fileUrl) {
+          log("err", "/api/subtitle — could not get debrid file URL", { infoHash, fileId: debridFile.id });
+          return res.status(502).json({ error: "Could not get debrid download link" });
+        }
+
+        // Fetch subtitle content from debrid provider
+        const subRes = await fetch(fileUrl);
+        if (!subRes.ok) {
+          log("err", "/api/subtitle — debrid fetch failed", { status: subRes.status, infoHash, fileId: debridFile.id });
+          return res.status(502).json({ error: "Failed to fetch subtitle from debrid" });
+        }
+        const subBuffer = Buffer.from(await subRes.arrayBuffer());
+        const raw = subBuffer.toString("utf-8");
+        res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+
+        if (ext === ".vtt") {
+          return res.send(offset > 0 ? "" : raw); // TODO: shift VTT if offset > 0
+        }
+        if (ext === ".srt") {
+          return res.send(srtToVtt(raw));
+        }
+        // Other formats: pipe through ffmpeg
+        const args = [
+          ...(offset > 0 ? ["-ss", String(offset)] : []),
+          "-i", "pipe:0", "-f", "webvtt", "-v", "warning", "pipe:1",
+        ];
+        const ffmpeg = spawn("ffmpeg", args, { stdio: ["pipe", "pipe", "pipe"] });
+        ffmpeg.stdin!.end(subBuffer);
+        ffmpeg.stdout!.pipe(res);
+        ffmpeg.stderr!.on("data", (d: Buffer) => log("warn", "Subtitle ffmpeg: " + d.toString().trim()));
+        ffmpeg.on("close", (code: number | null) => {
+          if (code !== 0) log("err", "Subtitle conversion from debrid failed", { code });
+        });
+        res.on("close", () => ffmpeg.kill());
+        return;
+      } catch (err) {
+        log("err", "/api/subtitle — debrid serving error", { error: (err as Error).message });
+        return res.status(500).json({ error: "Failed to serve subtitle from debrid" });
+      }
+    }
+
+    // Fall back to webtorrent
     const torrent = client().torrents.find((t) => t.infoHash === infoHash);
     if (!torrent) return res.status(404).json({ error: "Torrent not found" });
 
@@ -158,29 +221,34 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
 
 
   // Probe embedded subtitle streams in a video file
+  // CHECKS DEBRID FIRST: if a debrid stream is active, always probe the debrid URL.
+  // Falls back to webtorrent only if no debrid stream is registered.
   app.get("/api/subtitles/:infoHash/:fileIndex", (req: Request, res: Response) => {
     res.removeHeader("ETag");
     res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     let filePath: string;
     let complete: boolean;
 
-    if (torrent) {
-      const file = torrent.files[parseInt(fileIndex, 10)];
-      if (!file) return res.status(404).json({ error: "File not found" });
-      complete = isFileComplete(torrent, file);
-      filePath = diskPath(torrent, file);
-      try { statSync(filePath); } catch {
-        return res.json({ tracks: [], complete: false });
-      }
-    } else {
-      // Debrid fallback: probe the remote URL directly (ffprobe supports HTTPS)
-      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
-      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+    // Debrid takes priority — if an active debrid stream exists, use its URL
+    const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+    if (debridUrl) {
       filePath = debridUrl;
       complete = true;
+    } else {
+      const torrent = client().torrents.find((t) => t.infoHash === infoHash);
+      if (torrent) {
+        const file = torrent.files[parseInt(fileIndex, 10)];
+        if (!file) return res.status(404).json({ error: "File not found" });
+        complete = isFileComplete(torrent, file);
+        filePath = diskPath(torrent, file);
+        try { statSync(filePath); } catch {
+          return res.json({ tracks: [], complete: false });
+        }
+      } else {
+        return res.status(404).json({ error: "Torrent not found" });
+      }
     }
 
     // Use ffprobe to list subtitle streams
@@ -215,24 +283,28 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   app.get("/api/audio-tracks/:infoHash/:fileIndex", (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     const { infoHash, fileIndex } = req.params as Record<string, string>;
-    const torrent = client().torrents.find((t) => t.infoHash === infoHash);
 
     let filePath: string;
     let complete: boolean;
 
-    if (torrent) {
-      const file = torrent.files[parseInt(fileIndex, 10)];
-      if (!file) return res.status(404).json({ error: "File not found" });
-      complete = isFileComplete(torrent, file);
-      filePath = diskPath(torrent, file);
-      try { statSync(filePath); } catch {
-        return res.json({ tracks: [], complete: false });
-      }
-    } else {
-      const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
-      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+    // Debrid takes priority
+    const debridUrl = getActiveDebridUrl(infoHash, parseInt(fileIndex, 10));
+    if (debridUrl) {
       filePath = debridUrl;
       complete = true;
+    } else {
+      const torrent = client().torrents.find((t) => t.infoHash === infoHash);
+      if (torrent) {
+        const file = torrent.files[parseInt(fileIndex, 10)];
+        if (!file) return res.status(404).json({ error: "File not found" });
+        complete = isFileComplete(torrent, file);
+        filePath = diskPath(torrent, file);
+        try { statSync(filePath); } catch {
+          return res.json({ tracks: [], complete: false });
+        }
+      } else {
+        return res.status(404).json({ error: "Torrent not found" });
+      }
     }
 
     const probe = spawn("ffprobe", [
@@ -382,21 +454,24 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
   // Extract an embedded subtitle stream as WebVTT
   app.get("/api/subtitle-extract/:infoHash/:fileIndex/:streamIndex", (req: Request, res: Response) => {
     const params = req.params as Record<string, string>;
-    const torrent = client().torrents.find((t) => t.infoHash === params.infoHash);
-
     let filePath: string;
 
-    if (torrent) {
-      const file = torrent.files[parseInt(params.fileIndex, 10)];
-      if (!file) return res.status(404).json({ error: "File not found" });
-      filePath = diskPath(torrent, file);
-      try { statSync(filePath); } catch {
-        return res.status(202).json({ error: "File not on disk yet" });
-      }
-    } else {
-      const debridUrl = getActiveDebridUrl(params.infoHash, parseInt(params.fileIndex, 10));
-      if (!debridUrl) return res.status(404).json({ error: "Torrent not found" });
+    // Debrid takes priority
+    const debridUrl = getActiveDebridUrl(params.infoHash, parseInt(params.fileIndex, 10));
+    if (debridUrl) {
       filePath = debridUrl;
+    } else {
+      const torrent = client().torrents.find((t) => t.infoHash === params.infoHash);
+      if (torrent) {
+        const file = torrent.files[parseInt(params.fileIndex, 10)];
+        if (!file) return res.status(404).json({ error: "File not found" });
+        filePath = diskPath(torrent, file);
+        try { statSync(filePath); } catch {
+          return res.status(202).json({ error: "File not on disk yet" });
+        }
+      } else {
+        return res.status(404).json({ error: "Torrent not found" });
+      }
     }
 
     const streamIdx = parseInt(params.streamIndex, 10);
