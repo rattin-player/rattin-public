@@ -89,7 +89,7 @@ export default function Home() {
           action: "start-stream",
           value: {
             infoHash: result.infoHash, fileIndex: result.fileIndex, title: displayTitle,
-            tags: result.tags, debridStreamKey: result.debridStreamKey,
+            tags: result.tags, debridStreamKey: result.debridStreamKey, baseName: cleanTitle,
             year: item.year, type: item.mediaType, season: item.season, episode: item.episode,
             imdbId: item.imdbId, tmdbId: item.tmdbId, posterPath: item.posterPath,
             episodeTitle: item.episodeTitle, seasonEpisodeCount: item.seasonEpisodeCount,

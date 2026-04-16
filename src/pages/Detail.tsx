@@ -148,7 +148,7 @@ export default function Detail() {
         value: {
           infoHash: result.infoHash, fileIndex: result.fileIndex, title, tags,
           debridStreamKey: result.debridStreamKey, year, type, season, episode, imdbId,
-          tmdbId: id, posterPath: data.poster_path ?? null,
+          tmdbId: id, posterPath: data.poster_path ?? null, baseName: data.title || data.name,
           episodeTitle: season != null ? (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name : undefined,
           seasonEpisodeCount: season != null ? episodes?.episodes?.length : undefined,
           seasonCount: seasons?.length,

@@ -303,7 +303,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
             console.log("[rc] start-stream", { infoHash: value.infoHash, title: value.title, wasOnPlayer, debridStreamKey: !!value.debridStreamKey });
 
             const navState = {
-              tags: value.tags, title: value.title, debridStreamKey: value.debridStreamKey,
+              tags: value.tags, title: value.title, baseName: value.baseName, debridStreamKey: value.debridStreamKey,
               year: value.year, type: value.type, season: value.season, episode: value.episode, imdbId: value.imdbId,
               tmdbId: value.tmdbId, posterPath: value.posterPath, episodeTitle: value.episodeTitle,
               seasonEpisodeCount: value.seasonEpisodeCount, seasonCount: value.seasonCount, resumePosition: value.resumePosition,
