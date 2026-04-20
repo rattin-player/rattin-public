@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
@@ -50,6 +50,9 @@ export default function Detail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [episodeProgress, setEpisodeProgress] = useState<Map<string, any>>(new Map());
   const [isSaved, setIsSaved] = useState(false);
+  // Episode groups override for anime with flat TMDB seasons
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [episodeGroupSeasons, setEpisodeGroupSeasons] = useState<any[] | null>(null);
   const [recoveryKey, setRecoveryKey] = useState(0);
   useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
 
@@ -58,11 +61,30 @@ export default function Detail() {
     setData(null);
     setPlayState(null);
     setCastExpanded(false);
+    setEpisodeGroupSeasons(null);
     setReviews(null);
     setShowAllReddit(false);
     setShowAllReviews(false);
     setResumePoint(null);
   }, [id, type]);
+
+  // Detect flat-season anime and fetch episode groups
+  useEffect(() => {
+    if (type !== "tv" || !data || !id) return;
+    const realSeasons = (data.seasons || []).filter((s: any) => s.season_number > 0);
+    // Heuristic: single season with 25+ episodes likely needs episode group mapping
+    if (realSeasons.length === 1 && realSeasons[0].episode_count >= 25) {
+      fetchEpisodeGroups(id).then((r: any) => {
+        if (r.found && r.seasons?.length > 1) {
+          setEpisodeGroupSeasons(r.seasons);
+          // If the currently selected season doesn't exist in the groups, reset to 1
+          if (!r.seasons.some((s: any) => s.season_number === selectedSeason)) {
+            setSelectedSeason(1);
+          }
+        }
+      }).catch(() => {});
+    }
+  }, [id, type, data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,14 +110,20 @@ export default function Detail() {
   useEffect(() => {
     if (type !== "tv" || !data) return;
     let cancelled = false;
-    fetchSeason(id!, selectedSeason).then((e) => { if (!cancelled) setEpisodes(e); }).catch(() => {});
+    if (episodeGroupSeasons) {
+      const group = episodeGroupSeasons.find((s: any) => s.season_number === selectedSeason);
+      setEpisodes(group ? { episodes: group.episodes, season_number: selectedSeason } : { episodes: [] });
+    } else {
+      fetchSeason(id!, selectedSeason).then((e) => { if (!cancelled) setEpisodes(e); }).catch(() => {});
+    }
     return () => { cancelled = true; };
-  }, [id, selectedSeason, data]);
+  }, [id, selectedSeason, data, episodeGroupSeasons]);
 
   function refreshResumePoint() {
     if (!id) return;
     fetchResumePoint(Number(id), type).then((r) => {
-      const point = isValidResumePoint(r.resumePoint, data?.seasons?.filter((s: any) => s.season_number > 0)) ? r.resumePoint : null;
+      const validSeasons = episodeGroupSeasons || data?.seasons?.filter((s: any) => s.season_number > 0);
+      const point = isValidResumePoint(r.resumePoint, validSeasons) ? r.resumePoint : null;
       setResumePoint(point);
       if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
         setSelectedSeason(point.season);
@@ -109,7 +137,8 @@ export default function Detail() {
     let cancelled = false;
     fetchResumePoint(Number(id), type).then((r) => {
       if (cancelled) return;
-      const point = isValidResumePoint(r.resumePoint, data?.seasons?.filter((s: any) => s.season_number > 0)) ? r.resumePoint : null;
+      const validSeasons = episodeGroupSeasons || data?.seasons?.filter((s: any) => s.season_number > 0);
+      const point = isValidResumePoint(r.resumePoint, validSeasons) ? r.resumePoint : null;
       setResumePoint(point);
       if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
         setSelectedSeason(point.season);
@@ -125,7 +154,7 @@ export default function Detail() {
     if (!isValidResumePoint(resumePoint, seasons)) {
       setResumePoint(null);
     }
-  }, [data?.seasons, resumePoint, type]);
+  }, [data?.seasons, episodeGroupSeasons, resumePoint, type]);
 
   // Fetch episode progress for TV
   useEffect(() => {
@@ -233,6 +262,7 @@ export default function Detail() {
         navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === pickerEpisode)?.name;
         navState.seasonEpisodeCount = episodes?.episodes?.length;
         navState.seasonCount = seasons?.length;
+        if (episodeGroupSeasons) navState.hasEpisodeGroups = true;
       }
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       // Pass resume position so switching sources doesn't lose progress
@@ -282,6 +312,7 @@ export default function Detail() {
           navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name;
           navState.seasonEpisodeCount = episodes?.episodes?.length;
           navState.seasonCount = seasons?.length;
+          if (episodeGroupSeasons) navState.hasEpisodeGroups = true;
         }
         if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
         // Only attach resumePosition when playing the exact episode/movie the resume point refers to
@@ -311,7 +342,7 @@ export default function Detail() {
   const year = (data.release_date || data.first_air_date || "").slice(0, 4);
   const runtime = data.runtime ? `${Math.floor(data.runtime / 60)}h ${data.runtime % 60}m` : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const seasons = data.seasons?.filter((s: any) => s.season_number > 0);
+  const seasons = episodeGroupSeasons || data.seasons?.filter((s: any) => s.season_number > 0);
   const genres = data.genres || [];
   const cast = (data.credits?.cast || []).slice(0, 20);
 

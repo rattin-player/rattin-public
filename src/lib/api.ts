@@ -74,6 +74,11 @@ export function fetchSeason(tvId: string | number, seasonNum: number): Promise<a
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function fetchEpisodeGroups(tvId: string | number): Promise<any> {
+  return get(`/api/tmdb/tv/${tvId}/episode-groups`);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function autoPlay(title: string, year: number | undefined, type: string, season?: number, episode?: number, imdbId?: string): Promise<any> {
   const res = await fetch("/api/auto-play", {
     method: "POST",
