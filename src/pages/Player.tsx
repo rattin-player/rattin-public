@@ -34,7 +34,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, reportWatchProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress } from "../lib/api";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -248,12 +248,20 @@ export default function Player() {
     mpvSetLoadingStatus("Finding best stream...");
     mpvSetLoading(true);
     try {
-      const [result, seasonData] = await Promise.all([
+      const promises: [Promise<any>, Promise<any>, Promise<any>] = [
         autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId),
         fetchSeason(state.tmdbId, nextSeason).catch(() => null),
-      ]);
-      const seasonEpisodeCount = seasonData?.episodes?.length ?? undefined;
-      const episodeTitle = seasonData?.episodes?.find(
+        state.hasEpisodeGroups ? fetchEpisodeGroups(state.tmdbId).catch(() => null) : Promise.resolve(null),
+      ];
+      const [result, seasonData, episodeGroups] = await Promise.all(promises);
+      // Use episode group data if available (for anime with flat TMDB seasons)
+      const groupSeason = episodeGroups?.found
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? episodeGroups.seasons?.find((s: any) => s.season_number === nextSeason)
+        : null;
+      const effectiveEpisodes = groupSeason?.episodes || seasonData?.episodes;
+      const seasonEpisodeCount = effectiveEpisodes?.length ?? undefined;
+      const episodeTitle = effectiveEpisodes?.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (ep: any) => ep.episode_number === nextEpisode
       )?.name;
@@ -266,7 +274,8 @@ export default function Player() {
         tmdbId: state.tmdbId, year, type: "tv", imdbId, posterPath: state.posterPath ?? null,
         season: nextSeason, episode: nextEpisode,
         episodeTitle, seasonEpisodeCount,
-        seasonCount: state.seasonCount != null ? Number(state.seasonCount) : undefined,
+        seasonCount: episodeGroups?.found ? episodeGroups.seasons.length : (state.seasonCount != null ? Number(state.seasonCount) : undefined),
+        hasEpisodeGroups: !!episodeGroups?.found || state.hasEpisodeGroups,
       };
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
