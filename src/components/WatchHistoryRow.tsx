@@ -31,8 +31,10 @@ export default function WatchHistoryRow({ title, fetchFn, showProgress = false, 
     };
     load();
     const onCleared = () => { if (!cancelled) load(); };
+    const onRecovery = () => { if (!cancelled) load(); };
     window.addEventListener("storage-cleared", onCleared);
-    return () => { cancelled = true; window.removeEventListener("storage-cleared", onCleared); };
+    window.addEventListener("rattin-network-recovery", onRecovery);
+    return () => { cancelled = true; window.removeEventListener("storage-cleared", onCleared); window.removeEventListener("rattin-network-recovery", onRecovery); };
   }, []);
 
   function scroll(dir: number) {

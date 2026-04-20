@@ -102,7 +102,13 @@ export default function App() {
   useEffect(() => {
     // Phone remote uses the desktop's TMDB key — skip the setup gate
     if (getRemoteSessionId()) { setTmdbReady(true); return; }
-    getTmdbStatus().then((s) => setTmdbReady(s.configured)).catch(() => setTmdbReady(false));
+    const tryStatus = (attempts: number) => {
+      getTmdbStatus().then((s) => setTmdbReady(s.configured)).catch(() => {
+        if (attempts > 1) setTimeout(() => tryStatus(attempts - 1), 1000);
+        else setTmdbReady(false);
+      });
+    };
+    tryStatus(3);
   }, []);
 
   // Intercept external links so they open in the system browser
