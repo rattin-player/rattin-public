@@ -65,19 +65,31 @@ export default function Detail() {
   }, [id, type]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetcher = type === "tv" ? fetchTV : fetchMovie;
-    fetcher(id!).then(setData).catch(() => {});
+    fetcher(id!).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [id, type, recoveryKey]);
 
   useEffect(() => {
-    fetchReviews(type, id!).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
+    let cancelled = false;
+    fetchReviews(type, id!)
+      .then((r) => { if (!cancelled) setReviews(r); })
+      .catch(() => { if (!cancelled) setReviews({ reviews: [], reddit: [] }); });
+    return () => { cancelled = true; };
   }, [id, type, recoveryKey]);
 
+  // Clear episodes only when navigating or changing season — NOT when `data` is replaced
+  // by a network-recovery refetch (avoids skeleton flash on reconnect)
   useEffect(() => {
-    if (type === "tv" && data) {
-      setEpisodes(null);
-      fetchSeason(id!, selectedSeason).then(setEpisodes).catch(() => {});
-    }
+    setEpisodes(null);
+  }, [id, selectedSeason]);
+
+  useEffect(() => {
+    if (type !== "tv" || !data) return;
+    let cancelled = false;
+    fetchSeason(id!, selectedSeason).then((e) => { if (!cancelled) setEpisodes(e); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [id, selectedSeason, data]);
 
   function refreshResumePoint() {
@@ -94,8 +106,17 @@ export default function Detail() {
   // Fetch resume point and saved state
   useEffect(() => {
     if (!id) return;
-    refreshResumePoint();
-    checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
+    let cancelled = false;
+    fetchResumePoint(Number(id), type).then((r) => {
+      if (cancelled) return;
+      const point = isValidResumePoint(r.resumePoint, data?.seasons?.filter((s: any) => s.season_number > 0)) ? r.resumePoint : null;
+      setResumePoint(point);
+      if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
+        setSelectedSeason(point.season);
+      }
+    }).catch(() => {});
+    checkSaved(type, Number(id)).then((r) => { if (!cancelled) setIsSaved(r.saved); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [id, type, recoveryKey]);
 
   // Re-validate resume point when data (seasons) loads
@@ -109,14 +130,17 @@ export default function Detail() {
   // Fetch episode progress for TV
   useEffect(() => {
     if (type !== "tv" || !id) return;
+    let cancelled = false;
     fetchSeriesProgress(Number(id))
       .then((r) => {
+        if (cancelled) return;
         const map = new Map();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const ep of r.episodes) map.set(`s${ep.season}e${ep.episode}`, ep);
         setEpisodeProgress(map);
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [id, type, recoveryKey]);
 
   async function openPicker(season?: number, episode?: number) {
