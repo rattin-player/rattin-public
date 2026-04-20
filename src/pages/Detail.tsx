@@ -231,6 +231,7 @@ export default function Detail() {
         navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === pickerEpisode)?.name;
         navState.seasonEpisodeCount = episodes?.episodes?.length;
         navState.seasonCount = seasons?.length;
+        if (episodeGroupSeasons) navState.hasEpisodeGroups = true;
       }
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       // Pass resume position so switching sources doesn't lose progress
@@ -280,6 +281,7 @@ export default function Detail() {
           navState.episodeTitle = (episodes?.episodes || []).find((ep: any) => ep.episode_number === episode)?.name;
           navState.seasonEpisodeCount = episodes?.episodes?.length;
           navState.seasonCount = seasons?.length;
+          if (episodeGroupSeasons) navState.hasEpisodeGroups = true;
         }
         if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
         // Only attach resumePosition when playing the exact episode/movie the resume point refers to

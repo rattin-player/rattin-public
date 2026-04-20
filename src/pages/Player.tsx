@@ -248,11 +248,12 @@ export default function Player() {
     mpvSetLoadingStatus("Finding best stream...");
     mpvSetLoading(true);
     try {
-      const [result, seasonData, episodeGroups] = await Promise.all([
+      const promises: [Promise<any>, Promise<any>, Promise<any>] = [
         autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId),
         fetchSeason(state.tmdbId, nextSeason).catch(() => null),
-        fetchEpisodeGroups(state.tmdbId).catch(() => null),
-      ]);
+        state.hasEpisodeGroups ? fetchEpisodeGroups(state.tmdbId).catch(() => null) : Promise.resolve(null),
+      ];
+      const [result, seasonData, episodeGroups] = await Promise.all(promises);
       // Use episode group data if available (for anime with flat TMDB seasons)
       const groupSeason = episodeGroups?.found
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -274,6 +275,7 @@ export default function Player() {
         season: nextSeason, episode: nextEpisode,
         episodeTitle, seasonEpisodeCount,
         seasonCount: episodeGroups?.found ? episodeGroups.seasons.length : (state.seasonCount != null ? Number(state.seasonCount) : undefined),
+        hasEpisodeGroups: !!episodeGroups?.found || state.hasEpisodeGroups,
       };
       if (result.debridStreamKey) navState.debridStreamKey = result.debridStreamKey;
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });

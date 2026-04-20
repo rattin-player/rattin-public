@@ -95,6 +95,9 @@ export default function Remote() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [epGroupCache, setEpGroupCache] = useState<any>(null);
 
+  // Invalidate episode group cache when the show changes
+  useEffect(() => { setEpGroupCache(null); }, [state?.tmdbId]);
+
   function handleDigitChange(index: number, value: string) {
     const digit = value.replace(/\D/g, "").slice(-1); // take last char (handles paste-over)
     setDigits((prev) => {
