@@ -188,6 +188,66 @@ app.get("/api/tmdb/tv/:id/season/:num", async (req: Request, res: Response) => {
   }
 });
 
+// Fetch episode groups for a TV show (used when TMDB has flat season structure for anime)
+app.get("/api/tmdb/tv/:id/episode-groups", async (req: Request, res: Response) => {
+  const { id } = req.params as Record<string, string>;
+  const key = `tv:${id}:episode-groups`;
+  const cached = tmdbCache.get(key);
+  if (cached) return res.json(cached);
+  try {
+    const listing = await fetchTMDB(`/tv/${id}/episode_groups`) as {
+      results?: Array<{ id: string; name: string; type: number; group_count: number; episode_count: number }>;
+    };
+    // Find a type-6 (original air date / "Seasons") group with multiple groups
+    const seasonsGroup = (listing.results || []).find(
+      (g) => g.type === 6 && g.group_count > 1
+    );
+    if (!seasonsGroup) {
+      const result = { found: false, seasons: [] };
+      tmdbCache.set(key, result, CACHE_TTL.TV);
+      return res.json(result);
+    }
+    // Fetch the full group details
+    const detail = await fetchTMDB(`/tv/episode_group/${seasonsGroup.id}`) as {
+      groups?: Array<{
+        name: string;
+        order: number;
+        episodes: Array<{
+          id: number; name: string; overview: string; order: number;
+          season_number: number; episode_number: number;
+          still_path: string | null; runtime: number | null;
+          air_date: string | null;
+        }>;
+      }>;
+    };
+    // Build a clean seasons array from the groups, excluding specials (order=0)
+    const seasons = (detail.groups || [])
+      .filter((g) => g.order > 0)
+      .sort((a, b) => a.order - b.order)
+      .map((g) => ({
+        season_number: g.order,
+        name: g.name,
+        episode_count: g.episodes.length,
+        episodes: g.episodes
+          .sort((a, b) => a.order - b.order)
+          .map((ep, idx) => ({
+            id: ep.id,
+            episode_number: idx + 1,
+            name: ep.name,
+            overview: ep.overview,
+            still_path: ep.still_path,
+            runtime: ep.runtime,
+            air_date: ep.air_date,
+          })),
+      }));
+    const result = { found: true, seasons };
+    tmdbCache.set(key, result, CACHE_TTL.TV);
+    res.json(result);
+  } catch (e) {
+    res.status(tmdbErrorStatus(e as Error)).json({ error: (e as Error).message });
+  }
+});
+
 // Simple cache: TV show details
 app.get("/api/tmdb/tv/:id", async (req: Request, res: Response) => {
   const { id } = req.params as Record<string, string>;
