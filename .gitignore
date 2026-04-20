@@ -16,3 +16,5 @@ shell/build/
 build-appimage/
 *.AppImage
 squashfs-root/
+.worktrees
+.pi/worktrees
