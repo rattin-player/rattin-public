@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
+import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import SourcePicker from "../components/SourcePicker";
 import "./Detail.css";
 
@@ -52,21 +53,19 @@ export default function Detail() {
   // Episode groups override for anime with flat TMDB seasons
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [episodeGroupSeasons, setEpisodeGroupSeasons] = useState<any[] | null>(null);
+  const [recoveryKey, setRecoveryKey] = useState(0);
+  useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
 
+  // Reset visible state on navigation only (not on recovery)
   useEffect(() => {
     setData(null);
     setPlayState(null);
     setCastExpanded(false);
     setEpisodeGroupSeasons(null);
-    const fetcher = type === "tv" ? fetchTV : fetchMovie;
-    fetcher(id!).then(setData).catch(() => {});
-  }, [id, type]);
-
-  useEffect(() => {
     setReviews(null);
     setShowAllReddit(false);
     setShowAllReviews(false);
-    fetchReviews(type, id!).then(setReviews).catch(() => setReviews({ reviews: [], reddit: [] }));
+    setResumePoint(null);
   }, [id, type]);
 
   // Detect flat-season anime and fetch episode groups
@@ -88,16 +87,36 @@ export default function Detail() {
   }, [id, type, data]);
 
   useEffect(() => {
-    if (type === "tv" && data) {
-      setEpisodes(null);
-      if (episodeGroupSeasons) {
-        // Use episodes from the episode group data directly
-        const group = episodeGroupSeasons.find((s: any) => s.season_number === selectedSeason);
-        setEpisodes(group ? { episodes: group.episodes, season_number: selectedSeason } : { episodes: [] });
-      } else {
-        fetchSeason(id!, selectedSeason).then(setEpisodes).catch(() => {});
-      }
+    let cancelled = false;
+    const fetcher = type === "tv" ? fetchTV : fetchMovie;
+    fetcher(id!).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [id, type, recoveryKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchReviews(type, id!)
+      .then((r) => { if (!cancelled) setReviews(r); })
+      .catch(() => { if (!cancelled) setReviews({ reviews: [], reddit: [] }); });
+    return () => { cancelled = true; };
+  }, [id, type, recoveryKey]);
+
+  // Clear episodes only when navigating or changing season — NOT when `data` is replaced
+  // by a network-recovery refetch (avoids skeleton flash on reconnect)
+  useEffect(() => {
+    setEpisodes(null);
+  }, [id, selectedSeason]);
+
+  useEffect(() => {
+    if (type !== "tv" || !data) return;
+    let cancelled = false;
+    if (episodeGroupSeasons) {
+      const group = episodeGroupSeasons.find((s: any) => s.season_number === selectedSeason);
+      setEpisodes(group ? { episodes: group.episodes, season_number: selectedSeason } : { episodes: [] });
+    } else {
+      fetchSeason(id!, selectedSeason).then((e) => { if (!cancelled) setEpisodes(e); }).catch(() => {});
     }
+    return () => { cancelled = true; };
   }, [id, selectedSeason, data, episodeGroupSeasons]);
 
   function refreshResumePoint() {
@@ -115,10 +134,19 @@ export default function Detail() {
   // Fetch resume point and saved state
   useEffect(() => {
     if (!id) return;
-    setResumePoint(null);
-    refreshResumePoint();
-    checkSaved(type, Number(id)).then((r) => setIsSaved(r.saved)).catch(() => {});
-  }, [id, type]);
+    let cancelled = false;
+    fetchResumePoint(Number(id), type).then((r) => {
+      if (cancelled) return;
+      const validSeasons = episodeGroupSeasons || data?.seasons?.filter((s: any) => s.season_number > 0);
+      const point = isValidResumePoint(r.resumePoint, validSeasons) ? r.resumePoint : null;
+      setResumePoint(point);
+      if (point?.season && type === "tv" && !sessionStorage.getItem(`season:${id}`)) {
+        setSelectedSeason(point.season);
+      }
+    }).catch(() => {});
+    checkSaved(type, Number(id)).then((r) => { if (!cancelled) setIsSaved(r.saved); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [id, type, recoveryKey]);
 
   // Re-validate resume point when data (seasons) loads
   useEffect(() => {
@@ -131,15 +159,18 @@ export default function Detail() {
   // Fetch episode progress for TV
   useEffect(() => {
     if (type !== "tv" || !id) return;
+    let cancelled = false;
     fetchSeriesProgress(Number(id))
       .then((r) => {
+        if (cancelled) return;
         const map = new Map();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const ep of r.episodes) map.set(`s${ep.season}e${ep.episode}`, ep);
         setEpisodeProgress(map);
       })
       .catch(() => {});
-  }, [id, type]);
+    return () => { cancelled = true; };
+  }, [id, type, recoveryKey]);
 
   async function openPicker(season?: number, episode?: number) {
     setPickerSeason(season);
