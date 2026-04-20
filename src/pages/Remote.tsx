@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { clearRemoteSession, getRemoteSessionId, notifyRemoteSessionChanged } from "../lib/remote-session";
 import { formatTime, formatBytes } from "../lib/utils";
-import { fetchSeason, fetchSeriesProgress, poster } from "../lib/api";
+import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster } from "../lib/api";
 import "./Remote.css";
 
 // ── State machine constants ──
@@ -92,6 +92,8 @@ export default function Remote() {
   const [epBrowserEps, setEpBrowserEps] = useState<any[] | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [epProgress, setEpProgress] = useState<Map<string, any>>(new Map());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [epGroupCache, setEpGroupCache] = useState<any>(null);
 
   function handleDigitChange(index: number, value: string) {
     const digit = value.replace(/\D/g, "").slice(-1); // take last char (handles paste-over)
@@ -250,13 +252,32 @@ export default function Remote() {
   }, [sessionId]);
 
   // ── Episode browser ──
+  function loadSeasonEpisodes(tmdbId: number | string, season: number, groups?: any) {
+    const cached = groups ?? epGroupCache;
+    if (cached?.found) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const group = cached.seasons?.find((s: any) => s.season_number === season);
+      setEpBrowserEps(group?.episodes || []);
+      return;
+    }
+    fetchSeason(tmdbId, season).then((d) => setEpBrowserEps(d.episodes || [])).catch(() => setEpBrowserEps([]));
+  }
+
   function openEpisodeBrowser() {
     if (!state?.tmdbId || state.mediaType !== "tv") return;
     const season = state.season || 1;
     setEpBrowserSeason(season);
     setShowEpisodes(true);
     setEpBrowserEps(null);
-    fetchSeason(state.tmdbId, season).then((d) => setEpBrowserEps(d.episodes || [])).catch(() => setEpBrowserEps([]));
+    // Fetch episode groups first, then load episodes
+    if (epGroupCache) {
+      loadSeasonEpisodes(state.tmdbId, season);
+    } else {
+      fetchEpisodeGroups(state.tmdbId).then((g) => {
+        setEpGroupCache(g);
+        loadSeasonEpisodes(state.tmdbId, season, g);
+      }).catch(() => loadSeasonEpisodes(state.tmdbId, season));
+    }
     fetchSeriesProgress(Number(state.tmdbId)).then((r) => {
       const map = new Map();
       for (const ep of r.episodes) map.set(`s${ep.season}e${ep.episode}`, ep);
@@ -268,7 +289,7 @@ export default function Remote() {
     if (!state?.tmdbId) return;
     setEpBrowserSeason(s);
     setEpBrowserEps(null);
-    fetchSeason(state.tmdbId, s).then((d) => setEpBrowserEps(d.episodes || [])).catch(() => setEpBrowserEps([]));
+    loadSeasonEpisodes(state.tmdbId, s);
   }
 
   function playEpisode(season: number, episode: number) {
