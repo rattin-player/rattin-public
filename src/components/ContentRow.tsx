@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import MovieCard from "./MovieCard";
 import { checkAvailability } from "../lib/api";
+import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import "./ContentRow.css";
 
 interface ContentRowProps {
@@ -13,7 +14,10 @@ interface ContentRowProps {
 export default function ContentRow({ title, fetchFn, filterAvailability = false }: ContentRowProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [items, setItems] = useState<any[] | null>(null);
+  const [recoveryKey, setRecoveryKey] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +43,7 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
       })
       .catch(() => { if (!cancelled) setItems([]); });
     return () => { cancelled = true; };
-  }, [fetchFn]);
+  }, [fetchFn, recoveryKey]);
 
   function scroll(dir: number) {
     const el = scrollRef.current;

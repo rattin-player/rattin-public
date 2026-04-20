@@ -27,7 +27,8 @@ export default function MyList() {
 
   useEffect(() => {
     window.addEventListener("storage-cleared", loadItems);
-    return () => window.removeEventListener("storage-cleared", loadItems);
+    window.addEventListener("rattin-network-recovery", loadItems);
+    return () => { window.removeEventListener("storage-cleared", loadItems); window.removeEventListener("rattin-network-recovery", loadItems); };
   }, []);
 
   function handleRemove(item: SavedItem) {

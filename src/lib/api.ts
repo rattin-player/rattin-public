@@ -8,9 +8,31 @@ export const castProfile = (path: string | null): string | null => img(path, "w1
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function get(url: string): Promise<any> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  } catch (err) {
+    if (err instanceof TypeError) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    }
+    throw err;
+  }
+}
+
+// ── Network recovery ─────────────────────────────────────────────
+let _recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    if (_recoveryTimer) clearTimeout(_recoveryTimer);
+    _recoveryTimer = setTimeout(() => {
+      _recoveryTimer = null;
+      window.dispatchEvent(new Event("rattin-network-recovery"));
+    }, 2000);
+  });
 }
 
 export function fetchLanIp(): Promise<{ ip: string | null; port: number }> {
