@@ -34,7 +34,10 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset } from "../lib/api";
+import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
+import { nextEpisodeFrom } from "../../lib/media/next-episode";
+import type { MarkerSource } from "../../lib/types";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -44,7 +47,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, episodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef } = usePlayer();
+  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, episodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, bingeEnabled } = usePlayer();
   // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
   // to the same URL in Qt WebEngine. Memoized to prevent new object reference every render.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -235,9 +238,97 @@ export default function Player() {
     return () => { episodeInfoRef.current = null; };
   }, [state, episodeInfoRef]);
 
+  // ── Binge coordinator (auto-skip, auto-advance, prefetch) ──
+  const bingeCoordinatorRef = useRef<BingeCoordinator | null>(null);
+  const bingeStateRef = useRef<CoordinatorState>("idle");
+  // Task 12 populates this with real markers on episode start; default is all-null.
+  const currentMarkersRef = useRef<{
+    introStart: number | null;
+    introEnd: number | null;
+    outroStart: number | null;
+    introSource: MarkerSource;
+    outroSource: MarkerSource;
+  }>({ introStart: null, introEnd: null, outroStart: null, introSource: "no chapter data", outroSource: "no chapter data" });
+  // True when the coordinator is driving the next-episode transition, so the
+  // manual-press learn-offset path knows to skip sampling.
+  const coordinatorInitiatedRef = useRef(false);
+  const [bingeToast, setBingeToast] = useState<string | null>(null);
+  const bingeToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleNextEpisodeRef = useRef<((s: number, e: number) => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    const coord = new BingeCoordinator({
+      startPrefetch: async () => {
+        const ep = episodeInfoRef.current;
+        if (!ep?.tmdbId) return;
+        const next = nextEpisodeFrom({ season: ep.season, episode: ep.episode, seasonEpisodeCount: ep.seasonEpisodeCount, seasonCount: ep.seasonCount });
+        if (!next) return;
+        const baseTitle = state?.baseName || state?.title || mediaTitle;
+        const year = state?.year != null ? Number(state.year) : undefined;
+        await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId);
+      },
+      pollReady: async () => true,
+      loadNextEpisode: async () => {
+        const ep = episodeInfoRef.current;
+        if (!ep) return;
+        const next = nextEpisodeFrom({ season: ep.season, episode: ep.episode, seasonEpisodeCount: ep.seasonEpisodeCount, seasonCount: ep.seasonCount });
+        if (!next) return;
+        coordinatorInitiatedRef.current = true;
+        await handleNextEpisodeRef.current?.(next.season, next.episode);
+      },
+      emitToast: (msg) => {
+        setBingeToast(msg);
+        if (bingeToastTimer.current) clearTimeout(bingeToastTimer.current);
+        bingeToastTimer.current = setTimeout(() => setBingeToast(null), 4000);
+      },
+      getMarkers: () => currentMarkersRef.current,
+      seekTo: (t) => mpvSeek(t),
+      exitToShowDetail: () => {
+        const tmdbId = episodeInfoRef.current?.tmdbId;
+        if (tmdbId) navigate(`/tv/${tmdbId}`);
+      },
+      getNextEpisode: () => {
+        const ep = episodeInfoRef.current;
+        if (!ep?.tmdbId) return null;
+        const next = nextEpisodeFrom({ season: ep.season, episode: ep.episode, seasonEpisodeCount: ep.seasonEpisodeCount, seasonCount: ep.seasonCount });
+        return next ? { tmdbId: ep.tmdbId, season: next.season, episode: next.episode } : null;
+      },
+      mode: () => "debrid",
+    });
+    bingeCoordinatorRef.current = coord;
+    return () => {
+      bingeCoordinatorRef.current = null;
+      if (bingeToastTimer.current) clearTimeout(bingeToastTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const bingeEnabledRef = useRef(false);
+  useEffect(() => {
+    bingeEnabledRef.current = bingeEnabled;
+    bingeCoordinatorRef.current?.setBingeEnabled(bingeEnabled);
+  }, [bingeEnabled]);
+
   // ── Next episode (triggered by phone remote) ──
   const handleNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
     if (!state?.tmdbId) return;
+    // If coordinator didn't trigger this call, treat it as a manual press:
+    // sample outro offset when user jumps from near-end of file.
+    const wasCoordinator = coordinatorInitiatedRef.current;
+    coordinatorInitiatedRef.current = false;
+    if (!wasCoordinator) {
+      const eff = effectiveTimeRef.current;
+      const t = eff?.time ?? 0;
+      const d = eff?.duration ?? 0;
+      const ep = episodeInfoRef.current;
+      if (ep?.tmdbId && d > 0 && d - t <= 180 && t > 0) {
+        void postLearnOffset({
+          tmdbId: ep.tmdbId, type: "outro", offset_sec: t,
+          season: ep.season, episode: ep.episode,
+        });
+      }
+      bingeCoordinatorRef.current?.onManualNextEp();
+    }
     beaconProgressRef.current();
     const title = state.baseName || mediaTitle;
     const year = state.year != null ? Number(state.year) : undefined;
@@ -282,7 +373,9 @@ export default function Player() {
     } catch {
       mpvSetLoading(false);
     }
-  }, [state, mediaTitle, navigate, startStream]);
+  }, [state, mediaTitle, navigate, startStream, effectiveTimeRef, episodeInfoRef]);
+
+  useEffect(() => { handleNextEpisodeRef.current = handleNextEpisode; }, [handleNextEpisode]);
 
   // Detect stuck/slow source — show warning after 15s of 0 speed while incomplete
   const stuckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -348,10 +441,12 @@ export default function Player() {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
         playbackStarted = true;
+        bingeCoordinatorRef.current?.onTimeUpdate(t);
       });
       onMpvDurationChanged((d) => {
         const prev = effectiveTimeRef.current;
-        effectiveTimeRef.current = { time: prev?.time ?? 0, duration: d, ts: Date.now() };
+        const currentTime = prev?.time ?? 0;
+        effectiveTimeRef.current = { time: currentTime, duration: d, ts: Date.now() };
         // Restore saved playback position once we know the duration
         // sessionStorage (updated every 3s) is freshest within a session;
         // resumePosition from watch history persists across app restarts
@@ -363,12 +458,16 @@ export default function Player() {
           if (shouldRestorePosition(saved, d)) {
             mpvSeek(saved);
           }
+          bingeCoordinatorRef.current?.onEpisodeStart({ duration: d, currentTime: saved || currentTime });
         }
       });
       onMpvEofReached(() => {
-        if (playbackStarted) {
-          goBack();
+        if (!playbackStarted) return;
+        if (bingeEnabledRef.current) {
+          bingeCoordinatorRef.current?.onEOF();
+          return;
         }
+        goBack();
       });
       onMpvPauseChanged((paused) => {
         setPlaying(!paused);
@@ -712,6 +811,13 @@ export default function Player() {
         <div className={`player-remote-toast ${remoteToast}`} key={remoteToast}>
           <span className="player-remote-toast-dot" />
           {remoteToast === "connected" ? "Remote connected" : "Remote disconnected"}
+        </div>
+      )}
+
+      {bingeToast && (
+        <div className="player-remote-toast" key={bingeToast}>
+          <span className="player-remote-toast-dot" />
+          {bingeToast}
         </div>
       )}
 

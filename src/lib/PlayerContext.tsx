@@ -64,6 +64,7 @@ interface PlayerContextValue {
   setRcPairingCode: React.Dispatch<React.SetStateAction<string | null>>;
   rcRemoteConnected: boolean;
   rcQrRequested: boolean;
+  bingeEnabled: boolean;
   introRangeRef: MutableRefObject<IntroRange | null>;
   episodeInfoRef: MutableRefObject<{ mediaType: string; season: number; episode: number; seasonEpisodeCount: number; tmdbId?: string; imdbId?: string; seasonCount?: number; posterPath?: string } | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,6 +146,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [rcPairingCode, setRcPairingCode] = useState<string | null>(null);
   const [rcRemoteConnected, setRcRemoteConnected] = useState(false);
   const [rcQrRequested, setRcQrRequested] = useState(false);
+  const [bingeEnabled, setBingeEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/rc/active-session")
@@ -348,6 +350,13 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       }
     });
 
+    es.addEventListener("binge", (e: MessageEvent) => {
+      try {
+        const payload = JSON.parse(e.data) as { enabled?: boolean };
+        if (typeof payload.enabled === "boolean") setBingeEnabled(payload.enabled);
+      } catch { /* ignore malformed */ }
+    });
+
     es.addEventListener("remote-connected", () => {
       setRcRemoteConnected(true);
       setRcQrRequested(false); // remote connected, hide QR
@@ -459,6 +468,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, dlProgressRef, dlSpeedRef, dlPeersRef,
       commandRef, navigateRef,
       rcSessionId, setRcSessionId, rcAuthToken, setRcAuthToken, rcPairingCode, setRcPairingCode, rcRemoteConnected, rcQrRequested,
+      bingeEnabled,
       introRangeRef, episodeInfoRef, sourcesRef,
       subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, switching,
     }}>

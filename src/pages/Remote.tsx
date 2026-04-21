@@ -4,6 +4,7 @@ import { clearRemoteSession, getRemoteSessionId, notifyRemoteSessionChanged } fr
 import { formatTime, formatBytes } from "../lib/utils";
 import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster, setBingeMode } from "../lib/api";
 import type { BingeCapabilities } from "../../lib/types";
+import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import "./Remote.css";
 
 const BINGE_FLAG_KEY = "rattin.experimentalBingeMode";
@@ -779,19 +780,21 @@ export default function Remote() {
           </button>
         )}
         {state?.mediaType === "tv" && state?.season > 0 && state?.episode > 0 && (() => {
-          const isSeasonFinale = state.seasonEpisodeCount > 0 && state.episode >= state.seasonEpisodeCount;
-          const isSeriesFinale = isSeasonFinale && state.seasonCount > 0 && state.season >= state.seasonCount;
-          if (isSeriesFinale) return null;
-          const nextS = isSeasonFinale ? state.season + 1 : state.season;
-          const nextE = isSeasonFinale ? 1 : state.episode + 1;
+          const next = nextEpisodeFrom({
+            season: state.season,
+            episode: state.episode,
+            seasonEpisodeCount: state.seasonEpisodeCount || undefined,
+            seasonCount: state.seasonCount || undefined,
+          });
+          if (!next) return null;
           return (
             <button
               className="remote-next-episode"
-              onClick={() => sendCommand("next-episode", { season: nextS, episode: nextE })}
+              onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
               disabled={isDisabled}
             >
               Next Ep
-              <span className="remote-next-episode-label">S{nextS}E{nextE}</span>
+              <span className="remote-next-episode-label">S{next.season}E{next.episode}</span>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
