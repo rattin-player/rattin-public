@@ -1,7 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
-import type { BingeCapabilities, RCSession } from "../../lib/types.js";
+import type { BingeCapabilities, PersistedTracks, RCSession } from "../../lib/types.js";
 
 describe("RC routes", () => {
   let baseUrl: string, close: () => Promise<void>;
@@ -287,6 +287,40 @@ describe("RC routes", () => {
 
       assert.equal(res.status, 200);
       assert.equal(session.bingeMode.capabilities, null);
+    });
+  });
+
+  // ── set-persisted-tracks command ──────────────────────────────────────
+
+  describe("set-persisted-tracks command", () => {
+    const sampleTracks: PersistedTracks = {
+      audio: { lang: "ja", title: "Japanese 5.1" },
+      subtitles: { lang: "en", title: "English (Dialogue)" },
+    };
+
+    it("stores tracks on the session", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-persisted-tracks", value: { tracks: sampleTracks } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(rcSessions.get(sessionId)!.bingeMode.persistedTracks, sampleTracks);
+    });
+
+    it("rejects missing tracks payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-persisted-tracks", value: {} }),
+      });
+
+      assert.equal(res.status, 400);
     });
   });
 });

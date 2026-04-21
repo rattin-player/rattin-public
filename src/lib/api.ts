@@ -1,4 +1,4 @@
-import type { BingeCapabilities } from "../../lib/types.js";
+import type { BingeCapabilities, PersistedTracks } from "../../lib/types.js";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
@@ -424,6 +424,17 @@ export async function setBingeCapabilities(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, action: "set-binge-capabilities", value: { capabilities } }),
+  });
+}
+
+export async function setPersistedTracks(
+  sessionId: string,
+  tracks: PersistedTracks,
+): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, action: "set-persisted-tracks", value: { tracks } }),
   });
 }
 

@@ -34,10 +34,11 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { computeMarkers, type Markers } from "../../lib/media/episode-markers";
+import { pickAudioTrack, pickSubtitleTrack } from "../../lib/media/track-match";
 import type { BingeCapabilities } from "../../lib/types";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning, mpvGetChapters, bridgeHasChapterSupport } from "../lib/native-bridge";
@@ -48,7 +49,7 @@ export default function Player() {
   const { infoHash, fileIndex } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, episodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, bingeEnabled } = usePlayer();
+  const { startStream, active, effectiveTimeRef, subsRef, activeSubRef, audioTracksRef, activeAudioRef, commandRef, dlProgressRef, dlSpeedRef, dlPeersRef, rcSessionId, rcAuthToken, rcRemoteConnected, rcQrRequested, setRcSessionId, setRcAuthToken, introRangeRef, episodeInfoRef, sourcesRef, subSize, adjustSubSize, setSubSizeAbsolute, subDelayRef, bingeEnabled, persistedTracks } = usePlayer();
   // Persist nav state to sessionStorage — location.state can be null on subsequent navigations
   // to the same URL in Qt WebEngine. Memoized to prevent new object reference every render.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -308,6 +309,67 @@ export default function Player() {
     if (!rcSessionId || !bingeCaps) return;
     void setBingeCapabilities(rcSessionId, bingeCaps);
   }, [rcSessionId, bingeCaps]);
+
+  // Raw ffprobe tracks for pickAudio/pickSubtitle — cached per episode so the
+  // commandRef handlers can look up {lang, title} when persisting user picks.
+  interface RawAudioTrack { streamIndex: number; lang: string | null; title: string | null; channels?: number }
+  interface RawSubtitleTrack { streamIndex: number; lang: string | null; title: string | null }
+  const rawAudioTracksRef = useRef<RawAudioTrack[]>([]);
+  const rawSubtitleTracksRef = useRef<RawSubtitleTrack[]>([]);
+  const appliedPersistedAudio = useRef(false);
+  const appliedPersistedSub = useRef(false);
+
+  useEffect(() => {
+    if (!infoHash || !fileIndex) return;
+    let cancelled = false;
+    rawAudioTracksRef.current = [];
+    rawSubtitleTracksRef.current = [];
+    appliedPersistedAudio.current = false;
+    appliedPersistedSub.current = false;
+    fetchAudioTracks(infoHash, fileIndex).then((data) => {
+      if (cancelled) return;
+      rawAudioTracksRef.current = data.tracks ?? [];
+    }).catch(() => {});
+    fetchSubtitleTracks(infoHash, fileIndex).then((data) => {
+      if (cancelled) return;
+      rawSubtitleTracksRef.current = data.tracks ?? [];
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [infoHash, fileIndex]);
+
+  useEffect(() => {
+    if (appliedPersistedAudio.current) return;
+    if (!persistedTracks.audio) return;
+    const raw = rawAudioTracksRef.current;
+    if (raw.length === 0) return;
+    const idx = pickAudioTrack(
+      raw.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined, channels: t.channels })),
+      persistedTracks.audio,
+      "en",
+    );
+    if (idx >= 0) {
+      mpvSetAudioTrack(idx);
+      activeAudioRef.current = raw[idx].streamIndex;
+      appliedPersistedAudio.current = true;
+    }
+  }, [persistedTracks.audio, activeAudioRef, audioTracks]);
+
+  useEffect(() => {
+    if (appliedPersistedSub.current) return;
+    if (!persistedTracks.subtitles) return;
+    const raw = rawSubtitleTracksRef.current;
+    if (raw.length === 0) return;
+    const idx = pickSubtitleTrack(
+      raw.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined })),
+      persistedTracks.subtitles,
+      "en",
+    );
+    if (idx >= 0) {
+      mpvSetSubtitleTrack(idx);
+      activeSubRef.current = `embedded:${raw[idx].streamIndex}`;
+      appliedPersistedSub.current = true;
+    }
+  }, [persistedTracks.subtitles, activeSubRef, subs]);
 
   // ── Next episode (triggered by phone remote) ──
   const handleNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
@@ -625,13 +687,33 @@ export default function Player() {
           mpvLoadExternalSubtitle(subUrl, sub.label);
         } else {
           mpvSetSubtitleTrack(idx);
+          if (rcSessionId && sub.value.startsWith("embedded:")) {
+            const streamIdx = parseInt(sub.value.slice("embedded:".length), 10);
+            const raw = rawSubtitleTracksRef.current.find(t => t.streamIndex === streamIdx);
+            if (raw?.lang) {
+              void setPersistedTracks(rcSessionId, {
+                audio: persistedTracks.audio,
+                subtitles: { lang: raw.lang, title: raw.title ?? "" },
+              });
+            }
+          }
         }
         activeSubRef.current = val;
       },
       switchAudio: (streamIndex: string | number) => {
         const idx = audioTracks.findIndex(t => t.value === Number(streamIndex));
         if (idx >= 0) mpvSetAudioTrack(idx);
-        activeAudioRef.current = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
+        const streamIdx = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
+        activeAudioRef.current = streamIdx;
+        if (rcSessionId) {
+          const raw = rawAudioTracksRef.current.find(t => t.streamIndex === streamIdx);
+          if (raw?.lang) {
+            void setPersistedTracks(rcSessionId, {
+              audio: { lang: raw.lang, title: raw.title ?? "" },
+              subtitles: persistedTracks.subtitles,
+            });
+          }
+        }
       },
       switchSource: handleSwitchSource,
       nextEpisode: handleNextEpisode,
