@@ -507,7 +507,7 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
 
     const [anime, introdb] = await Promise.all([
       tmdbId ? isAnime(tmdbId).catch(() => false) : Promise.resolve(false),
-      imdbId ? lookupIntrodbMarkers(imdbId, seasonNum, ep).catch((err) => {
+      imdbId ? lookupIntrodbMarkers(imdbId, seasonNum, ep, log).catch((err) => {
         log("warn", "IntroDB lookup threw", { error: (err as Error).message });
         return null;
       }) : Promise.resolve(null),

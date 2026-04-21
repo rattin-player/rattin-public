@@ -1,6 +1,8 @@
 // IntroDB client — crowdsourced intro/outro timestamps keyed by IMDb ID + season + episode.
 // See https://introdb.app / OpenAPI at https://api.introdb.app/openapi.json
 
+import type { LogFn } from "../types.js";
+
 type FetcherFn = typeof globalThis.fetch;
 
 let _fetcher: FetcherFn | null = null;
@@ -11,6 +13,8 @@ function getFetcher(): FetcherFn { return _fetcher || globalThis.fetch; }
 const INTRODB_BASE = "https://api.introdb.app";
 const SUBMISSION_FLOOR = 2;
 const FETCH_TIMEOUT_MS = 5000;
+
+const noopLog: LogFn = () => {};
 
 export interface IntrodbSegment {
   startSec: number;
@@ -55,31 +59,32 @@ export async function lookupIntrodbMarkers(
   imdbId: string,
   season: number,
   episode: number,
+  log: LogFn = noopLog,
 ): Promise<IntrodbMarkers | null> {
   const doFetch = getFetcher();
   const url = `${INTRODB_BASE}/segments?imdb_id=${encodeURIComponent(imdbId)}&season=${season}&episode=${episode}`;
-  console.info("[introdb] GET", url);
+  log("info", "[introdb] GET", { url });
   try {
     const res = await doFetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) {
-      console.info("[introdb] non-ok response", { url, status: res.status });
+      log("info", "[introdb] non-ok response", { url, status: res.status });
       return null;
     }
     const data = await res.json() as ApiResponse;
-    console.info("[introdb] raw response", {
+    log("info", "[introdb] raw response", {
       imdb_id: data.imdb_id, intro: data.intro, outro: data.outro, recap: data.recap,
     });
     const intro = normalizeSegment(data.intro);
     const outro = normalizeSegment(data.outro);
     if (!intro && !outro) {
-      console.info("[introdb] both segments rejected by floor/shape", {
+      log("info", "[introdb] both segments rejected by floor/shape", {
         introRaw: data.intro, outroRaw: data.outro, floor: SUBMISSION_FLOOR,
       });
       return null;
     }
     return { intro, outro, imdbId };
   } catch (err) {
-    console.info("[introdb] fetch threw", { url, error: (err as Error).message });
+    log("info", "[introdb] fetch threw", { url, error: (err as Error).message });
     return null;
   }
 }
