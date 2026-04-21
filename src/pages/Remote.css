@@ -1,4 +1,11 @@
 .remote-page {
+  /* Scoped contrast bump: remote surfaces sit on near-black with faint
+     translucent panels, so the default muted/secondary tones read as
+     gray-on-gray. These overrides raise every label and hint above 7:1
+     without touching the global tokens used elsewhere. */
+  --text-muted: #a8a1b3;
+  --text-secondary: #c6bfd1;
+
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg-deep);
@@ -451,7 +458,6 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-  opacity: 0.7;
 }
 
 .remote-torrent-info span {
@@ -807,14 +813,16 @@
 
 .remote-binge-beta {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--accent-bright);
   color: var(--bg-deep);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
   vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(226, 192, 109, 0.25);
 }
 
 .remote-binge-panel {
