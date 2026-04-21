@@ -19,6 +19,7 @@ import debridRoutes from "./routes/debrid.js";
 import vpnRoutes from "./routes/vpn.js";
 import cacheRoutes from "./routes/cache.js";
 import openUrlRoutes from "./routes/open-url.js";
+import learnOffsetRoutes from "./routes/learn-offset.js";
 import storageRoutes from "./routes/storage.js";
 import updateRoutes from "./routes/update.js";
 import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
@@ -159,6 +160,7 @@ debridRoutes(app, ctx);
 vpnRoutes(app, ctx);
 cacheRoutes(app, ctx);
 openUrlRoutes(app, ctx);
+learnOffsetRoutes(app, ctx);
 storageRoutes(app, ctx);
 updateRoutes(app, ctx);
 

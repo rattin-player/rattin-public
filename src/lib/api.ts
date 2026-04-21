@@ -395,3 +395,18 @@ export async function uploadSubtitle(file: File): Promise<{ url: string }> {
   }
   return res.json();
 }
+
+export async function postLearnOffset(payload: {
+  tmdbId: string; type: "outro"; offset_sec: number; season?: number; episode?: number;
+}): Promise<void> {
+  await fetch("/api/learn-offset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getLearnedOffset(tmdbId: string): Promise<{ outro_offset: number | null; sample_count: number }> {
+  const res = await fetch(`/api/learn-offset/${encodeURIComponent(tmdbId)}`);
+  return res.json();
+}
