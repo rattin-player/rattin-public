@@ -34,10 +34,11 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchAniskipMarkers, fetchPrefetchReady } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchAniskipMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
-import { computeMarkers, type Markers } from "../../lib/media/episode-markers";
+import { startPrefetch as libStartPrefetch } from "../../lib/torrent/prefetch";
+import { computeMarkers, OP_RE, ED_RE, type Markers } from "../../lib/media/episode-markers";
 import { pickAudioTrack, pickSubtitleTrack } from "../../lib/media/track-match";
 import type { BingeCapabilities, BingeDiagnostics, BingeEvent } from "../../lib/types";
 import { encode } from "uqr";
@@ -313,9 +314,33 @@ export default function Player() {
         const baseTitle = state?.baseName || state?.title || mediaTitle;
         const year = state?.year != null ? Number(state.year) : undefined;
         prefetchedRef.current = null;
-        const result = await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId, infoHash) as { infoHash?: string; fileIndex?: number } | undefined;
-        if (result?.infoHash && typeof result.fileIndex === "number") {
-          prefetchedRef.current = { infoHash: result.infoHash, fileIndex: result.fileIndex };
+        const resolved = await libStartPrefetch({
+          mode: modeRef.current,
+          nextEp: { tmdbId: ep.tmdbId, season: next.season, episode: next.episode },
+          currentInfoHash: infoHash,
+          deps: {
+            resolveNext: async () => {
+              const r = await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId, infoHash) as { infoHash?: string; fileIndex?: number } | undefined;
+              const hash = r?.infoHash ?? "";
+              const fi = typeof r?.fileIndex === "number" ? r.fileIndex : 0;
+              // autoPlay already resolved + warmed/added server-side, so warmCache/addTorrent
+              // below are no-ops; magnet just needs to be truthy for the lib guard.
+              return { infoHash: hash, fileIndex: fi, magnet: hash };
+            },
+            warmCache: async () => {},
+            addTorrent: async () => {},
+            isFinished: async (tmdbId, season, episode) => {
+              try {
+                const progress = await fetchSeriesProgress(Number(tmdbId));
+                const entry = progress.episodes?.find((e: { season: number; episode: number; completed?: boolean }) =>
+                  e.season === season && e.episode === episode);
+                return !!entry?.completed;
+              } catch { return false; }
+            },
+          },
+        });
+        if (resolved) {
+          prefetchedRef.current = { infoHash: resolved.infoHash, fileIndex: resolved.fileIndex };
         }
       },
       pollReady: async () => {
@@ -626,8 +651,8 @@ export default function Player() {
         setBingeCaps(caps);
         // Populate diagnostics snapshot of raw signals + markers.
         const chapterList = (chapters as Array<{ title?: string; time?: number }> | undefined) ?? [];
-        const introIdx = chapterList.findIndex((c) => /\b(intro|opening|op)\b/i.test(c.title ?? ""));
-        const outroIdx = chapterList.findIndex((c) => /\b(outro|ending|credits|ed)\b/i.test(c.title ?? ""));
+        const introIdx = chapterList.findIndex((c) => OP_RE.test(c.title ?? ""));
+        const outroIdx = chapterList.findIndex((c) => ED_RE.test(c.title ?? ""));
         diagnosticsRef.current.duration = duration;
         diagnosticsRef.current.markers = {
           introStart: markers.introStart,

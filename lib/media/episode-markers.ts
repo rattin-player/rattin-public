@@ -21,8 +21,8 @@ export interface Markers {
   outroSampleCount?: number;
 }
 
-const OP_RE = /\b(intro|opening)\b/i;
-const ED_RE = /\b(outro|ending|credits|closing|\bend\b)\b/i;
+export const OP_RE = /\b(intro|opening)\b/i;
+export const ED_RE = /\b(outro|ending|credits|closing)\b/i;
 
 export function computeMarkers(input: MarkerInputs): Markers {
   if (!input.bridgeHasChapterSupport) {

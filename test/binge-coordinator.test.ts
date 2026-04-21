@@ -191,4 +191,46 @@ describe("BingeCoordinator", () => {
       assert.ok(bingeEvents.some(e => e.kind === "end-of-series"));
     });
   });
+
+  describe("advancing cancellation", () => {
+    it("emits advance-timeout and stops when pollReady never resolves within deadline", async () => {
+      const origNow = Date.now;
+      let now = 0;
+      Date.now = () => now;
+      try {
+        const { deps, bingeEvents } = makeDeps({
+          pollReady: async () => { now += 20_000; return false; },
+        });
+        const c = new BingeCoordinator(deps);
+        c.setBingeEnabled(true);
+        c.onEpisodeStart({ duration: 1380, currentTime: 0 });
+        c.onEOF();
+        await new Promise(r => setTimeout(r, 700));
+        assert.equal(c.state, "stopped");
+        assert.ok(bingeEvents.some(e => e.kind === "advance-timeout"));
+      } finally {
+        Date.now = origNow;
+      }
+    });
+
+    it("cancels advancing when binge is toggled off mid-loop", async () => {
+      let resolvePoll: ((v: boolean) => void) | null = null;
+      const { deps, bingeEvents, events } = makeDeps({
+        pollReady: () => new Promise<boolean>((r) => { resolvePoll = r; }),
+      });
+      const c = new BingeCoordinator(deps);
+      c.setBingeEnabled(true);
+      c.onEpisodeStart({ duration: 1380, currentTime: 0 });
+      c.onEOF();
+      await new Promise(r => setImmediate(r));
+      assert.equal(c.state, "advancing");
+      c.setBingeEnabled(false);
+      resolvePoll!(true);
+      await new Promise(r => setTimeout(r, 20));
+      assert.equal(c.state, "idle");
+      assert.ok(!events.includes("load-next"), "loadNextEpisode must not fire after cancel");
+      assert.ok(!bingeEvents.some(e => e.kind === "advance-ready"));
+      assert.ok(!bingeEvents.some(e => e.kind === "advance-timeout"));
+    });
+  });
 });
