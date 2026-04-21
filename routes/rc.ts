@@ -43,6 +43,11 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     }
   }
 
+  function broadcastBinge(session: RCSession): void {
+    for (const c of session.remoteClients) sseWrite(c, "binge", session.bingeMode);
+    if (session.playerClient) sseWrite(session.playerClient, "binge", session.bingeMode);
+  }
+
   app.get("/api/auth/persist", (req: Request, res: Response) => {
     // Only reachable after nginx basic auth succeeded (or a valid token).
     // Set a long-lived cookie — nginx skips basic auth when rc_auth cookie exists.
@@ -232,6 +237,16 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     const { action, value } = req.body as { action: string; value?: unknown };
     const auth = authorizeSession(req, res, { notFoundError: "session not found" });
     if (!auth) return;
+    if (action === "set-binge-mode") {
+      const enabled = (value as { enabled?: unknown } | undefined)?.enabled;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be boolean" });
+      }
+      auth.session.bingeMode.enabled = enabled;
+      if (!enabled) auth.session.bingeMode.capabilities = null;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
     if (auth.session.playerClient) {
       sseWrite(auth.session.playerClient, "command", { action, value });
     }

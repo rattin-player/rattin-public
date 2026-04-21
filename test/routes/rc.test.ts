@@ -1,9 +1,11 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
+import type { RCSession } from "../../lib/types.js";
 
 describe("RC routes", () => {
   let baseUrl: string, close: () => Promise<void>;
+  let rcSessions: Map<string, RCSession>;
 
   async function createSession(): Promise<{ sessionId: string; authToken: string }> {
     const res = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
@@ -11,7 +13,10 @@ describe("RC routes", () => {
   }
 
   before(async () => {
-    ({ baseUrl, close } = await startTestServer());
+    const server = await startTestServer();
+    baseUrl = server.baseUrl;
+    close = server.close;
+    rcSessions = server.rcSessions;
   });
 
   after(async () => {
@@ -190,6 +195,58 @@ describe("RC routes", () => {
       const setCookie = res.headers.get("set-cookie")!;
       assert.ok(setCookie, "should set cookies");
       assert.ok(setCookie.includes("rc_auth="), "should set rc_auth cookie");
+    });
+  });
+
+  // ── set-binge-mode command ────────────────────────────────────────────
+
+  describe("set-binge-mode command", () => {
+    it("toggles bingeMode.enabled on the session and broadcasts", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: true } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(rcSessions.get(sessionId)!.bingeMode.enabled, true);
+    });
+
+    it("clears capabilities when disabling", async () => {
+      const { sessionId, authToken } = await createSession();
+      const session = rcSessions.get(sessionId)!;
+      session.bingeMode.enabled = true;
+      session.bingeMode.capabilities = {
+        autoSkipIntro: { enabled: true, source: "chapter markers" },
+        autoSkipCredits: { enabled: true, source: "chapter markers" },
+        persistTracks: { enabled: true },
+        autoAdvance: { enabled: true, viaEOF: false },
+        prefetch: { enabled: true, via: "debrid cache" },
+      };
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: false } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(session.bingeMode.enabled, false);
+      assert.equal(session.bingeMode.capabilities, null);
+    });
+
+    it("rejects set-binge-mode with non-boolean payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: "yes" } }),
+      });
+
+      assert.equal(res.status, 400);
     });
   });
 });
