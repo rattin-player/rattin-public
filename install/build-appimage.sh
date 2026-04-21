@@ -348,6 +348,80 @@ build_appimage() {
 }
 
 # ---------------------------------------------------------------------------
+# NEEDED-lib audit — every bundled binary/.so must have every NEEDED
+# library either bundled in $APPDIR/usr/lib or listed in the allowlist.
+# Catches the "host has dev dep installed, clean target does not" class
+# of release breakage (e.g. libjack on build host but not on user box).
+# ---------------------------------------------------------------------------
+ldd_audit() {
+    log "Auditing NEEDED libraries of bundled binaries and shared objects..."
+
+    local allowlist_file="$REPO_ROOT/install/ldd-allowlist.txt"
+    if [ ! -f "$allowlist_file" ]; then
+        die "ldd_audit: missing allowlist at $allowlist_file"
+    fi
+    command -v readelf >/dev/null 2>&1 || die "ldd_audit: readelf not found (install binutils)"
+
+    # Allowlist: strip blank lines and comments, trim trailing whitespace.
+    local allowlist
+    allowlist="$(grep -Ev '^[[:space:]]*($|#)' "$allowlist_file" | sed 's/[[:space:]]*$//')"
+
+    # Every .so* bundled under $APPDIR/usr/lib (recursive). Match by basename.
+    # Include symlinks — linuxdeploy typically bundles a real file plus versioned
+    # SONAME symlinks (e.g. real libjack.so.0.1.0 + symlink libjack.so.0). NEEDED
+    # entries reference the SONAME, so the symlink name must be in the bundled set.
+    local bundled
+    bundled="$(find "$APPDIR/usr/lib" \( -type f -o -type l \) \
+                \( -name '*.so' -o -name '*.so.*' \) \
+                -printf '%f\n' 2>/dev/null | sort -u)"
+
+    # Audit target set: executables in usr/bin + shared objects in usr/lib.
+    local targets
+    targets="$(
+        find "$APPDIR/usr/bin" -maxdepth 1 -type f 2>/dev/null
+        find "$APPDIR/usr/lib" -type f \( -name '*.so' -o -name '*.so.*' \) 2>/dev/null
+    )"
+
+    local errors=0
+    while IFS= read -r file; do
+        [ -z "$file" ] && continue
+
+        local needed
+        needed="$(readelf -d "$file" 2>/dev/null \
+                    | awk '/\(NEEDED\)/ { gsub(/[][]/, "", $NF); print $NF }')"
+        [ -z "$needed" ] && continue
+
+        while IFS= read -r lib; do
+            [ -z "$lib" ] && continue
+
+            # libfoo.so.3.1.4 -> libfoo.so   (allowlist matches name-only)
+            local name
+            name="$(printf '%s' "$lib" | sed -E 's/(\.so)\..*/\1/')"
+
+            # Exact bundled basename match? (e.g. NEEDED libjack.so.0 satisfied
+            # by $APPDIR/usr/lib/libjack.so.0 being present.)
+            if printf '%s\n' "$bundled" | grep -Fxq -- "$lib"; then
+                continue
+            fi
+
+            # Host-provides allowlist match (version-stripped)?
+            if printf '%s\n' "$allowlist" | grep -Fxq -- "$name"; then
+                continue
+            fi
+
+            err "$file NEEDS $lib — not bundled in \$APPDIR/usr/lib and not on install/ldd-allowlist.txt"
+            err "  fix: bundle the lib, remove the dep, or (if truly host-provided) add '$name' to install/ldd-allowlist.txt"
+            errors=$((errors + 1))
+        done <<< "$needed"
+    done <<< "$targets"
+
+    if [ "$errors" -gt 0 ]; then
+        die "ldd_audit: $errors unbundled/unallowlisted NEEDED entry/entries"
+    fi
+    log "ldd_audit passed"
+}
+
+# ---------------------------------------------------------------------------
 # Verify AppDir — catch missing plugins/libs before packaging
 # ---------------------------------------------------------------------------
 verify_appdir() {
@@ -482,6 +556,8 @@ verify_appdir() {
     if [ "$errors" -gt 0 ]; then
         die "AppDir verification failed with $errors error(s) — refusing to package broken AppImage"
     fi
+
+    ldd_audit
 
     log "AppDir verification passed"
 }
