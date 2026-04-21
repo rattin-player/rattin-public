@@ -974,7 +974,7 @@ export default function Remote() {
       )}
 
       {/* BINGE MODE */}
-      {sessionId && (
+      {sessionId && state?.mediaType === "tv" && (
         <section className="remote-section">
           <div className="remote-binge-header">
             <div className="remote-section-label">
