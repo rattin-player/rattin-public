@@ -835,6 +835,7 @@ export default function Remote() {
             disabled={isDisabled}
           >
             {bingeMode.enabled ? "Binge mode: ON" : "Binge mode: off"}
+            <span className="remote-binge-beta">BETA</span>
           </button>
           {!bingeMode.enabled && (
             <div className="remote-binge-help">
@@ -938,6 +939,23 @@ export default function Remote() {
                                   <span style={{ fontStyle: "italic" }}>"{d.signals.aniskip.resolution.jikanQuery}"</span>
                                   {!d.signals.aniskip.resolution.seasonSpecific && " · ⚠ season-ambiguous (fell back to base title)"}
                                 </div>
+                              )}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        IntroDB:{" "}
+                        {d.signals.introdb
+                          ? <>
+                              <span className="remote-binge-source">imdb {d.signals.introdb.imdbId}</span>
+                              {d.signals.introdb.intro && (
+                                <div>intro {fmtSec(d.signals.introdb.intro.start)}–{fmtSec(d.signals.introdb.intro.end)} (n={d.signals.introdb.intro.submissionCount}, c={d.signals.introdb.intro.confidence.toFixed(2)})</div>
+                              )}
+                              {d.signals.introdb.outro && (
+                                <div>outro {fmtSec(d.signals.introdb.outro.start)}–{fmtSec(d.signals.introdb.outro.end)} (n={d.signals.introdb.outro.submissionCount}, c={d.signals.introdb.outro.confidence.toFixed(2)})</div>
+                              )}
+                              {!d.signals.introdb.intro && !d.signals.introdb.outro && (
+                                <span className="remote-binge-source"> · no segments passed floor</span>
                               )}
                             </>
                           : <span className="remote-binge-source">none</span>}
