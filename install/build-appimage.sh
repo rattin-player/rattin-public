@@ -356,6 +356,14 @@ build_appimage() {
 ldd_audit() {
     log "Auditing NEEDED libraries of bundled binaries and shared objects..."
 
+    # readelf legitimately returns non-zero on non-ELF files (scripts, data
+    # files that may live alongside binaries); under the script's global
+    # `set -euo pipefail`, that would abort the audit silently before any
+    # [ERROR] line prints. Disable errexit/pipefail locally and manage
+    # failures explicitly via the $errors counter + die() at the end.
+    set +e
+    set +o pipefail
+
     local allowlist_file="$REPO_ROOT/install/ldd-allowlist.txt"
     if [ ! -f "$allowlist_file" ]; then
         die "ldd_audit: missing allowlist at $allowlist_file"
@@ -418,6 +426,11 @@ ldd_audit() {
     if [ "$errors" -gt 0 ]; then
         die "ldd_audit: $errors unbundled/unallowlisted NEEDED entry/entries"
     fi
+
+    # Restore strictness for callers.
+    set -e
+    set -o pipefail
+
     log "ldd_audit passed"
 }
 
