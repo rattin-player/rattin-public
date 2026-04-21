@@ -232,6 +232,10 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       if (s.playerClient) sseWrite(s.playerClient, "remote-connected", { count: s.remoteClients.length });
     }
 
+    // Replay current binge-mode state so a reconnecting client doesn't
+    // fall back to the default "disabled" until the next broadcast.
+    sseWrite(resAsClient, "binge", s.bingeMode);
+
     // Heartbeat every 30s
     const heartbeat = setInterval(() => {
       try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
