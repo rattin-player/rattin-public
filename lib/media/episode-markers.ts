@@ -2,12 +2,20 @@ import type { MarkerSource } from "../types.js";
 
 export interface ChapterInput { time: number; title: string }
 export interface AniskipInput { opStart: number; opEnd: number; edStart: number; episodeLength: number }
+export interface IntrodbInput {
+  introStart: number | null;
+  introEnd: number | null;
+  outroStart: number | null;
+  introSubmissionCount: number;
+  outroSubmissionCount: number;
+}
 export interface LearnedOffsetInput { offset: number; sampleCount: number }
 
 export interface MarkerInputs {
   bridgeHasChapterSupport: boolean;
   chapters: ChapterInput[];
   aniskip: AniskipInput | null;
+  introdb: IntrodbInput | null;
   learnedOutroOffset: LearnedOffsetInput | null;
   fileDuration: number;
 }
@@ -55,31 +63,74 @@ export function computeMarkers(input: MarkerInputs): Markers {
 }
 
 function afterChapters(input: MarkerInputs, prior: Markers): Markers {
+  let partial = prior;
+
   if (input.aniskip) {
     const mismatch = Math.abs(input.fileDuration - input.aniskip.episodeLength) > 30;
     if (mismatch) {
-      return afterAniskip(input, {
-        ...prior,
+      partial = {
+        ...partial,
         introSource: "AniSkip · duration mismatch",
         outroSource: "AniSkip · duration mismatch",
-      });
+      };
+    } else {
+      // Treat 0 as missing — AniSkip wire format uses 0 as "segment absent" sentinel.
+      const opPresent = input.aniskip.opStart > 0 || input.aniskip.opEnd > 0;
+      const edPresent = input.aniskip.edStart > 0;
+      partial = {
+        introStart: opPresent ? input.aniskip.opStart : null,
+        introEnd: opPresent ? input.aniskip.opEnd : null,
+        outroStart: edPresent ? input.aniskip.edStart : null,
+        introSource: opPresent ? "AniSkip · duration OK" : "no AniSkip data",
+        outroSource: edPresent ? "AniSkip · duration OK" : "no AniSkip data",
+      };
     }
-    return {
-      introStart: input.aniskip.opStart,
-      introEnd: input.aniskip.opEnd,
-      outroStart: input.aniskip.edStart,
-      introSource: "AniSkip · duration OK",
-      outroSource: "AniSkip · duration OK",
-    };
   }
-  return afterAniskip(input, {
-    ...prior,
-    introSource: prior.introSource !== "no chapter data" ? prior.introSource : "no AniSkip data",
-    outroSource: prior.outroSource !== "no chapter data" ? prior.outroSource : "no AniSkip data",
-  });
+
+  // IntroDB fills whichever axes are still null (never overrides an already-resolved value
+  // or a meaningful source string like "AniSkip · duration mismatch").
+  if (input.introdb) {
+    const introFromIntrodb = partial.introStart === null
+      && input.introdb.introStart !== null
+      && input.introdb.introEnd !== null
+      && input.introdb.introSubmissionCount >= 2;
+    const outroFromIntrodb = partial.outroStart === null
+      && input.introdb.outroStart !== null
+      && input.introdb.outroSubmissionCount >= 2;
+    if (introFromIntrodb) {
+      partial = {
+        ...partial,
+        introStart: input.introdb.introStart,
+        introEnd: input.introdb.introEnd,
+        introSource: "IntroDB · ok",
+      };
+    }
+    if (outroFromIntrodb) {
+      partial = {
+        ...partial,
+        outroStart: input.introdb.outroStart,
+        outroSource: "IntroDB · ok",
+      };
+    }
+  }
+
+  // Relabel unresolved fall-through sources so diagnostics reflect the deepest source tried.
+  // Only overwrite the generic "no chapter data" / "no AniSkip data" placeholders; preserve
+  // specific signals like "AniSkip · duration mismatch" and "bridge missing chapter support".
+  const relabelable: MarkerSource[] = ["no chapter data", "no AniSkip data"];
+  if (partial.introStart === null && relabelable.includes(partial.introSource)) {
+    partial = { ...partial, introSource: "no IntroDB data" };
+  }
+  if (partial.outroStart === null && relabelable.includes(partial.outroSource)) {
+    partial = { ...partial, outroSource: "no IntroDB data" };
+  }
+
+  return afterRemote(input, partial);
 }
 
-function afterAniskip(input: MarkerInputs, prior: Markers): Markers {
+function afterRemote(input: MarkerInputs, prior: Markers): Markers {
+  // Preserve pre-existing behavior: learnedOutroOffset, when present, always wins for outro.
+  // This is intentional — the learned offset is per-user-per-show and reflects actual viewing.
   if (input.learnedOutroOffset) {
     return {
       ...prior,
@@ -88,8 +139,8 @@ function afterAniskip(input: MarkerInputs, prior: Markers): Markers {
       outroSampleCount: input.learnedOutroOffset.sampleCount,
     };
   }
-  return {
-    ...prior,
-    outroSource: "no signal — advance on EOF",
-  };
+  if (prior.outroStart === null && prior.outroSource !== "AniSkip · duration mismatch") {
+    return { ...prior, outroSource: "no signal — advance on EOF" };
+  }
+  return prior;
 }
