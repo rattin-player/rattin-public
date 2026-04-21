@@ -2,12 +2,12 @@
   "name": "rattin-appimage-validator",
   "private": true,
   "version": "0.0.0",
-  "description": "Playwright-over-CDP runtime check against the bundled Qt shell. Invoked by test/appimage/validator.sh from CI.",
+  "description": "Raw-CDP runtime check against the bundled Qt shell. Invoked by test/appimage/validator.sh from CI.",
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "check": "node cdp-check.mjs"
   },
-  "devDependencies": {
-    "@playwright/test": "1.49.1"
+  "dependencies": {
+    "ws": "8.18.0"
   }
 }

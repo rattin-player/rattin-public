@@ -136,9 +136,12 @@ echo "  [ok] stderr clean of loader/crash/symbol patterns"
 
 echo "---- stage 1 passed ----"
 
-# -------- Stage 2: Playwright ------------------------------------------------
+# -------- Stage 2: raw-CDP runtime check -------------------------------------
+# Playwright's connectOverCDP unconditionally calls Browser.setDownloadBehavior
+# which Qt's embedded WebEngine doesn't implement, so we use a minimal Node
+# CDP client (cdp-check.mjs) instead. See test/appimage/README.md.
 
-echo "---- stage 2: Playwright CDP check ----"
+echo "---- stage 2: CDP runtime check ----"
 cd "$SCRIPT_DIR"
-npx playwright test
+node cdp-check.mjs
 echo "---- stage 2 passed ----"
