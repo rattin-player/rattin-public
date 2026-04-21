@@ -23,6 +23,9 @@ ld-linux-x86-64.so
 
 # Graphics / windowing (host-driven for HW accel)
 libGL.so
+# libOpenGL.so is the GLVND-split userspace lib (separate from libGL since
+# Qt6 links against it directly); host-provided alongside libGL on every distro.
+libOpenGL.so
 libEGL.so
 libGLX.so
 libgbm.so
