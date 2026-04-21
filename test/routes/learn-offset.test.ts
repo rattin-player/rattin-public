@@ -42,6 +42,34 @@ describe("learn-offset routes", () => {
       });
       assert.equal(res.status, 400);
     });
+    it("rejects non-scalar tmdbId", async () => {
+      for (const bad of [{ nested: true }, [1, 2, 3], ""]) {
+        const res = await fetch(`${baseUrl}/api/learn-offset`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tmdbId: bad, type: "outro", offset_sec: 100 }),
+        });
+        assert.equal(res.status, 400, `expected 400 for tmdbId=${JSON.stringify(bad)}`);
+      }
+    });
+    it("rejects non-finite offset_sec", async () => {
+      for (const bad of ["abc", null, Number.NaN, -1]) {
+        const res = await fetch(`${baseUrl}/api/learn-offset`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tmdbId: "1", type: "outro", offset_sec: bad }),
+        });
+        assert.equal(res.status, 400, `expected 400 for offset_sec=${JSON.stringify(bad)}`);
+      }
+    });
+    it("rejects wrong type", async () => {
+      const res = await fetch(`${baseUrl}/api/learn-offset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tmdbId: "1", type: "intro", offset_sec: 100 }),
+      });
+      assert.equal(res.status, 400);
+    });
   });
 
   describe("GET /api/learn-offset/:tmdbId", () => {
