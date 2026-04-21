@@ -123,6 +123,22 @@ void MpvBridge::setProperty(const QString &name, const QVariant &value)
     }
 }
 
+QVariantList MpvBridge::getMpvChapters() const
+{
+    QVariantList out;
+    if (!m_mpv) return out;
+    QVariant cl = m_mpv->getProperty("chapter-list");
+    if (!cl.canConvert<QVariantList>()) return out;
+    for (const QVariant &c : cl.toList()) {
+        QVariantMap m = c.toMap();
+        QVariantMap o;
+        o["time"] = m.value("time").toDouble();
+        o["title"] = m.value("title").toString();
+        out.append(o);
+    }
+    return out;
+}
+
 void MpvBridge::onMpvEvent(const QString &eventName, const QVariant &value)
 {
     if (eventName == "time-pos" && value.canConvert<double>()) {
