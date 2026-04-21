@@ -92,11 +92,9 @@ function afterChapters(input: MarkerInputs, prior: Markers): Markers {
   if (input.introdb) {
     const introFromIntrodb = partial.introStart === null
       && input.introdb.introStart !== null
-      && input.introdb.introEnd !== null
-      && input.introdb.introSubmissionCount >= 2;
+      && input.introdb.introEnd !== null;
     const outroFromIntrodb = partial.outroStart === null
-      && input.introdb.outroStart !== null
-      && input.introdb.outroSubmissionCount >= 2;
+      && input.introdb.outroStart !== null;
     if (introFromIntrodb) {
       partial = {
         ...partial,
