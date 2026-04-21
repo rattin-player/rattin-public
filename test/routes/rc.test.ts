@@ -288,6 +288,21 @@ describe("RC routes", () => {
       assert.equal(res.status, 200);
       assert.equal(session.bingeMode.capabilities, null);
     });
+
+    it("rejects malformed capabilities payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId, authToken, action: "set-binge-capabilities",
+          value: { capabilities: { autoSkipIntro: { enabled: "yes" } } },
+        }),
+      });
+
+      assert.equal(res.status, 400);
+    });
   });
 
   // ── set-persisted-tracks command ──────────────────────────────────────

@@ -83,13 +83,41 @@ describe("computeMarkers — priority fall-through", () => {
     assert.equal(m.introStart, 20);
   });
 
+  it("rejects AniSkip at 30.01s boundary (strict > 30 check)", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      learnedOutroOffset: null,
+      fileDuration: 1410.01,
+    });
+    assert.equal(m.introStart, null);
+    assert.equal(m.outroStart, null);
+    assert.equal(m.introSource, "AniSkip · duration mismatch");
+  });
+
+  it("ignores chapter titled 'End of Part 1' (no ED false-positive)", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [
+        { time: 0, title: "Cold Open" },
+        { time: 600, title: "End of Part 1" },
+        { time: 1200, title: "Part 2" },
+      ],
+      aniskip: null,
+      learnedOutroOffset: null,
+      fileDuration: 1380,
+    });
+    assert.equal(m.outroStart, null);
+  });
+
   it("ignores chapter titled 'Operation' (no OP false-positive)", () => {
     const m = computeMarkers({
       bridgeHasChapterSupport: true,
       chapters: [
         { time: 0, title: "Cold Open" },
         { time: 60, title: "Operation Blackout" },
-        { time: 1200, title: "End" },
+        { time: 1200, title: "Ending" },
       ],
       aniskip: null,
       learnedOutroOffset: null,

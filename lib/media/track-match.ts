@@ -29,6 +29,7 @@ export interface SubtitleTrackInfo {
 }
 
 const COMMENTARY_RE = /\b(commentary|descriptive|director)\b/i;
+const SIGNS_ONLY_RE = /\b(signs?|songs?|s&s)\b/i;
 
 export function pickAudioTrack(
   tracks: AudioTrackInfo[],
@@ -64,5 +65,7 @@ export function pickSubtitleTrack(
   }
   const full = sameLang.filter((t) => !t.forced);
   const pool = full.length > 0 ? full : sameLang;
-  return pool[0].index;
+  const nonSigns = pool.filter((t) => !SIGNS_ONLY_RE.test(t.title ?? ""));
+  const ranked = nonSigns.length > 0 ? nonSigns : pool;
+  return ranked[0].index;
 }

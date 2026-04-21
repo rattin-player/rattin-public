@@ -5,7 +5,7 @@ export interface PrefetchDeps {
   resolveNext: (nextEp: NextEp) => Promise<Resolved>;
   warmCache: (magnet: string) => Promise<void>;
   addTorrent: (magnet: string, fileIndex: number) => Promise<void>;
-  isFinished: (tmdbId: string, season: number, episode: number) => boolean;
+  isFinished: (tmdbId: string, season: number, episode: number) => boolean | Promise<boolean>;
 }
 
 export interface PrefetchArgs {
@@ -16,7 +16,7 @@ export interface PrefetchArgs {
 }
 
 export async function startPrefetch(args: PrefetchArgs): Promise<Resolved | null> {
-  if (args.deps.isFinished(args.nextEp.tmdbId, args.nextEp.season, args.nextEp.episode)) {
+  if (await args.deps.isFinished(args.nextEp.tmdbId, args.nextEp.season, args.nextEp.episode)) {
     return null;
   }
   const resolved = await args.deps.resolveNext(args.nextEp);

@@ -48,6 +48,26 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     if (session.playerClient) sseWrite(session.playerClient, "binge", session.bingeMode);
   }
 
+  function isCapabilityFlag(v: unknown, extra?: (obj: Record<string, unknown>) => boolean): boolean {
+    if (!v || typeof v !== "object") return false;
+    const o = v as Record<string, unknown>;
+    if (typeof o.enabled !== "boolean") return false;
+    return extra ? extra(o) : true;
+  }
+
+  function isValidCapabilities(v: unknown): v is BingeCapabilities {
+    if (!v || typeof v !== "object") return false;
+    const c = v as Record<string, unknown>;
+    return isCapabilityFlag(c.autoSkipIntro, (o) => typeof o.source === "string")
+      && isCapabilityFlag(c.autoSkipCredits, (o) =>
+           typeof o.source === "string"
+           && (o.sampleCount === undefined || typeof o.sampleCount === "number"))
+      && isCapabilityFlag(c.persistTracks)
+      && isCapabilityFlag(c.autoAdvance, (o) => typeof o.viaEOF === "boolean")
+      && isCapabilityFlag(c.prefetch, (o) =>
+           o.via === null || typeof o.via === "string");
+  }
+
   app.get("/api/auth/persist", (req: Request, res: Response) => {
     // Only reachable after nginx basic auth succeeded (or a valid token).
     // Set a long-lived cookie — nginx skips basic auth when rc_auth cookie exists.
@@ -249,6 +269,9 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     }
     if (action === "set-binge-capabilities") {
       const caps = (value as { capabilities?: unknown } | undefined)?.capabilities;
+      if (caps !== null && caps !== undefined && !isValidCapabilities(caps)) {
+        return res.status(400).json({ error: "invalid capabilities shape" });
+      }
       auth.session.bingeMode.capabilities = (caps ?? null) as BingeCapabilities | null;
       broadcastBinge(auth.session);
       return res.json({ ok: true });

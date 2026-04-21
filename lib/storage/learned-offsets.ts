@@ -7,17 +7,45 @@ interface StoreData {
   [tmdbId: string]: { outro_samples: LearnedOffsetSample[] };
 }
 
+const MAX_SAMPLES_PER_SHOW = 20;
+
+function isValidSample(v: unknown): v is LearnedOffsetSample {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Record<string, unknown>;
+  return typeof s.offset === "number" && Number.isFinite(s.offset)
+    && typeof s.at === "string"
+    && typeof s.season === "number"
+    && typeof s.episode === "number";
+}
+
+function coerceStore(raw: unknown): StoreData {
+  if (!raw || typeof raw !== "object") return {};
+  const out: StoreData = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const samples = (v as { outro_samples?: unknown }).outro_samples;
+    if (!Array.isArray(samples)) continue;
+    const valid = samples.filter(isValidSample);
+    if (valid.length > 0) out[k] = { outro_samples: valid };
+  }
+  return out;
+}
+
 export class LearnedOffsetsStore {
   private data: StoreData = {};
   constructor(private readonly filePath: string) {
     if (existsSync(filePath)) {
-      try { this.data = JSON.parse(readFileSync(filePath, "utf-8")); } catch { this.data = {}; }
+      try { this.data = coerceStore(JSON.parse(readFileSync(filePath, "utf-8"))); } catch { this.data = {}; }
     }
   }
 
   addOutroSample(tmdbId: string, sample: LearnedOffsetSample): void {
     if (!this.data[tmdbId]) this.data[tmdbId] = { outro_samples: [] };
-    this.data[tmdbId].outro_samples.push(sample);
+    const arr = this.data[tmdbId].outro_samples;
+    arr.push(sample);
+    if (arr.length > MAX_SAMPLES_PER_SHOW) {
+      this.data[tmdbId].outro_samples = arr.slice(-MAX_SAMPLES_PER_SHOW);
+    }
     this.persist();
   }
 

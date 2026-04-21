@@ -162,7 +162,10 @@ export class BingeCoordinator {
     }
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      if (await this.deps.pollReady()) {
+      if ((this.state as CoordinatorState) !== "advancing") return;
+      const ready = await this.deps.pollReady();
+      if ((this.state as CoordinatorState) !== "advancing") return;
+      if (ready) {
         await this.deps.loadNextEpisode();
         this.fire("advance-ready");
         this.setState("idle");
@@ -172,6 +175,7 @@ export class BingeCoordinator {
       }
       await new Promise(r => setTimeout(r, 500));
     }
+    if ((this.state as CoordinatorState) !== "advancing") return;
     this.fire("advance-timeout");
     this.setState("stopped");
     this.deps.emitToast("Couldn't load next episode (timeout)");
