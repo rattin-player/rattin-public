@@ -48,3 +48,25 @@ libplc4.so
 libplds4.so
 libsmime3.so
 libssl3.so
+
+# Core userspace libs — ubiquitous on every Linux desktop distro.
+# Bundling these would either duplicate system libs or pull in a cascade of
+# transitive deps that grow the AppImage without any reliability benefit.
+libz.so
+libexpat.so
+libcom_err.so
+libasound.so
+libgmp.so
+libgpg-error.so
+libusb-1.0.so
+
+# Text rendering stack — provided by every desktop distro; bundling would
+# conflict with host fontconfig cache paths.
+libfontconfig.so
+libfreetype.so
+libharfbuzz.so
+libfribidi.so
+
+# Wayland runtime — on every modern distro; bundling risks protocol version
+# skew with the host compositor.
+libwayland-client.so

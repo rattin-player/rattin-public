@@ -269,6 +269,18 @@ build_appimage() {
     # NOTE: linuxdeploy may exit non-zero even on partial success (known quirk),
     # so we capture the exit code and warn rather than abort. The verify_appdir()
     # step below will catch any real missing-library consequences.
+    # Force-bundle libjack: libmpv has NEEDED libjack.so.0 baked in by the
+    # Ubuntu linker, but libjack is on AppImage's canonical excludelist that
+    # linuxdeploy's `continuous` channel enforces. Without this, the AppImage
+    # crashes at load on any distro without libjack-jackd2-0 installed
+    # (the v2.7.8 regression). `--library` overrides the excludelist.
+    local libjack_path
+    libjack_path="$(readlink -f /usr/lib/x86_64-linux-gnu/libjack.so.0 2>/dev/null \
+        || find /usr/lib -name 'libjack.so.0*' -type f 2>/dev/null | head -n1)"
+    if [ -z "$libjack_path" ] || [ ! -f "$libjack_path" ]; then
+        die "libjack.so.0 not found on build host — install libjack-jackd2-0"
+    fi
+
     local ld_exit=0
     DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1 "$TOOLS_DIR/linuxdeploy" \
         --appdir "$APPDIR" \
@@ -276,6 +288,7 @@ build_appimage() {
         --desktop-file "$APPDIR/rattin.desktop" \
         --icon-file "$APPDIR/rattin.svg" \
         --custom-apprun "$REPO_ROOT/install/AppRun" \
+        --library "$libjack_path" \
         --plugin qt \
         || ld_exit=$?
     if [ "$ld_exit" -ne 0 ]; then
