@@ -265,6 +265,11 @@ export interface BingeDiagnostics {
         seasonSpecific: boolean;
       } | null;
     } | null;
+    introdb: {
+      imdbId: string;
+      intro: { start: number; end: number; confidence: number; submissionCount: number } | null;
+      outro: { start: number; end: number; confidence: number; submissionCount: number } | null;
+    } | null;
     learnedOutro: { sampleCount: number; offset: number } | null;
   };
   prefetch: {

@@ -34,7 +34,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchAniskipMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { startPrefetch as libStartPrefetch } from "../../lib/torrent/prefetch";
@@ -251,7 +251,7 @@ export default function Player() {
     state: "idle",
     duration: 0,
     markers: null,
-    signals: { chapters: null, aniskip: null, learnedOutro: null },
+    signals: { chapters: null, aniskip: null, introdb: null, learnedOutro: null },
     prefetch: { threshold: 0.9, firedAtTime: null, firedAtEpoch: null, resolved: null, ready: false },
     nextAction: null,
     events: [],
@@ -619,17 +619,36 @@ export default function Player() {
         const showTitle = state?.baseName || state?.title || mediaTitle;
         const epNum = state?.episode != null ? Number(state.episode) : null;
         const seasonNum = state?.season != null ? Number(state.season) : 1;
-        const [chapters, learned, aniskip] = await Promise.all([
+        const [chapters, learned, episodeMarkers] = await Promise.all([
           mpvGetChapters().catch(() => []),
           tmdbId ? getLearnedOffset(tmdbId).catch(() => null) : Promise.resolve(null),
           showTitle && epNum && Number.isFinite(epNum)
-            ? fetchAniskipMarkers(showTitle, epNum, duration, seasonNum).catch(() => null)
-            : Promise.resolve(null),
+            ? fetchEpisodeMarkers({
+                title: showTitle,
+                episode: epNum,
+                durationSec: duration,
+                season: seasonNum,
+                tmdbId: state?.tmdbId != null ? String(state.tmdbId) : undefined,
+                imdbId: state?.imdbId ?? undefined,
+              }).catch(() => ({ aniskip: null, introdb: null }))
+            : Promise.resolve({ aniskip: null, introdb: null }),
         ]);
+        const aniskip = episodeMarkers.aniskip;
+        const introdb = episodeMarkers.introdb;
         const markers = computeMarkers({
           bridgeHasChapterSupport: bridgeHasChapterSupport(),
           chapters,
-          aniskip,
+          aniskip: aniskip ? {
+            opStart: aniskip.opStart, opEnd: aniskip.opEnd,
+            edStart: aniskip.edStart, episodeLength: aniskip.episodeLength,
+          } : null,
+          introdb: introdb ? {
+            introStart: introdb.intro?.startSec ?? null,
+            introEnd: introdb.intro?.endSec ?? null,
+            outroStart: introdb.outro?.startSec ?? null,
+            introSubmissionCount: introdb.intro?.submissionCount ?? 0,
+            outroSubmissionCount: introdb.outro?.submissionCount ?? 0,
+          } : null,
           learnedOutroOffset: learned && learned.outro_offset !== null
             ? { offset: learned.outro_offset, sampleCount: learned.sample_count }
             : null,
@@ -679,6 +698,17 @@ export default function Player() {
             ed: aniskip.edStart > 0 ? { start: aniskip.edStart, end: duration } : null,
             durationMatch: Math.abs(aniskip.episodeLength - duration) <= 30,
             resolution: aniskip.resolution ?? null,
+          } : null,
+          introdb: introdb ? {
+            imdbId: introdb.imdbId,
+            intro: introdb.intro ? {
+              start: introdb.intro.startSec, end: introdb.intro.endSec,
+              confidence: introdb.intro.confidence, submissionCount: introdb.intro.submissionCount,
+            } : null,
+            outro: introdb.outro ? {
+              start: introdb.outro.startSec, end: introdb.outro.endSec,
+              confidence: introdb.outro.confidence, submissionCount: introdb.outro.submissionCount,
+            } : null,
           } : null,
           learnedOutro: learned && learned.outro_offset !== null
             ? { sampleCount: learned.sample_count, offset: learned.outro_offset }
