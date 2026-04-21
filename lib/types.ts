@@ -171,6 +171,12 @@ export interface RCSession {
   lastActivity: number;
   authToken?: string;
   pairingCode?: string;
+  bingeMode: {
+    enabled: boolean;
+    capabilities: BingeCapabilities | null;
+    persistedTracks: PersistedTracks;
+    diagnostics: BingeDiagnostics | null;
+  };
 }
 
 // ── Playback State (shared between frontend and backend RC) ──────────
@@ -183,6 +189,103 @@ export interface PlaybackState {
   poster?: string;
   volume?: number;
   muted?: boolean;
+}
+
+// ── Binge Mode ────────────────────────────────────────────────────────
+
+export type MarkerSource =
+  | "chapter markers"
+  | "AniSkip · duration OK"
+  | "AniSkip · duration mismatch"
+  | "learned outro offset"
+  | "no signal — advance on EOF"
+  | "no chapter data"
+  | "no AniSkip data"
+  | "bridge missing chapter support";
+
+export interface BingeCapabilities {
+  autoSkipIntro: { enabled: boolean; source: MarkerSource };
+  autoSkipCredits: { enabled: boolean; source: MarkerSource; sampleCount?: number };
+  persistTracks: { enabled: boolean };
+  autoAdvance: { enabled: boolean; viaEOF: boolean };
+  prefetch: { enabled: boolean; via: "debrid cache" | "torrent pieces" | null };
+}
+
+export interface PersistedTracks {
+  audio: { lang: string; title: string } | null;
+  subtitles: { lang: string; title: string } | null;
+}
+
+export type CoordinatorState = "idle" | "prefetching" | "armed" | "advancing" | "stopped" | "finale";
+
+export type BingeEventKind =
+  | "episode-start"
+  | "intro-skip"
+  | "prefetch-fire"
+  | "prefetch-ok"
+  | "prefetch-error"
+  | "armed"
+  | "advance-start"
+  | "advance-ready"
+  | "advance-timeout"
+  | "end-of-series"
+  | "state"
+  | "stop";
+
+export interface BingeEvent {
+  at: number;               // epoch ms
+  kind: BingeEventKind;
+  t?: number;               // playback time when event fired (seconds)
+  detail?: string;
+}
+
+export interface BingeDiagnostics {
+  state: CoordinatorState;
+  duration: number;         // current episode duration (seconds)
+  markers: {
+    introStart: number | null;
+    introEnd: number | null;
+    outroStart: number | null;
+    introSource: MarkerSource;
+    outroSource: MarkerSource;
+  } | null;
+  signals: {
+    chapters: { count: number; intro: { start: number; end: number } | null; outro: { start: number } | null } | null;
+    aniskip: {
+      op: { start: number; end: number } | null;
+      ed: { start: number; end: number } | null;
+      durationMatch: boolean;
+      resolution: {
+        malId: number;
+        jikanTitle: string;
+        jikanQuery: string;
+        aniskipUrl: string;
+        seasonSpecific: boolean;
+      } | null;
+    } | null;
+    learnedOutro: { sampleCount: number; offset: number } | null;
+  };
+  prefetch: {
+    threshold: number;      // 0..1 fraction of duration
+    firedAtTime: number | null;   // playback time when fired
+    firedAtEpoch: number | null;  // epoch ms
+    resolved: "ok" | "error" | null;
+    error?: string;
+    ready: boolean;
+  };
+  nextAction: {
+    kind: "skip-intro" | "prefetch" | "advance" | "end-of-series";
+    atTime: number | null;  // seconds (scheduled playback time), null if immediate
+    reason: string;
+  } | null;
+  events: BingeEvent[];     // capped ring buffer (most recent last)
+}
+
+export interface LearnedOffsetSample {
+  offset: number;
+  at: string;
+  season: number;
+  episode: number;
 }
 
 export interface SubTrack {

@@ -8,10 +8,12 @@ class MpvObject;
 class MpvBridge : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool hasChapterSupport READ hasChapterSupport CONSTANT)
 
 public:
     explicit MpvBridge(QObject *parent = nullptr);
     void attachMpv(MpvObject *mpv);
+    bool hasChapterSupport() const { return true; }
 
     // These slots are callable from JavaScript via QWebChannel
 public slots:
@@ -27,6 +29,7 @@ public slots:
     void stop();
     QVariant getProperty(const QString &name) const;
     void setProperty(const QString &name, const QVariant &value);
+    QVariantList getMpvChapters() const;
 
 signals:
     // Emitted to JavaScript

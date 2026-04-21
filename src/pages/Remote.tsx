@@ -2,8 +2,28 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { clearRemoteSession, getRemoteSessionId, notifyRemoteSessionChanged } from "../lib/remote-session";
 import { formatTime, formatBytes } from "../lib/utils";
-import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster } from "../lib/api";
+import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster, setBingeMode } from "../lib/api";
+import type { BingeCapabilities, BingeDiagnostics, BingeEvent } from "../../lib/types";
+import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import "./Remote.css";
+
+const symbolFor = (on: boolean) => (on ? "✓" : "✗");
+
+const fmtSec = (s: number | null | undefined): string => {
+  if (s == null || !Number.isFinite(s)) return "—";
+  const total = Math.max(0, Math.round(s));
+  const m = Math.floor(total / 60);
+  const r = String(total % 60).padStart(2, "0");
+  return `${m}:${r}`;
+};
+
+const fmtRelative = (atEpoch: number, now: number): string => {
+  const dt = Math.max(0, Math.round((now - atEpoch) / 1000));
+  if (dt < 60) return `${dt}s ago`;
+  const m = Math.floor(dt / 60);
+  const s = dt % 60;
+  return `${m}m${s ? ` ${s}s` : ""} ago`;
+};
 
 // ── State machine constants ──
 const S = {
@@ -79,6 +99,23 @@ export default function Remote() {
 
   // ── Connection flash feedback ──
   const [showConnectedFlash, setShowConnectedFlash] = useState(false);
+
+  // ── Binge mode state (from SSE "binge" event) ──
+  const [bingeMode, setBingeModeState] = useState<{ enabled: boolean; capabilities: BingeCapabilities | null; diagnostics: BingeDiagnostics | null }>({ enabled: false, capabilities: null, diagnostics: null });
+  const [bingeFlash, setBingeFlash] = useState<string | null>(null);
+  const [showBingeDebug, setShowBingeDebug] = useState(false);
+  const bingeToastedRef = useRef(false);
+
+  useEffect(() => {
+    if (!bingeMode.enabled) { bingeToastedRef.current = false; setBingeFlash(null); return; }
+    if (bingeToastedRef.current || !bingeMode.capabilities) return;
+    bingeToastedRef.current = true;
+    const c = bingeMode.capabilities;
+    const active = [c.autoSkipIntro, c.autoSkipCredits, c.persistTracks, c.autoAdvance, c.prefetch].filter((x) => x.enabled).length;
+    setBingeFlash(`Binge mode ON — ${active} feature${active === 1 ? "" : "s"} active`);
+    const t = setTimeout(() => setBingeFlash(null), 3000);
+    return () => clearTimeout(t);
+  }, [bingeMode.enabled, bingeMode.capabilities]);
 
   // ── Pairing code & panels ──
   const [digits, setDigits] = useState(["", "", "", ""]);
@@ -190,6 +227,10 @@ export default function Remote() {
           hadPlayback.current = true;
         }
         setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
+      });
+
+      es.addEventListener("binge", (e: MessageEvent) => {
+        try { setBingeModeState(JSON.parse(e.data)); } catch { /* ignore malformed */ }
       });
 
       es.addEventListener("connected", () => {
@@ -763,19 +804,21 @@ export default function Remote() {
           </button>
         )}
         {state?.mediaType === "tv" && state?.season > 0 && state?.episode > 0 && (() => {
-          const isSeasonFinale = state.seasonEpisodeCount > 0 && state.episode >= state.seasonEpisodeCount;
-          const isSeriesFinale = isSeasonFinale && state.seasonCount > 0 && state.season >= state.seasonCount;
-          if (isSeriesFinale) return null;
-          const nextS = isSeasonFinale ? state.season + 1 : state.season;
-          const nextE = isSeasonFinale ? 1 : state.episode + 1;
+          const next = nextEpisodeFrom({
+            season: state.season,
+            episode: state.episode,
+            seasonEpisodeCount: state.seasonEpisodeCount || undefined,
+            seasonCount: state.seasonCount || undefined,
+          });
+          if (!next) return null;
           return (
             <button
               className="remote-next-episode"
-              onClick={() => sendCommand("next-episode", { season: nextS, episode: nextE })}
+              onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
               disabled={isDisabled}
             >
               Next Ep
-              <span className="remote-next-episode-label">S{nextS}E{nextE}</span>
+              <span className="remote-next-episode-label">S{next.season}E{next.episode}</span>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
@@ -783,6 +826,160 @@ export default function Remote() {
           );
         })()}
       </div>
+
+      {sessionId && (
+        <>
+          <button
+            className={bingeMode.enabled ? "remote-binge-toggle on" : "remote-binge-toggle"}
+            onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
+            disabled={isDisabled}
+          >
+            {bingeMode.enabled ? "Binge mode: ON" : "Binge mode: off"}
+          </button>
+          {!bingeMode.enabled && (
+            <div className="remote-binge-help">
+              Auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across episodes. Toggle off anytime to stop.
+            </div>
+          )}
+          {bingeFlash && <div className="remote-flash">{bingeFlash}</div>}
+          {bingeMode.enabled && bingeMode.capabilities && (
+            <div className="remote-binge-panel">
+              <div className="remote-binge-panel-header">
+                Binge mode: ON{state?.title ? ` — ${state.title}` : ""}
+                {state?.season && state?.episode ? ` S${state.season}E${state.episode}` : ""}
+              </div>
+              <div>{symbolFor(bingeMode.capabilities.autoSkipIntro.enabled)} Auto-skip intro <span className="remote-binge-source">{bingeMode.capabilities.autoSkipIntro.source}</span></div>
+              <div>
+                {symbolFor(bingeMode.capabilities.autoSkipCredits.enabled)} Auto-skip credits{" "}
+                <span className="remote-binge-source">
+                  {bingeMode.capabilities.autoSkipCredits.source}
+                  {bingeMode.capabilities.autoSkipCredits.sampleCount != null
+                    ? ` (${bingeMode.capabilities.autoSkipCredits.sampleCount} sample${bingeMode.capabilities.autoSkipCredits.sampleCount === 1 ? "" : "s"})`
+                    : ""}
+                </span>
+              </div>
+              <div>{symbolFor(bingeMode.capabilities.persistTracks.enabled)} Persist audio/subs</div>
+              <div>{symbolFor(bingeMode.capabilities.autoAdvance.enabled)} Auto-advance{bingeMode.capabilities.autoAdvance.viaEOF ? " on EOF" : ""}</div>
+              <div>{symbolFor(bingeMode.capabilities.prefetch.enabled)} Prefetch next episode <span className="remote-binge-source">{bingeMode.capabilities.prefetch.via ? `via ${bingeMode.capabilities.prefetch.via}` : ""}</span></div>
+            </div>
+          )}
+          {bingeMode.enabled && bingeMode.diagnostics && (
+            <div className="remote-binge-debug">
+              <button
+                className="remote-binge-debug-toggle"
+                onClick={() => setShowBingeDebug((s) => !s)}
+                type="button"
+              >
+                {showBingeDebug ? "▾" : "▸"} Details
+                <span className="remote-binge-debug-state">
+                  state: {bingeMode.diagnostics.state}
+                  {bingeMode.diagnostics.nextAction
+                    ? ` → ${bingeMode.diagnostics.nextAction.kind}${bingeMode.diagnostics.nextAction.atTime != null ? ` @ ${fmtSec(bingeMode.diagnostics.nextAction.atTime)}` : ""}`
+                    : ""}
+                </span>
+              </button>
+              {showBingeDebug && (() => {
+                const d = bingeMode.diagnostics!;
+                const now = Date.now();
+                return (
+                  <div className="remote-binge-debug-body">
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Next action</div>
+                      {d.nextAction ? (
+                        <div>
+                          <span className="remote-binge-debug-kind">{d.nextAction.kind}</span>
+                          {d.nextAction.atTime != null && (
+                            <span className="remote-binge-debug-time"> @ {fmtSec(d.nextAction.atTime)}</span>
+                          )}
+                          <div className="remote-binge-source">{d.nextAction.reason}</div>
+                        </div>
+                      ) : (
+                        <div className="remote-binge-source">— no action scheduled</div>
+                      )}
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Markers (duration {fmtSec(d.duration)})</div>
+                      {d.markers ? (
+                        <>
+                          <div>
+                            Intro: {d.markers.introStart != null ? `${fmtSec(d.markers.introStart)}–${fmtSec(d.markers.introEnd)}` : "—"}
+                            <span className="remote-binge-source"> {d.markers.introSource}</span>
+                          </div>
+                          <div>
+                            Outro: {d.markers.outroStart != null ? fmtSec(d.markers.outroStart) : "—"}
+                            <span className="remote-binge-source"> {d.markers.outroSource}</span>
+                          </div>
+                        </>
+                      ) : <div className="remote-binge-source">— not computed yet</div>}
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Signals</div>
+                      <div>
+                        Chapters:{" "}
+                        {d.signals.chapters
+                          ? <>
+                              {d.signals.chapters.count} found
+                              {d.signals.chapters.intro && ` · intro ${fmtSec(d.signals.chapters.intro.start)}–${fmtSec(d.signals.chapters.intro.end)}`}
+                              {d.signals.chapters.outro && ` · outro ${fmtSec(d.signals.chapters.outro.start)}`}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        AniSkip:{" "}
+                        {d.signals.aniskip
+                          ? <>
+                              {d.signals.aniskip.op && `OP ${fmtSec(d.signals.aniskip.op.start)}–${fmtSec(d.signals.aniskip.op.end)}`}
+                              {d.signals.aniskip.ed && ` · ED ${fmtSec(d.signals.aniskip.ed.start)}`}
+                              {!d.signals.aniskip.durationMatch && <span className="remote-binge-source"> · duration mismatch</span>}
+                              {d.signals.aniskip.resolution && (
+                                <div className="remote-binge-source">
+                                  MAL #{d.signals.aniskip.resolution.malId} · {d.signals.aniskip.resolution.jikanTitle || "(no Jikan title)"}
+                                  {" · queried "}
+                                  <span style={{ fontStyle: "italic" }}>"{d.signals.aniskip.resolution.jikanQuery}"</span>
+                                  {!d.signals.aniskip.resolution.seasonSpecific && " · ⚠ season-ambiguous (fell back to base title)"}
+                                </div>
+                              )}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        Learned outro:{" "}
+                        {d.signals.learnedOutro
+                          ? `${fmtSec(d.signals.learnedOutro.offset)} (${d.signals.learnedOutro.sampleCount} sample${d.signals.learnedOutro.sampleCount === 1 ? "" : "s"})`
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">
+                        Prefetch (fires @ {fmtSec((d.duration || 0) * d.prefetch.threshold)})
+                      </div>
+                      <div>
+                        {d.prefetch.firedAtTime != null
+                          ? <>fired @ {fmtSec(d.prefetch.firedAtTime)} · {d.prefetch.resolved ?? "in progress"}{d.prefetch.resolved === "ok" && ` · ready: ${d.prefetch.ready ? "yes" : "no"}`}</>
+                          : <span className="remote-binge-source">not yet fired</span>}
+                        {d.prefetch.error && <div className="remote-binge-source">error: {d.prefetch.error}</div>}
+                      </div>
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Events (last {d.events.length})</div>
+                      {d.events.length === 0
+                        ? <div className="remote-binge-source">— none yet</div>
+                        : [...d.events].reverse().map((e: BingeEvent, i) => (
+                            <div key={i} className="remote-binge-debug-event">
+                              <span className="remote-binge-debug-event-kind">{e.kind}</span>
+                              {e.t != null && <span className="remote-binge-debug-event-t"> @ {fmtSec(e.t)}</span>}
+                              <span className="remote-binge-source"> · {fmtRelative(e.at, now)}</span>
+                              {e.detail && <div className="remote-binge-source">{e.detail}</div>}
+                            </div>
+                          ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </>
+      )}
 
       {state?.mediaType === "tv" && state?.tmdbId && (
         <button

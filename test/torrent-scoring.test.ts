@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   scoreTorrent, parseTags, matchEpisodePattern,
-  findEpisodeFile, findLargestVideoFile,
+  findEpisodeFile, findExactEpisodeFile, findLargestVideoFile,
   hasWrongEpisode, coversTargetSeason,
 } from "../lib/torrent/torrent-scoring.js";
 
@@ -266,6 +266,60 @@ describe("findEpisodeFile", () => {
 
   it("returns null for null files", () => {
     assert.equal(findEpisodeFile(null as unknown as [], 1, 5), null);
+  });
+});
+
+describe("findExactEpisodeFile", () => {
+  it("finds episode by S01E05 pattern", () => {
+    const files = [
+      { name: "Show.S01E04.720p.mkv", length: 500 },
+      { name: "Show.S01E05.720p.mkv", length: 500 },
+      { name: "Show.S01E06.720p.mkv", length: 500 },
+    ];
+    const result = findExactEpisodeFile(files, 1, 5);
+    assert.equal(result!.file.name, "Show.S01E05.720p.mkv");
+    assert.equal(result!.index, 1);
+  });
+
+  it("returns null when no episode matches (no largest-file fallback)", () => {
+    const files = [
+      { name: "small.mp4", length: 100 },
+      { name: "big.mp4", length: 5000 },
+    ];
+    assert.equal(findExactEpisodeFile(files, 1, 5), null);
+  });
+
+  it("returns null when season/episode not provided", () => {
+    const files = [
+      { name: "Show.S01E05.720p.mkv", length: 500 },
+    ];
+    assert.equal(findExactEpisodeFile(files, undefined, undefined), null);
+    assert.equal(findExactEpisodeFile(files, 1, undefined), null);
+    assert.equal(findExactEpisodeFile(files, undefined, 5), null);
+  });
+
+  it("returns null for null/empty files", () => {
+    assert.equal(findExactEpisodeFile(null, 1, 5), null);
+    assert.equal(findExactEpisodeFile([], 1, 5), null);
+  });
+
+  it("ignores non-video files", () => {
+    const files = [
+      { name: "Show.S01E05.720p.srt", length: 5000 },
+      { name: "Show.S01E05.720p.mkv", length: 500 },
+    ];
+    const result = findExactEpisodeFile(files, 1, 5);
+    assert.equal(result!.file.name, "Show.S01E05.720p.mkv");
+    assert.equal(result!.index, 1);
+  });
+
+  it("picks the largest among multiple matches", () => {
+    const files = [
+      { name: "Show.S01E05.sample.mkv", length: 50 },
+      { name: "Show.S01E05.720p.mkv", length: 500 },
+    ];
+    const result = findExactEpisodeFile(files, 1, 5);
+    assert.equal(result!.index, 1);
   });
 });
 

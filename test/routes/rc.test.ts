@@ -1,9 +1,11 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
+import type { BingeCapabilities, PersistedTracks, RCSession } from "../../lib/types.js";
 
 describe("RC routes", () => {
   let baseUrl: string, close: () => Promise<void>;
+  let rcSessions: Map<string, RCSession>;
 
   async function createSession(): Promise<{ sessionId: string; authToken: string }> {
     const res = await fetch(`${baseUrl}/api/rc/session`, { method: "POST" });
@@ -11,7 +13,10 @@ describe("RC routes", () => {
   }
 
   before(async () => {
-    ({ baseUrl, close } = await startTestServer());
+    const server = await startTestServer();
+    baseUrl = server.baseUrl;
+    close = server.close;
+    rcSessions = server.rcSessions;
   });
 
   after(async () => {
@@ -190,6 +195,147 @@ describe("RC routes", () => {
       const setCookie = res.headers.get("set-cookie")!;
       assert.ok(setCookie, "should set cookies");
       assert.ok(setCookie.includes("rc_auth="), "should set rc_auth cookie");
+    });
+  });
+
+  // ── set-binge-mode command ────────────────────────────────────────────
+
+  describe("set-binge-mode command", () => {
+    it("toggles bingeMode.enabled on the session and broadcasts", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: true } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(rcSessions.get(sessionId)!.bingeMode.enabled, true);
+    });
+
+    it("clears capabilities when disabling", async () => {
+      const { sessionId, authToken } = await createSession();
+      const session = rcSessions.get(sessionId)!;
+      session.bingeMode.enabled = true;
+      session.bingeMode.capabilities = {
+        autoSkipIntro: { enabled: true, source: "chapter markers" },
+        autoSkipCredits: { enabled: true, source: "chapter markers" },
+        persistTracks: { enabled: true },
+        autoAdvance: { enabled: true, viaEOF: false },
+        prefetch: { enabled: true, via: "debrid cache" },
+      };
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: false } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(session.bingeMode.enabled, false);
+      assert.equal(session.bingeMode.capabilities, null);
+    });
+
+    it("rejects set-binge-mode with non-boolean payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-mode", value: { enabled: "yes" } }),
+      });
+
+      assert.equal(res.status, 400);
+    });
+  });
+
+  // ── set-binge-capabilities command ────────────────────────────────────
+
+  describe("set-binge-capabilities command", () => {
+    const sampleCaps: BingeCapabilities = {
+      autoSkipIntro: { enabled: true, source: "chapter markers" },
+      autoSkipCredits: { enabled: true, source: "chapter markers" },
+      persistTracks: { enabled: true },
+      autoAdvance: { enabled: true, viaEOF: false },
+      prefetch: { enabled: true, via: "debrid cache" },
+    };
+
+    it("stores capabilities on the session", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-capabilities", value: { capabilities: sampleCaps } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(rcSessions.get(sessionId)!.bingeMode.capabilities, sampleCaps);
+    });
+
+    it("accepts null to clear capabilities", async () => {
+      const { sessionId, authToken } = await createSession();
+      const session = rcSessions.get(sessionId)!;
+      session.bingeMode.capabilities = sampleCaps;
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-capabilities", value: { capabilities: null } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(session.bingeMode.capabilities, null);
+    });
+
+    it("rejects malformed capabilities payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId, authToken, action: "set-binge-capabilities",
+          value: { capabilities: { autoSkipIntro: { enabled: "yes" } } },
+        }),
+      });
+
+      assert.equal(res.status, 400);
+    });
+  });
+
+  // ── set-persisted-tracks command ──────────────────────────────────────
+
+  describe("set-persisted-tracks command", () => {
+    const sampleTracks: PersistedTracks = {
+      audio: { lang: "ja", title: "Japanese 5.1" },
+      subtitles: { lang: "en", title: "English (Dialogue)" },
+    };
+
+    it("stores tracks on the session", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-persisted-tracks", value: { tracks: sampleTracks } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(rcSessions.get(sessionId)!.bingeMode.persistedTracks, sampleTracks);
+    });
+
+    it("rejects missing tracks payload", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-persisted-tracks", value: {} }),
+      });
+
+      assert.equal(res.status, 400);
     });
   });
 });
