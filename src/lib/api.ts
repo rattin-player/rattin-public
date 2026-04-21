@@ -475,21 +475,46 @@ export interface AniskipMarkersResult {
   resolution: AniskipResolution;
 }
 
-export async function fetchAniskipMarkers(
-  title: string,
-  episode: number,
-  durationSec: number,
-  season?: number,
-): Promise<AniskipMarkersResult | null> {
-  const seasonParam = season != null ? `&season=${season}` : "";
-  const url = `/api/aniskip-markers?title=${encodeURIComponent(title)}&episode=${episode}&duration=${Math.round(durationSec)}${seasonParam}`;
+export interface IntrodbSegmentResult {
+  startSec: number;
+  endSec: number;
+  confidence: number;
+  submissionCount: number;
+}
+
+export interface IntrodbMarkersResult {
+  intro: IntrodbSegmentResult | null;
+  outro: IntrodbSegmentResult | null;
+  imdbId: string;
+}
+
+export interface EpisodeMarkersResult {
+  aniskip: AniskipMarkersResult | null;
+  introdb: IntrodbMarkersResult | null;
+}
+
+export async function fetchEpisodeMarkers(args: {
+  title: string;
+  episode: number;
+  durationSec: number;
+  season?: number;
+  tmdbId?: string;
+  imdbId?: string;
+}): Promise<EpisodeMarkersResult> {
+  const params = new URLSearchParams({
+    title: args.title,
+    episode: String(args.episode),
+    duration: String(Math.round(args.durationSec)),
+  });
+  if (args.season != null) params.set("season", String(args.season));
+  if (args.tmdbId) params.set("tmdbId", args.tmdbId);
+  if (args.imdbId) params.set("imdbId", args.imdbId);
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json() as { markers: AniskipMarkersResult | null };
-    return data.markers;
+    const res = await fetch(`/api/episode-markers?${params.toString()}`);
+    if (!res.ok) return { aniskip: null, introdb: null };
+    return await res.json() as EpisodeMarkersResult;
   } catch {
-    return null;
+    return { aniskip: null, introdb: null };
   }
 }
 
