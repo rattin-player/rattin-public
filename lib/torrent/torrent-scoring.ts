@@ -126,6 +126,17 @@ export function matchEpisodePattern(filename: string, season: number, episode: n
  */
 export function findEpisodeFile(files: FileEntry[] | null | undefined, season: number | undefined, episode: number | undefined): FileMatch | null {
   if (!files || !season || !episode) return findLargestVideoFile(files);
+  const exact = findExactEpisodeFile(files, season, episode);
+  return exact || findLargestVideoFile(files);
+}
+
+/**
+ * Find the episode file by strict pattern match only — no largest-file fallback.
+ * Returns null if no file matches the given season/episode.
+ * Use this when a miss should mean "not here" rather than "pick anything".
+ */
+export function findExactEpisodeFile(files: FileEntry[] | null | undefined, season: number | undefined, episode: number | undefined): FileMatch | null {
+  if (!files || !season || !episode) return null;
   let best: FileMatch | null = null;
   files.forEach((f, i) => {
     const ext = path.extname(f.name).toLowerCase();
@@ -134,7 +145,7 @@ export function findEpisodeFile(files: FileEntry[] | null | undefined, season: n
       if (!best || f.length > best.file.length) best = { file: f, index: i };
     }
   });
-  return best || findLargestVideoFile(files);
+  return best;
 }
 
 /**

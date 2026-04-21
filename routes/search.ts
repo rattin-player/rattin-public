@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent/torrent-scoring.js";
+import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findExactEpisodeFile, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent/torrent-scoring.js";
 import { fmtBytes, throttle } from "../lib/media/media-utils.js";
 import { searchTorrentio } from "../lib/torrent/torrentio.js";
 import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/torrent/debrid.js";
@@ -467,10 +467,38 @@ function respondWithTorrent(torrent: Torrent, season: number | undefined, episod
 }
 
 app.post("/api/auto-play", async (req: Request, res: Response) => {
-  const { title, year, type, season, episode, imdbId } = req.body as {
+  const { title, year, type, season, episode, imdbId, preferInfoHash } = req.body as {
     title: string; year?: number; type?: string; season?: number; episode?: number; imdbId?: string;
+    preferInfoHash?: string;
   };
   if (!title) return res.status(400).json({ error: "Title is required" });
+
+  // Same-torrent reuse: when the caller is already playing a torrent (e.g. a
+  // season pack) and just wants the next episode, short-circuit the search and
+  // play the matching file from that torrent. Only fires in native mode — debrid
+  // stream swaps have invalidation semantics we don't want to touch from here.
+  if (preferInfoHash && type === "tv" && season && episode && !(getDebridProvider() && getDebridMode() === "on")) {
+    const existing = client().torrents.find(
+      (t) => t.infoHash === preferInfoHash || t.infoHash === preferInfoHash.toLowerCase()
+    );
+    if (existing && existing.files && existing.files.length > 0) {
+      const match = findExactEpisodeFile(existing.files, season, episode);
+      if (match) {
+        (existing.files[match.index] as { select(): void }).select();
+        log("info", "Auto-play: reused current torrent", {
+          infoHash: existing.infoHash, file: match.file.name, season, episode,
+        });
+        return res.json({
+          infoHash: existing.infoHash,
+          fileIndex: match.index,
+          fileName: match.file.name,
+          torrentName: existing.name,
+          totalSize: existing.length,
+          tags: parseTags(existing.name),
+        } satisfies TorrentPlayResult);
+      }
+    }
+  }
 
   let results: SearchResult[];
   if (type === "tv" && season && episode) {

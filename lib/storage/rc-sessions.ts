@@ -37,7 +37,7 @@ export function restoreRcSessions(rcSessions: Map<string, RCSession>): void {
           lastActivity: Date.now(),
           authToken: e.authToken,
           pairingCode: e.pairingCode,
-          bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null } },
+          bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null }, diagnostics: null },
         });
       }
     }
