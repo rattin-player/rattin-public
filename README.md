@@ -26,6 +26,7 @@ Rattin is a single desktop app that does all of it — browse TMDB, click play, 
 
 🎬 Every codec, every container, every format — played natively through libmpv with hardware decoding<br>
 ⏩ Smart seeking in incomplete files — jump anywhere, even before it's downloaded<br>
+🍿 One-tap binge mode — auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across a whole show (AniSkip + IntroDB, plus credits learned from your own watching)<br>
 🔍 TMDB discovery — trending, genres, search, trailers, cast, one-click play<br>
 📱 Phone remote via QR scan — no app install, just point your camera<br>
 🔒 No account, no database, no cloud, no telemetry — nothing leaves your machine<br>
@@ -58,6 +59,7 @@ Rattin is a single desktop app that does all of it — browse TMDB, click play, 
 - **Full control** - Play, pause, seek, volume, subtitles, audio tracks
 - **Browse from your phone** - Search and start content from the couch
 - **Real-time sync** - Player and remote stay in lockstep
+- **Binge mode** - One tap enables auto-skip intros and credits, auto-advance to the next episode, and persistent audio/subtitle tracks for the rest of the show. Intro and credit markers come from AniSkip and IntroDB, with outros also learned from your own watching when no public data exists.
 
 ### :shield: Privacy
 
