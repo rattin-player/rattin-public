@@ -2,7 +2,7 @@ import crypto from "crypto";
 import os from "os";
 import type { Express, Request, Response } from "express";
 import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
-import type { ServerContext, RCSession, RCClient } from "../lib/types.js";
+import type { ServerContext, RCSession, RCClient, BingeCapabilities, BingeDiagnostics, PersistedTracks } from "../lib/types.js";
 import { dumpRcSessions } from "../lib/storage/rc-sessions.js";
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
@@ -43,6 +43,31 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     }
   }
 
+  function broadcastBinge(session: RCSession): void {
+    for (const c of session.remoteClients) sseWrite(c, "binge", session.bingeMode);
+    if (session.playerClient) sseWrite(session.playerClient, "binge", session.bingeMode);
+  }
+
+  function isCapabilityFlag(v: unknown, extra?: (obj: Record<string, unknown>) => boolean): boolean {
+    if (!v || typeof v !== "object") return false;
+    const o = v as Record<string, unknown>;
+    if (typeof o.enabled !== "boolean") return false;
+    return extra ? extra(o) : true;
+  }
+
+  function isValidCapabilities(v: unknown): v is BingeCapabilities {
+    if (!v || typeof v !== "object") return false;
+    const c = v as Record<string, unknown>;
+    return isCapabilityFlag(c.autoSkipIntro, (o) => typeof o.source === "string")
+      && isCapabilityFlag(c.autoSkipCredits, (o) =>
+           typeof o.source === "string"
+           && (o.sampleCount === undefined || typeof o.sampleCount === "number"))
+      && isCapabilityFlag(c.persistTracks)
+      && isCapabilityFlag(c.autoAdvance, (o) => typeof o.viaEOF === "boolean")
+      && isCapabilityFlag(c.prefetch, (o) =>
+           o.via === null || typeof o.via === "string");
+  }
+
   app.get("/api/auth/persist", (req: Request, res: Response) => {
     // Only reachable after nginx basic auth succeeded (or a valid token).
     // Set a long-lived cookie — nginx skips basic auth when rc_auth cookie exists.
@@ -68,6 +93,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       lastActivity: Date.now(),
       authToken,
       pairingCode,
+      bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null }, diagnostics: null },
     });
     log("info", "RC session created", { sessionId, pairingCode });
     dumpRcSessions(rcSessions);
@@ -231,6 +257,40 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     const { action, value } = req.body as { action: string; value?: unknown };
     const auth = authorizeSession(req, res, { notFoundError: "session not found" });
     if (!auth) return;
+    if (action === "set-binge-mode") {
+      const enabled = (value as { enabled?: unknown } | undefined)?.enabled;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be boolean" });
+      }
+      auth.session.bingeMode.enabled = enabled;
+      if (!enabled) auth.session.bingeMode.capabilities = null;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
+    if (action === "set-binge-capabilities") {
+      const caps = (value as { capabilities?: unknown } | undefined)?.capabilities;
+      if (caps !== null && caps !== undefined && !isValidCapabilities(caps)) {
+        return res.status(400).json({ error: "invalid capabilities shape" });
+      }
+      auth.session.bingeMode.capabilities = (caps ?? null) as BingeCapabilities | null;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
+    if (action === "set-persisted-tracks") {
+      const tracks = (value as { tracks?: unknown } | undefined)?.tracks;
+      if (!tracks || typeof tracks !== "object") {
+        return res.status(400).json({ error: "tracks required" });
+      }
+      auth.session.bingeMode.persistedTracks = tracks as PersistedTracks;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
+    if (action === "set-binge-diagnostics") {
+      const diag = (value as { diagnostics?: unknown } | undefined)?.diagnostics;
+      auth.session.bingeMode.diagnostics = (diag ?? null) as BingeDiagnostics | null;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
     if (auth.session.playerClient) {
       sseWrite(auth.session.playerClient, "command", { action, value });
     }

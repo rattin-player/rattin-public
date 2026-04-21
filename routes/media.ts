@@ -7,7 +7,7 @@ import { jobKey } from "../lib/cache/torrent-caches.js";
 import { getFileOffset } from "../lib/torrent/torrent-compat.js";
 import { hasPiece } from "../lib/torrent/torrent-compat.js";
 import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media/media-utils.js";
-import { detectIntro, lookupExternal } from "../lib/media/intro-detect.js";
+import { detectIntro, lookupExternal, lookupAniskipMarkers } from "../lib/media/intro-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
 import { getActiveDebridUrl, getActiveDebridFiles, getDebridFileUrl } from "../lib/torrent/debrid.js";
 
@@ -449,6 +449,70 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     }
 
     res.json({ detected: false });
+  });
+
+  // Binge mode: is the next-episode source ready enough to start playback?
+  //   debrid: an active stream URL exists for (infoHash, fileIndex)
+  //   native: torrent is in client and the file's first piece is downloaded
+  app.get("/api/prefetch-ready", (req: Request, res: Response) => {
+    const { infoHash, fileIndex } = req.query as { infoHash?: string; fileIndex?: string };
+    if (!infoHash || fileIndex === undefined) {
+      return res.status(400).json({ error: "infoHash and fileIndex required" });
+    }
+    const fi = Number(fileIndex);
+    if (!Number.isFinite(fi)) return res.status(400).json({ error: "fileIndex must be a number" });
+
+    const debridUrl = getActiveDebridUrl(infoHash, fi);
+    if (debridUrl) return res.json({ ready: true });
+
+    const torrent = client().torrents.find((t) => t.infoHash === infoHash || t.infoHash === infoHash.toLowerCase());
+    if (!torrent) return res.json({ ready: false });
+    const file = torrent.files?.[fi];
+    if (!file) return res.json({ ready: false });
+    try {
+      const byteOffset = getFileOffset(file);
+      const pieceLen = (torrent as unknown as { pieceLength?: number }).pieceLength;
+      if (!pieceLen || !Number.isFinite(pieceLen)) return res.json({ ready: false });
+      const startPiece = Math.floor(byteOffset / pieceLen);
+      return res.json({ ready: hasPiece(torrent, startPiece) });
+    } catch {
+      return res.json({ ready: false });
+    }
+  });
+
+  // Binge mode: fetch both OP and ED markers from AniSkip for capability computation.
+  // Returns null when AniSkip has no coverage or title can't be resolved.
+  app.get("/api/aniskip-markers", async (req: Request, res: Response) => {
+    const { title, episode, duration, season } = req.query as { title?: string; episode?: string; duration?: string; season?: string };
+    if (!title || !episode || !duration) {
+      return res.status(400).json({ error: "title, episode, duration required" });
+    }
+    const ep = Number(episode);
+    const dur = Number(duration);
+    const seasonNum = season != null && season !== "" ? Number(season) : 1;
+    if (!Number.isFinite(ep) || !Number.isFinite(dur) || !Number.isFinite(seasonNum)) {
+      return res.status(400).json({ error: "episode, duration, and season must be numbers" });
+    }
+    try {
+      const markers = await lookupAniskipMarkers(title, ep, dur, seasonNum);
+      if (markers) {
+        log("info", "AniSkip lookup", {
+          title, season: seasonNum, episode: ep,
+          malId: markers.resolution.malId,
+          jikanTitle: markers.resolution.jikanTitle,
+          jikanQuery: markers.resolution.jikanQuery,
+          seasonSpecific: markers.resolution.seasonSpecific,
+          op: `${markers.opStart}-${markers.opEnd}`,
+          ed: markers.edStart,
+        });
+      } else {
+        log("info", "AniSkip lookup: no markers", { title, season: seasonNum, episode: ep });
+      }
+      res.json({ markers });
+    } catch (err) {
+      log("warn", "AniSkip markers lookup failed", { error: (err as Error).message });
+      res.json({ markers: null });
+    }
   });
 
   // Extract an embedded subtitle stream as WebVTT

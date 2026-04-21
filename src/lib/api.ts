@@ -1,3 +1,5 @@
+import type { BingeCapabilities, BingeDiagnostics, PersistedTracks } from "../../lib/types.js";
+
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
 const img = (path: string | null, size = "w500"): string | null => (path ? `${TMDB_IMG}/${size}${path}` : null);
@@ -79,11 +81,11 @@ export function fetchEpisodeGroups(tvId: string | number): Promise<any> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function autoPlay(title: string, year: number | undefined, type: string, season?: number, episode?: number, imdbId?: string): Promise<any> {
+export async function autoPlay(title: string, year: number | undefined, type: string, season?: number, episode?: number, imdbId?: string, preferInfoHash?: string): Promise<any> {
   const res = await fetch("/api/auto-play", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, year, type, season, episode, imdbId }),
+    body: JSON.stringify({ title, year, type, season, episode, imdbId, preferInfoHash }),
   });
   if (!res.ok) {
     const code = (await res.json().catch(() => ({} as Record<string, string>))).error;
@@ -394,4 +396,110 @@ export async function uploadSubtitle(file: File): Promise<{ url: string }> {
     throw new Error(data.error || "Upload failed");
   }
   return res.json();
+}
+
+export async function postLearnOffset(payload: {
+  tmdbId: string; type: "outro"; offset_sec: number; season?: number; episode?: number;
+}): Promise<void> {
+  await fetch("/api/learn-offset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function setBingeMode(sessionId: string, enabled: boolean): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, action: "set-binge-mode", value: { enabled } }),
+  });
+}
+
+// The PC never receives rc_session/rc_token cookies (those are set only during
+// phone pairing), so PC→server RC commands must send authToken in the body.
+export async function setBingeCapabilities(
+  sessionId: string,
+  authToken: string | null,
+  capabilities: BingeCapabilities | null,
+): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, authToken, action: "set-binge-capabilities", value: { capabilities } }),
+  });
+}
+
+export async function setPersistedTracks(
+  sessionId: string,
+  authToken: string | null,
+  tracks: PersistedTracks,
+): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, authToken, action: "set-persisted-tracks", value: { tracks } }),
+  });
+}
+
+export async function setBingeDiagnostics(
+  sessionId: string,
+  authToken: string | null,
+  diagnostics: BingeDiagnostics | null,
+): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, authToken, action: "set-binge-diagnostics", value: { diagnostics } }),
+  });
+}
+
+export async function getLearnedOffset(tmdbId: string): Promise<{ outro_offset: number | null; sample_count: number }> {
+  const res = await fetch(`/api/learn-offset/${encodeURIComponent(tmdbId)}`);
+  return res.json();
+}
+
+export interface AniskipResolution {
+  malId: number;
+  jikanTitle: string;
+  jikanQuery: string;
+  aniskipUrl: string;
+  seasonSpecific: boolean;
+}
+
+export interface AniskipMarkersResult {
+  opStart: number;
+  opEnd: number;
+  edStart: number;
+  episodeLength: number;
+  resolution: AniskipResolution;
+}
+
+export async function fetchAniskipMarkers(
+  title: string,
+  episode: number,
+  durationSec: number,
+  season?: number,
+): Promise<AniskipMarkersResult | null> {
+  const seasonParam = season != null ? `&season=${season}` : "";
+  const url = `/api/aniskip-markers?title=${encodeURIComponent(title)}&episode=${episode}&duration=${Math.round(durationSec)}${seasonParam}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json() as { markers: AniskipMarkersResult | null };
+    return data.markers;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchPrefetchReady(infoHash: string, fileIndex: number): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/prefetch-ready?infoHash=${encodeURIComponent(infoHash)}&fileIndex=${fileIndex}`);
+    if (!res.ok) return false;
+    const data = await res.json() as { ready: boolean };
+    return !!data.ready;
+  } catch {
+    return false;
+  }
 }

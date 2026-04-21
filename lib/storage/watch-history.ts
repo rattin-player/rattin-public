@@ -1,4 +1,5 @@
 import type { JsonStore } from "./store.js";
+import { nextEpisodeFrom } from "../media/next-episode.js";
 
 export interface WatchRecord {
   tmdbId: number;
@@ -34,16 +35,6 @@ function recordKey(mediaType: string, tmdbId: number, season?: number, episode?:
     return `tv:${tmdbId}:s${season}e${episode}`;
   }
   return `${mediaType}:${tmdbId}`;
-}
-
-function nextEpisodeFrom(record: WatchRecord): { season: number; episode: number } | null {
-  const season = record.season ?? 1;
-  const episode = record.episode ?? 0;
-  const isSeasonFinale = record.seasonEpisodeCount != null && episode >= record.seasonEpisodeCount;
-  if (!isSeasonFinale) return { season, episode: episode + 1 };
-  const isSeriesFinale = record.seasonCount != null && season >= record.seasonCount;
-  if (isSeriesFinale) return null;
-  return { season: season + 1, episode: 1 };
 }
 
 export class WatchHistory {
