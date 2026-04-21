@@ -29,3 +29,7 @@ export function sessionsPath(): string {
 export function rcSessionsPath(): string {
   return path.join(configDir(), "rc-sessions.json");
 }
+
+export function learnedOffsetsPath(): string {
+  return path.join(configDir(), "learned-offsets.json");
+}
