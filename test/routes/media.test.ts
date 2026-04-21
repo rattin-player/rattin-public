@@ -122,4 +122,20 @@ describe("Media routes", () => {
       }
     });
   });
+
+  describe("GET /api/episode-markers", () => {
+    it("returns 400 when required params missing", async () => {
+      const res = await fetch(`${baseUrl}/api/episode-markers`);
+      assert.equal(res.status, 400);
+    });
+
+    it("returns 200 with nulls when no params resolve data", async () => {
+      const url = `${baseUrl}/api/episode-markers?title=NoSuchShow&episode=1&duration=1400&season=1`;
+      const res = await fetch(url);
+      assert.equal(res.status, 200);
+      const body = await res.json() as { aniskip: unknown; introdb: unknown };
+      assert.equal(body.aniskip, null);
+      assert.equal(body.introdb, null);
+    });
+  });
 });
