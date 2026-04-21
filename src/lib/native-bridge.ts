@@ -35,6 +35,8 @@ interface MpvBridge {
   setTitle(title: string): void;
   setProperty(name: string, value: unknown): void;
   getProperty(name: string): Promise<unknown>;
+  getMpvChapters(): Promise<Array<{ time: number; title: string }>>;
+  hasChapterSupport: boolean;
 }
 
 interface MpvEvents {
@@ -303,4 +305,14 @@ export function mpvSetLoading(loading: boolean): void {
 
 export function mpvSetSlowWarning(show: boolean, hasAlternatives: boolean): void {
   (window.mpvBridge as any)?.setSlowWarning?.(show, hasAlternatives);
+}
+
+export async function mpvGetChapters(): Promise<Array<{ time: number; title: string }>> {
+  const bridge = window.mpvBridge;
+  if (!bridge?.hasChapterSupport || !bridge.getMpvChapters) return [];
+  try { return await bridge.getMpvChapters(); } catch { return []; }
+}
+
+export function bridgeHasChapterSupport(): boolean {
+  return !!window.mpvBridge?.hasChapterSupport;
 }
