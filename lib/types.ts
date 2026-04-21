@@ -171,6 +171,11 @@ export interface RCSession {
   lastActivity: number;
   authToken?: string;
   pairingCode?: string;
+  bingeMode: {
+    enabled: boolean;
+    capabilities: BingeCapabilities | null;
+    persistedTracks: PersistedTracks;
+  };
 }
 
 // ── Playback State (shared between frontend and backend RC) ──────────
@@ -183,6 +188,38 @@ export interface PlaybackState {
   poster?: string;
   volume?: number;
   muted?: boolean;
+}
+
+// ── Binge Mode ────────────────────────────────────────────────────────
+
+export type MarkerSource =
+  | "chapter markers"
+  | "AniSkip · duration OK"
+  | "AniSkip · duration mismatch"
+  | "learned outro offset"
+  | "no signal — advance on EOF"
+  | "no chapter data"
+  | "no AniSkip data"
+  | "bridge missing chapter support";
+
+export interface BingeCapabilities {
+  autoSkipIntro: { enabled: boolean; source: MarkerSource };
+  autoSkipCredits: { enabled: boolean; source: MarkerSource; sampleCount?: number };
+  persistTracks: { enabled: boolean };
+  autoAdvance: { enabled: boolean; viaEOF: boolean };
+  prefetch: { enabled: boolean; via: "debrid cache" | "torrent pieces" | null };
+}
+
+export interface PersistedTracks {
+  audio: { lang: string; title: string } | null;
+  subtitles: { lang: string; title: string } | null;
+}
+
+export interface LearnedOffsetSample {
+  offset: number;
+  at: string;
+  season: number;
+  episode: number;
 }
 
 export interface SubTrack {

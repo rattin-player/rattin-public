@@ -68,6 +68,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       lastActivity: Date.now(),
       authToken,
       pairingCode,
+      bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null } },
     });
     log("info", "RC session created", { sessionId, pairingCode });
     dumpRcSessions(rcSessions);
