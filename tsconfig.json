@@ -17,5 +17,5 @@
     "noEmit": true
   },
   "include": ["lib/**/*", "routes/**/*", "server.*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "public", "src"]
+  "exclude": ["node_modules", "dist", "public", "src", "test/appimage"]
 }
