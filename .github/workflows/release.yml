@@ -104,6 +104,12 @@ jobs:
       # whole point is to assert the AppImage ships those on its own.
       - name: Install runtime dependencies
         shell: bash
+        # The validator simulates "user downloads AppImage and runs it on a
+        # modern desktop distro." We install every lib in install/ldd-allowlist.txt
+        # that isn't already part of glibc, because minimal container images
+        # lack the transitive-dep closure that exists on any real desktop install.
+        # If a lib is genuinely on every desktop (libOpenGL from GPU driver,
+        # libfribidi from pango, etc.), it belongs in this list.
         run: |
           set -euxo pipefail
           if command -v apt-get >/dev/null 2>&1; then
@@ -114,7 +120,11 @@ jobs:
               xvfb libfuse2 \
               libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
               libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-              libxdamage1 libxfixes3 libxrandr2 libgbm1
+              libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+              libgl1 libopengl0 libegl1 libglx0 \
+              libfontconfig1 libfreetype6 libharfbuzz0b libfribidi0 \
+              libexpat1 libcom-err2 libgmp10 libgpg-error0 libusb-1.0-0 \
+              libwayland-client0
             # libasound2 was renamed to libasound2t64 on 24.04 — try both,
             # fail only if neither resolves.
             apt-get install -y --no-install-recommends libasound2 \
@@ -125,14 +135,20 @@ jobs:
               xorg-x11-server-Xvfb fuse-libs \
               nss nspr atk at-spi2-atk \
               cups-libs libdrm libxkbcommon libXcomposite \
-              libXdamage libXfixes libXrandr mesa-libgbm alsa-lib
+              libXdamage libXfixes libXrandr mesa-libgbm alsa-lib \
+              libglvnd-opengl libglvnd-egl libglvnd-glx mesa-libGL \
+              fontconfig freetype harfbuzz fribidi \
+              expat libcom_err gmp libgpg-error libusbx \
+              wayland-libs-client
           elif command -v pacman >/dev/null 2>&1; then
             pacman -Sy --noconfirm --needed \
               git curl ca-certificates tar gzip xz \
               xorg-server-xvfb fuse2 \
               nss nspr atk at-spi2-atk \
               cups libdrm libxkbcommon libxcomposite \
-              libxdamage libxfixes libxrandr mesa alsa-lib
+              libxdamage libxfixes libxrandr mesa alsa-lib \
+              libglvnd fontconfig freetype2 harfbuzz fribidi \
+              expat e2fsprogs gmp libgpg-error libusb wayland
           else
             echo "unknown distro — no package manager found" >&2
             exit 1
