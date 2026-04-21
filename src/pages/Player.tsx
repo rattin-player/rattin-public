@@ -619,6 +619,11 @@ export default function Player() {
         const showTitle = state?.baseName || state?.title || mediaTitle;
         const epNum = state?.episode != null ? Number(state.episode) : null;
         const seasonNum = state?.season != null ? Number(state.season) : 1;
+        console.info("[binge-markers] inputs", {
+          showTitle, seasonNum, epNum, duration,
+          tmdbId, imdbId: state?.imdbId ?? null,
+          bridgeHasChapterSupport: bridgeHasChapterSupport(),
+        });
         const [chapters, learned, episodeMarkers] = await Promise.all([
           mpvGetChapters().catch(() => []),
           tmdbId ? getLearnedOffset(tmdbId).catch(() => null) : Promise.resolve(null),
@@ -635,6 +640,13 @@ export default function Player() {
         ]);
         const aniskip = episodeMarkers.aniskip;
         const introdb = episodeMarkers.introdb;
+        console.info("[binge-markers] fetched", {
+          chapterCount: Array.isArray(chapters) ? chapters.length : null,
+          hasLearned: !!learned && learned.outro_offset !== null,
+          aniskipPresent: !!aniskip,
+          introdbPresent: !!introdb,
+          introdbPayload: introdb,
+        });
         const markers = computeMarkers({
           bridgeHasChapterSupport: bridgeHasChapterSupport(),
           chapters,
@@ -653,6 +665,10 @@ export default function Player() {
             ? { offset: learned.outro_offset, sampleCount: learned.sample_count }
             : null,
           fileDuration: duration,
+        });
+        console.info("[binge-markers] computed", {
+          introStart: markers.introStart, introEnd: markers.introEnd, introSource: markers.introSource,
+          outroStart: markers.outroStart, outroSource: markers.outroSource,
         });
         currentMarkersRef.current = markers;
         const prefetchVia = modeRef.current === "debrid" ? "debrid cache" : "torrent pieces";

@@ -499,10 +499,23 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
       return res.status(400).json({ error: "episode, duration, and season must be numbers" });
     }
 
+    log("info", "episode-markers request", {
+      title, season: seasonNum, episode: ep, duration: dur,
+      tmdbId: tmdbId ?? null, imdbId: imdbId ?? null,
+      willCallAniskipGate: !!tmdbId, willCallIntrodb: !!imdbId,
+    });
+
     const [anime, introdb] = await Promise.all([
       tmdbId ? isAnime(tmdbId).catch(() => false) : Promise.resolve(false),
-      imdbId ? lookupIntrodbMarkers(imdbId, seasonNum, ep).catch(() => null) : Promise.resolve(null),
+      imdbId ? lookupIntrodbMarkers(imdbId, seasonNum, ep).catch((err) => {
+        log("warn", "IntroDB lookup threw", { error: (err as Error).message });
+        return null;
+      }) : Promise.resolve(null),
     ]);
+
+    log("info", "episode-markers gates", {
+      anime, introdbNull: introdb === null, imdbProvided: !!imdbId,
+    });
 
     let aniskip = null;
     if (anime) {
@@ -525,11 +538,13 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     }
 
     if (introdb) {
-      log("info", "IntroDB lookup", {
+      log("info", "IntroDB lookup: hit", {
         imdbId: introdb.imdbId, season: seasonNum, episode: ep,
         intro: introdb.intro ? `${introdb.intro.startSec}-${introdb.intro.endSec} (n=${introdb.intro.submissionCount})` : null,
         outro: introdb.outro ? `${introdb.outro.startSec} (n=${introdb.outro.submissionCount})` : null,
       });
+    } else if (imdbId) {
+      log("info", "IntroDB lookup: no usable segments", { imdbId, season: seasonNum, episode: ep });
     }
 
     res.json({ aniskip, introdb });
