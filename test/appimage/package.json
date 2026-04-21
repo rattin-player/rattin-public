@@ -1,0 +1,13 @@
+{
+  "name": "rattin-appimage-validator",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Raw-CDP runtime check against the bundled Qt shell. Invoked by test/appimage/validator.sh from CI.",
+  "type": "module",
+  "scripts": {
+    "check": "node cdp-check.mjs"
+  },
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

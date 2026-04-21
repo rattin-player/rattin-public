@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual dispatch so we can smoke-test the pipeline (especially
+  # validate-linux) on a feature branch before cutting a release tag.
+  # The release job is guarded with a ref-is-tag check below; a manual
+  # dispatch will never create a GitHub release.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -66,70 +71,137 @@ jobs:
       - name: Build AppImage
         run: bash install/build-appimage.sh --clean
 
-      - name: Smoke test AppImage
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y xvfb
-          chmod +x Rattin-x86_64.AppImage
-          export APPIMAGE_EXTRACT_AND_RUN=1
-
-          # Start the app with a virtual display and capture all output
-          xvfb-run --auto-servernum ./Rattin-x86_64.AppImage &> /tmp/smoke.log &
-          APP_PID=$!
-
-          # Wait up to 30s for the server to start
-          started=false
-          for i in $(seq 1 30); do
-            if grep -q "Rattin running at" /tmp/smoke.log 2>/dev/null; then
-              started=true
-              break
-            fi
-            if ! kill -0 "$APP_PID" 2>/dev/null; then
-              echo "::error::App crashed during startup"
-              cat /tmp/smoke.log
-              exit 1
-            fi
-            sleep 1
-          done
-
-          if [ "$started" != "true" ]; then
-            echo "::error::Server did not start within 30s"
-            cat /tmp/smoke.log
-            kill "$APP_PID" 2>/dev/null || true
-            exit 1
-          fi
-          echo "Server started"
-
-          # Verify HTTP response
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9630 || true)
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Server responded with HTTP $HTTP_CODE (expected 200)"
-            cat /tmp/smoke.log
-            kill "$APP_PID" 2>/dev/null || true
-            exit 1
-          fi
-          echo "HTTP 200 OK"
-
-          # Check for known failure patterns in logs
-          if grep -qiE "(Cannot load library|module not found|FATAL|Segmentation fault|SIGABRT|SIGILL)" /tmp/smoke.log; then
-            echo "::error::Found error patterns in startup logs:"
-            grep -iE "(Cannot load library|module not found|FATAL|Segmentation fault|SIGABRT|SIGILL)" /tmp/smoke.log
-            kill "$APP_PID" 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "Smoke test passed"
-          kill "$APP_PID" 2>/dev/null || true
-          wait "$APP_PID" 2>/dev/null || true
-
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: Rattin-x86_64.AppImage
           path: Rattin-x86_64.AppImage
 
+  validate-linux:
+    needs: [build-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu-22.04
+            image: ubuntu:22.04
+          - distro: ubuntu-24.04
+            image: ubuntu:24.04
+          - distro: fedora-40
+            image: fedora:40
+          - distro: archlinux
+            image: archlinux:latest
+    container:
+      image: ${{ matrix.image }}
+      options: --shm-size=2g
+
+    steps:
+      # Each distro image is minimal; install only what's needed to run
+      # actions/checkout, setup-node, Playwright's Chromium, and xvfb.
+      # Deliberately do NOT install libjack-jackd2-0, qt6-*, libmpv — the
+      # whole point is to assert the AppImage ships those on its own.
+      - name: Install runtime dependencies
+        shell: bash
+        # The validator simulates "user downloads AppImage and runs it on a
+        # modern desktop distro." We install every lib in install/ldd-allowlist.txt
+        # that isn't already part of glibc, because minimal container images
+        # lack the transitive-dep closure that exists on any real desktop install.
+        # If a lib is genuinely on every desktop (libOpenGL from GPU driver,
+        # libfribidi from pango, etc.), it belongs in this list.
+        run: |
+          set -euxo pipefail
+          if command -v apt-get >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              git curl ca-certificates tar gzip xz-utils \
+              xvfb libfuse2 \
+              libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+              libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+              libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+              libgl1 libopengl0 libegl1 libglx0 \
+              libfontconfig1 libfreetype6 libharfbuzz0b libfribidi0 \
+              libexpat1 libcom-err2 libgmp10 libgpg-error0 libusb-1.0-0 \
+              libwayland-client0
+            # libasound2 was renamed to libasound2t64 on 24.04 — try both,
+            # fail only if neither resolves.
+            apt-get install -y --no-install-recommends libasound2 \
+              || apt-get install -y --no-install-recommends libasound2t64
+          elif command -v dnf >/dev/null 2>&1; then
+            # mesa-dri-drivers: runtime dlopen'd by libGL/libEGL, not a NEEDED
+            # dep — ships by default on Ubuntu/Arch but not the minimal Fedora
+            # image. Without it Qt WebEngine fails to create an OpenGL context
+            # and the Qt shell exits before the CDP port becomes reachable.
+            # procps-ng: validator.sh uses `ps -ef --forest`; not in minimal.
+            dnf install -y --setopt=install_weak_deps=False \
+              git curl ca-certificates tar gzip xz procps-ng \
+              xorg-x11-server-Xvfb fuse-libs \
+              nss nspr atk at-spi2-atk \
+              cups-libs libdrm libxkbcommon libXcomposite \
+              libXdamage libXfixes libXrandr mesa-libgbm mesa-dri-drivers alsa-lib \
+              libglvnd-opengl libglvnd-egl libglvnd-glx mesa-libGL \
+              fontconfig freetype harfbuzz fribidi \
+              expat libcom_err gmp libgpg-error libusbx \
+              libwayland-client
+          elif command -v pacman >/dev/null 2>&1; then
+            pacman -Sy --noconfirm --needed \
+              git curl ca-certificates tar gzip xz \
+              xorg-server-xvfb fuse2 \
+              nss nspr atk at-spi2-atk \
+              cups libdrm libxkbcommon libxcomposite \
+              libxdamage libxfixes libxrandr mesa alsa-lib \
+              libglvnd fontconfig freetype2 harfbuzz fribidi \
+              expat e2fsprogs gmp libgpg-error libusb wayland
+          else
+            echo "unknown distro — no package manager found" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # With `name:` specified and no `path:`, download-artifact@v4 extracts
+      # the artifact's contents directly into $GITHUB_WORKSPACE — so the
+      # AppImage lands at $GITHUB_WORKSPACE/Rattin-x86_64.AppImage (the file).
+      # The release job below downloads *all* artifacts (no `name:`), which
+      # instead creates a subdir per artifact — hence the existing
+      # "Rattin-x86_64.AppImage/Rattin-x86_64.AppImage" path there.
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Rattin-x86_64.AppImage
+
+      - name: Install validator dependencies
+        working-directory: test/appimage
+        run: npm ci
+
+      # Outer safety: stage-1 gate ≤60s + Playwright worst case (retry × 60s
+      # per-test timeout = 120s) + xvfb spawn + FUSE/extract-and-run cold
+      # start = ~240s worst case. Matches jobs.timeout-minutes budget.
+      - name: Run validator
+        run: timeout 240 bash test/appimage/validator.sh "$GITHUB_WORKSPACE/Rattin-x86_64.AppImage"
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-${{ matrix.distro }}
+          path: |
+            /tmp/rattin-validator/
+            test/appimage/playwright-report/
+            test/appimage/test-results/
+          if-no-files-found: ignore
+
   build-windows:
     needs: [validate]
+    # Skip on manual dispatch — we run those to validate the Linux matrix,
+    # burning Windows CI minutes on every dispatch is wasteful.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -456,7 +528,10 @@ jobs:
           path: Rattin-x64-Setup.exe
 
   release:
-    needs: [build-linux, build-windows]
+    needs: [validate-linux, build-windows]
+    # Only cut a GitHub release on actual tag pushes — never on manual
+    # dispatches against a branch (used for validating the pipeline).
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
