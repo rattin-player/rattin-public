@@ -13,9 +13,9 @@ push under `.github/workflows/release.yml`'s `validate-linux` matrix.
    endpoint on `:9222`, asserts `rattin-shell` + `QtWebEngineProcess` are
    in the process tree, greps `stderr` for loader/crash/symbol patterns.
 3. Stage 2 (`cdp-check.mjs`): connects to the page target over raw CDP
-   WebSocket, asserts React mounted and the first-run `TMDB API Key
-   Required` overlay rendered, checks for uncaught JS errors in a 2 s
-   mount window.
+   WebSocket and asserts (a) React mounted (`#root` has children),
+   (b) `document.title === 'Rattin'`, (c) `/api/tmdb/status` returns
+   HTTP 200, (d) no uncaught JS errors in a 2 s tail window after mount.
 
 Playwright's `connectOverCDP` is avoided because it unconditionally
 calls `Browser.setDownloadBehavior`, which Qt's embedded DevTools
@@ -105,15 +105,14 @@ hosts — pick any entry from `readelf -d build-appimage/AppDir/usr/lib/libmpv.s
 
 Then revert with a clean rebuild: `bash install/build-appimage.sh --clean`.
 
-## Updating Playwright
+## Updating `ws`
 
-Chromium revision is pinned implicitly by the `@playwright/test` version
-in `package.json`. Bumps must be deliberate:
+The raw-CDP client depends only on `ws` (pinned exactly in `package.json`).
+Bumps must be deliberate:
 
 ```
 cd test/appimage
-npm i -E @playwright/test@<new-version>
-npx playwright install chromium
+npm i -E ws@<new-version>
 ```
 
 Commit `package.json` + `package-lock.json` together and re-run the
