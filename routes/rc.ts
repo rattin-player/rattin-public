@@ -2,7 +2,7 @@ import crypto from "crypto";
 import os from "os";
 import type { Express, Request, Response } from "express";
 import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
-import type { ServerContext, RCSession, RCClient } from "../lib/types.js";
+import type { ServerContext, RCSession, RCClient, BingeCapabilities } from "../lib/types.js";
 import { dumpRcSessions } from "../lib/storage/rc-sessions.js";
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
@@ -244,6 +244,12 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       }
       auth.session.bingeMode.enabled = enabled;
       if (!enabled) auth.session.bingeMode.capabilities = null;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
+    if (action === "set-binge-capabilities") {
+      const caps = (value as { capabilities?: unknown } | undefined)?.capabilities;
+      auth.session.bingeMode.capabilities = (caps ?? null) as BingeCapabilities | null;
       broadcastBinge(auth.session);
       return res.json({ ok: true });
     }

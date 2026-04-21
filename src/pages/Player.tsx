@@ -34,12 +34,13 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
-import type { MarkerSource } from "../../lib/types";
+import { computeMarkers, type Markers } from "../../lib/media/episode-markers";
+import type { BingeCapabilities } from "../../lib/types";
 import { encode } from "uqr";
-import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning } from "../lib/native-bridge";
+import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning, mpvGetChapters, bridgeHasChapterSupport } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
 import "./Player.css";
 
@@ -241,14 +242,8 @@ export default function Player() {
   // ── Binge coordinator (auto-skip, auto-advance, prefetch) ──
   const bingeCoordinatorRef = useRef<BingeCoordinator | null>(null);
   const bingeStateRef = useRef<CoordinatorState>("idle");
-  // Task 12 populates this with real markers on episode start; default is all-null.
-  const currentMarkersRef = useRef<{
-    introStart: number | null;
-    introEnd: number | null;
-    outroStart: number | null;
-    introSource: MarkerSource;
-    outroSource: MarkerSource;
-  }>({ introStart: null, introEnd: null, outroStart: null, introSource: "no chapter data", outroSource: "no chapter data" });
+  const currentMarkersRef = useRef<Markers>({ introStart: null, introEnd: null, outroStart: null, introSource: "no chapter data", outroSource: "no chapter data" });
+  const [bingeCaps, setBingeCaps] = useState<BingeCapabilities | null>(null);
   // True when the coordinator is driving the next-episode transition, so the
   // manual-press learn-offset path knows to skip sampling.
   const coordinatorInitiatedRef = useRef(false);
@@ -308,6 +303,11 @@ export default function Player() {
     bingeEnabledRef.current = bingeEnabled;
     bingeCoordinatorRef.current?.setBingeEnabled(bingeEnabled);
   }, [bingeEnabled]);
+
+  useEffect(() => {
+    if (!rcSessionId || !bingeCaps) return;
+    void setBingeCapabilities(rcSessionId, bingeCaps);
+  }, [rcSessionId, bingeCaps]);
 
   // ── Next episode (triggered by phone remote) ──
   const handleNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
@@ -437,6 +437,37 @@ export default function Player() {
       // event isn't lost (it fires as soon as mpv processes the play command).
       let playbackStarted = false;
       let positionRestored = false;
+      let markersComputed = false;
+
+      const computeEpisodeCapabilities = async (duration: number): Promise<void> => {
+        const tmdbId = state?.tmdbId != null ? String(state.tmdbId) : null;
+        const [chapters, learned] = await Promise.all([
+          mpvGetChapters().catch(() => []),
+          tmdbId ? getLearnedOffset(tmdbId).catch(() => null) : Promise.resolve(null),
+        ]);
+        const markers = computeMarkers({
+          bridgeHasChapterSupport: bridgeHasChapterSupport(),
+          chapters,
+          aniskip: null,
+          learnedOutroOffset: learned && learned.outro_offset !== null
+            ? { offset: learned.outro_offset, sampleCount: learned.sample_count }
+            : null,
+          fileDuration: duration,
+        });
+        currentMarkersRef.current = markers;
+        const caps: BingeCapabilities = {
+          autoSkipIntro: { enabled: markers.introStart !== null, source: markers.introSource },
+          autoSkipCredits: {
+            enabled: markers.outroStart !== null,
+            source: markers.outroSource,
+            ...(markers.outroSampleCount != null ? { sampleCount: markers.outroSampleCount } : {}),
+          },
+          persistTracks: { enabled: true },
+          autoAdvance: { enabled: true, viaEOF: markers.outroStart === null },
+          prefetch: { enabled: true, via: "debrid cache" },
+        };
+        setBingeCaps(caps);
+      };
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
         effectiveTimeRef.current = { time: t, duration: prev?.duration ?? 0, ts: Date.now() };
@@ -459,6 +490,10 @@ export default function Player() {
             mpvSeek(saved);
           }
           bingeCoordinatorRef.current?.onEpisodeStart({ duration: d, currentTime: saved || currentTime });
+        }
+        if (!markersComputed && d > 0) {
+          markersComputed = true;
+          void computeEpisodeCapabilities(d);
         }
       });
       onMpvEofReached(() => {

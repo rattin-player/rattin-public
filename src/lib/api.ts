@@ -1,3 +1,5 @@
+import type { BingeCapabilities } from "../../lib/types.js";
+
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
 const img = (path: string | null, size = "w500"): string | null => (path ? `${TMDB_IMG}/${size}${path}` : null);
@@ -411,6 +413,17 @@ export async function setBingeMode(sessionId: string, enabled: boolean): Promise
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, action: "set-binge-mode", value: { enabled } }),
+  });
+}
+
+export async function setBingeCapabilities(
+  sessionId: string,
+  capabilities: BingeCapabilities | null,
+): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, action: "set-binge-capabilities", value: { capabilities } }),
   });
 }
 

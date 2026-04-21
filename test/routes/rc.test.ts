@@ -1,7 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "../helpers/mock-app.js";
-import type { RCSession } from "../../lib/types.js";
+import type { BingeCapabilities, RCSession } from "../../lib/types.js";
 
 describe("RC routes", () => {
   let baseUrl: string, close: () => Promise<void>;
@@ -247,6 +247,46 @@ describe("RC routes", () => {
       });
 
       assert.equal(res.status, 400);
+    });
+  });
+
+  // ── set-binge-capabilities command ────────────────────────────────────
+
+  describe("set-binge-capabilities command", () => {
+    const sampleCaps: BingeCapabilities = {
+      autoSkipIntro: { enabled: true, source: "chapter markers" },
+      autoSkipCredits: { enabled: true, source: "chapter markers" },
+      persistTracks: { enabled: true },
+      autoAdvance: { enabled: true, viaEOF: false },
+      prefetch: { enabled: true, via: "debrid cache" },
+    };
+
+    it("stores capabilities on the session", async () => {
+      const { sessionId, authToken } = await createSession();
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-capabilities", value: { capabilities: sampleCaps } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(rcSessions.get(sessionId)!.bingeMode.capabilities, sampleCaps);
+    });
+
+    it("accepts null to clear capabilities", async () => {
+      const { sessionId, authToken } = await createSession();
+      const session = rcSessions.get(sessionId)!;
+      session.bingeMode.capabilities = sampleCaps;
+
+      const res = await fetch(`${baseUrl}/api/rc/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, authToken, action: "set-binge-capabilities", value: { capabilities: null } }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(session.bingeMode.capabilities, null);
     });
   });
 });
