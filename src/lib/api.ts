@@ -406,6 +406,14 @@ export async function postLearnOffset(payload: {
   });
 }
 
+export async function setBingeMode(sessionId: string, enabled: boolean): Promise<void> {
+  await fetch("/api/rc/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, action: "set-binge-mode", value: { enabled } }),
+  });
+}
+
 export async function getLearnedOffset(tmdbId: string): Promise<{ outro_offset: number | null; sample_count: number }> {
   const res = await fetch(`/api/learn-offset/${encodeURIComponent(tmdbId)}`);
   return res.json();

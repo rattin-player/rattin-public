@@ -11,7 +11,7 @@ interface Markers {
 }
 
 export interface CoordinatorDeps {
-  startPrefetch: () => Promise<{ ok: true } | never>;
+  startPrefetch: () => Promise<unknown>;
   pollReady: () => Promise<boolean>;
   loadNextEpisode: () => Promise<void>;
   emitToast: (msg: string) => void;

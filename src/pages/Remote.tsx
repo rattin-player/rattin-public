@@ -2,8 +2,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { clearRemoteSession, getRemoteSessionId, notifyRemoteSessionChanged } from "../lib/remote-session";
 import { formatTime, formatBytes } from "../lib/utils";
-import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster } from "../lib/api";
+import { fetchSeason, fetchEpisodeGroups, fetchSeriesProgress, poster, setBingeMode } from "../lib/api";
+import type { BingeCapabilities } from "../../lib/types";
 import "./Remote.css";
+
+const BINGE_FLAG_KEY = "rattin.experimentalBingeMode";
+const bingeFlagEnabled = (): boolean => {
+  try { return typeof localStorage !== "undefined" && localStorage.getItem(BINGE_FLAG_KEY) === "true"; }
+  catch { return false; }
+};
+const symbolFor = (on: boolean) => (on ? "✓" : "✗");
 
 // ── State machine constants ──
 const S = {
@@ -79,6 +87,10 @@ export default function Remote() {
 
   // ── Connection flash feedback ──
   const [showConnectedFlash, setShowConnectedFlash] = useState(false);
+
+  // ── Binge mode state (from SSE "binge" event) ──
+  const [bingeMode, setBingeModeState] = useState<{ enabled: boolean; capabilities: BingeCapabilities | null }>({ enabled: false, capabilities: null });
+  const bingeExperimental = bingeFlagEnabled();
 
   // ── Pairing code & panels ──
   const [digits, setDigits] = useState(["", "", "", ""]);
@@ -190,6 +202,10 @@ export default function Remote() {
           hadPlayback.current = true;
         }
         setRemoteState(parsed.infoHash ? S.CONNECTED_PLAYING : S.CONNECTED_IDLE);
+      });
+
+      es.addEventListener("binge", (e: MessageEvent) => {
+        try { setBingeModeState(JSON.parse(e.data)); } catch { /* ignore malformed */ }
       });
 
       es.addEventListener("connected", () => {
@@ -783,6 +799,27 @@ export default function Remote() {
           );
         })()}
       </div>
+
+      {bingeExperimental && sessionId && (
+        <>
+          <button
+            className={bingeMode.enabled ? "remote-binge-toggle on" : "remote-binge-toggle"}
+            onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
+            disabled={isDisabled}
+          >
+            {bingeMode.enabled ? "Binge: ON" : "Binge: off"}
+          </button>
+          {bingeMode.enabled && bingeMode.capabilities && (
+            <div className="remote-binge-panel">
+              <div>{symbolFor(bingeMode.capabilities.autoSkipIntro.enabled)} Auto-skip intro <span className="remote-binge-source">{bingeMode.capabilities.autoSkipIntro.source}</span></div>
+              <div>{symbolFor(bingeMode.capabilities.autoSkipCredits.enabled)} Auto-skip credits <span className="remote-binge-source">{bingeMode.capabilities.autoSkipCredits.source}</span></div>
+              <div>{symbolFor(bingeMode.capabilities.persistTracks.enabled)} Persist audio/subs</div>
+              <div>{symbolFor(bingeMode.capabilities.autoAdvance.enabled)} Auto-advance{bingeMode.capabilities.autoAdvance.viaEOF ? " on EOF" : ""}</div>
+              <div>{symbolFor(bingeMode.capabilities.prefetch.enabled)} Prefetch next episode <span className="remote-binge-source">{bingeMode.capabilities.prefetch.via ? `via ${bingeMode.capabilities.prefetch.via}` : ""}</span></div>
+            </div>
+          )}
+        </>
+      )}
 
       {state?.mediaType === "tv" && state?.tmdbId && (
         <button
