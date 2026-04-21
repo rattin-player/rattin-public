@@ -130,16 +130,21 @@ jobs:
             apt-get install -y --no-install-recommends libasound2 \
               || apt-get install -y --no-install-recommends libasound2t64
           elif command -v dnf >/dev/null 2>&1; then
+            # mesa-dri-drivers: runtime dlopen'd by libGL/libEGL, not a NEEDED
+            # dep — ships by default on Ubuntu/Arch but not the minimal Fedora
+            # image. Without it Qt WebEngine fails to create an OpenGL context
+            # and the Qt shell exits before the CDP port becomes reachable.
+            # procps-ng: validator.sh uses `ps -ef --forest`; not in minimal.
             dnf install -y --setopt=install_weak_deps=False \
-              git curl ca-certificates tar gzip xz \
+              git curl ca-certificates tar gzip xz procps-ng \
               xorg-x11-server-Xvfb fuse-libs \
               nss nspr atk at-spi2-atk \
               cups-libs libdrm libxkbcommon libXcomposite \
-              libXdamage libXfixes libXrandr mesa-libgbm alsa-lib \
+              libXdamage libXfixes libXrandr mesa-libgbm mesa-dri-drivers alsa-lib \
               libglvnd-opengl libglvnd-egl libglvnd-glx mesa-libGL \
               fontconfig freetype harfbuzz fribidi \
               expat libcom_err gmp libgpg-error libusbx \
-              wayland-libs-client
+              libwayland-client
           elif command -v pacman >/dev/null 2>&1; then
             pacman -Sy --noconfirm --needed \
               git curl ca-certificates tar gzip xz \
@@ -173,17 +178,7 @@ jobs:
 
       - name: Install validator dependencies
         working-directory: test/appimage
-        run: |
-          npm ci
-          # NOTE: appimage.spec.ts uses chromium.connectOverCDP() against Qt's
-          # already-running WebEngine, so Playwright's bundled Chromium binary
-          # is never actually launched. We still run `playwright install` as a
-          # safety belt — some Playwright internals touch the browsers path on
-          # startup and failures there surface as unhelpful errors. Cheap
-          # enough to keep; revisit if CI time becomes a pressure point.
-          # `--with-deps` is apt-only and we need this to work on fedora/arch
-          # too, so we install deps manually in the step above.
-          npx playwright install chromium
+        run: npm ci
 
       # Outer safety: stage-1 gate ≤60s + Playwright worst case (retry × 60s
       # per-test timeout = 120s) + xvfb spawn + FUSE/extract-and-run cold

@@ -12,48 +12,63 @@ push under `.github/workflows/release.yml`'s `validate-linux` matrix.
 2. Stage 1 (bash, 60 s budget): polls the server on `:9630`, the CDP
    endpoint on `:9222`, asserts `rattin-shell` + `QtWebEngineProcess` are
    in the process tree, greps `stderr` for loader/crash/symbol patterns.
-3. Stage 2 (Playwright): connects over CDP, asserts React mounted and
-   the first-run `TMDB API Key Required` overlay rendered, checks for
-   uncaught JS errors in a 2 s mount window.
+3. Stage 2 (`cdp-check.mjs`): connects to the page target over raw CDP
+   WebSocket, asserts React mounted and the first-run `TMDB API Key
+   Required` overlay rendered, checks for uncaught JS errors in a 2 s
+   mount window.
+
+Playwright's `connectOverCDP` is avoided because it unconditionally
+calls `Browser.setDownloadBehavior`, which Qt's embedded DevTools
+doesn't implement — the raw CDP client does only what this test needs.
 
 Diagnostics land in `/tmp/rattin-validator/` (stdout, stderr, ps tree).
-Playwright's screenshot + trace go under `test/appimage/test-results/`.
 
 ## Local reproduction
 
 Build the AppImage once (`bash install/build-appimage.sh --clean` from the
 repo root), then run it through the validator inside each distro container.
 
-### Ubuntu 22.04
+Authoritative dep lists live in `.github/workflows/release.yml` under the
+`validate-linux` matrix — keep the README examples in sync with that.
+
+### Ubuntu 22.04 / 24.04
 
 ```
 docker run --rm --shm-size=2g -v "$PWD:/w" -w /w ubuntu:22.04 bash -c '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y --no-install-recommends \
-    git curl ca-certificates xvfb libfuse2 nodejs npm \
+    git curl ca-certificates xvfb libfuse2 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-    libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
-  cd test/appimage && npm ci && npx playwright install chromium
+    libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+    libgl1 libopengl0 libegl1 libglx0 \
+    libfontconfig1 libfreetype6 libharfbuzz0b libfribidi0 \
+    libexpat1 libcom-err2 libgmp10 libgpg-error0 libusb-1.0-0 \
+    libwayland-client0 libasound2
+  # cdp-check.mjs needs fetch() — Node 18+. 22.04 ships Node 12.
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y --no-install-recommends nodejs
+  cd test/appimage && npm ci
   cd /w && bash test/appimage/validator.sh /w/Rattin-x86_64.AppImage
 '
 ```
 
-### Ubuntu 24.04
-
-Identical to 22.04 but use `ubuntu:24.04` and replace `libasound2` with
-`libasound2t64` (the package was renamed in the 24.04 transition).
+On 24.04 swap `ubuntu:22.04` → `ubuntu:24.04` and `libasound2` → `libasound2t64`
+(24.04 ships Node 18, so the NodeSource step is optional there).
 
 ### Fedora 40
 
 ```
 docker run --rm --shm-size=2g -v "$PWD:/w" -w /w fedora:40 bash -c '
   dnf install -y --setopt=install_weak_deps=False \
-    git curl ca-certificates xorg-x11-server-Xvfb fuse-libs nodejs npm \
+    git curl ca-certificates procps-ng xorg-x11-server-Xvfb fuse-libs nodejs npm \
     nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
-    libXcomposite libXdamage libXfixes libXrandr mesa-libgbm alsa-lib
-  cd test/appimage && npm ci && npx playwright install chromium
+    libXcomposite libXdamage libXfixes libXrandr mesa-libgbm mesa-dri-drivers alsa-lib \
+    libglvnd-opengl libglvnd-egl libglvnd-glx mesa-libGL \
+    fontconfig freetype harfbuzz fribidi \
+    expat libcom_err gmp libgpg-error libusbx libwayland-client
+  cd test/appimage && npm ci
   cd /w && bash test/appimage/validator.sh /w/Rattin-x86_64.AppImage
 '
 ```
@@ -65,8 +80,10 @@ docker run --rm --shm-size=2g -v "$PWD:/w" -w /w archlinux:latest bash -c '
   pacman -Sy --noconfirm --needed \
     git curl ca-certificates xorg-server-xvfb fuse2 nodejs npm \
     nss nspr atk at-spi2-atk cups libdrm libxkbcommon libxcomposite \
-    libxdamage libxfixes libxrandr mesa alsa-lib
-  cd test/appimage && npm ci && npx playwright install chromium
+    libxdamage libxfixes libxrandr mesa alsa-lib \
+    libglvnd fontconfig freetype2 harfbuzz fribidi \
+    expat e2fsprogs gmp libgpg-error libusb wayland
+  cd test/appimage && npm ci
   cd /w && bash test/appimage/validator.sh /w/Rattin-x86_64.AppImage
 '
 ```
