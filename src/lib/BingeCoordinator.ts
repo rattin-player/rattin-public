@@ -1,6 +1,6 @@
-import type { MarkerSource } from "../../lib/types.js";
+import type { BingeEvent, BingeEventKind, CoordinatorState, MarkerSource } from "../../lib/types.js";
 
-export type CoordinatorState = "idle" | "prefetching" | "armed" | "advancing" | "stopped" | "finale";
+export type { CoordinatorState } from "../../lib/types.js";
 
 interface Markers {
   introStart: number | null;
@@ -20,6 +20,8 @@ export interface CoordinatorDeps {
   exitToShowDetail: () => void;
   getNextEpisode: () => { tmdbId: string; season: number; episode: number } | null;
   mode?: () => "debrid" | "native";
+  onEvent?: (event: BingeEvent) => void;
+  onStateChange?: (state: CoordinatorState, prev: CoordinatorState) => void;
 }
 
 export class BingeCoordinator {
@@ -32,6 +34,17 @@ export class BingeCoordinator {
 
   constructor(private deps: CoordinatorDeps) {}
 
+  private setState(next: CoordinatorState) {
+    const prev = this.state;
+    if (prev === next) return;
+    this.state = next;
+    this.deps.onStateChange?.(next, prev);
+  }
+
+  private fire(kind: BingeEventKind, detail?: string) {
+    this.deps.onEvent?.({ at: Date.now(), kind, t: this.lastTime, detail });
+  }
+
   setBingeEnabled(on: boolean) {
     const wasOn = this.enabled;
     this.enabled = on;
@@ -39,7 +52,7 @@ export class BingeCoordinator {
       this.maybeSkipIntroAt(this.lastTime);
     }
     if (!on && (this.state === "prefetching" || this.state === "armed" || this.state === "advancing")) {
-      this.state = "idle";
+      this.setState("idle");
     }
   }
 
@@ -47,8 +60,9 @@ export class BingeCoordinator {
     this.duration = ctx.duration;
     this.introAutoSkipped = false;
     this.prefetchFired = false;
-    this.state = "idle";
     this.lastTime = ctx.currentTime;
+    this.setState("idle");
+    this.fire("episode-start", `duration=${Math.round(ctx.duration)}s`);
   }
 
   onTimeUpdate(currentTime: number) {
@@ -64,7 +78,8 @@ export class BingeCoordinator {
     if (this.state === "advancing") return;
     const next = this.deps.getNextEpisode();
     if (!next) {
-      this.state = "finale";
+      this.setState("finale");
+      this.fire("end-of-series");
       this.deps.emitToast("End of series");
       this.deps.exitToShowDetail();
       return;
@@ -78,8 +93,10 @@ export class BingeCoordinator {
     }
   }
 
-  onStop()  { this.state = "stopped"; }
-  onBack()  { this.state = "stopped"; }
+  onStop()  {
+    this.setState("stopped");
+    this.fire("stop");
+  }
 
   private maybeSkipIntroAt(t: number) {
     if (this.introAutoSkipped) return;
@@ -88,6 +105,7 @@ export class BingeCoordinator {
     if (t >= m.introStart && t <= m.introEnd) {
       this.deps.seekTo(m.introEnd);
       this.introAutoSkipped = true;
+      this.fire("intro-skip", `${Math.round(m.introStart)}→${Math.round(m.introEnd)}s via ${m.introSource}`);
     }
   }
 
@@ -97,18 +115,25 @@ export class BingeCoordinator {
     const threshold = mode === "debrid" ? 0.5 : 0.9;
     if (this.duration > 0 && t / this.duration >= threshold) {
       this.prefetchFired = true;
+      this.fire("prefetch-fire", `mode=${mode} threshold=${threshold}`);
       void this.enterPrefetching();
     }
   }
 
   private async enterPrefetching() {
-    this.state = "prefetching";
+    this.setState("prefetching");
     try {
       await this.deps.startPrefetch();
-      if (this.state === "prefetching") this.state = "armed";
+      this.fire("prefetch-ok");
+      if (this.state === "prefetching") {
+        this.setState("armed");
+        this.fire("armed");
+      }
     } catch (e) {
-      this.state = "stopped";
-      this.deps.emitToast(`Couldn't load next episode: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      this.fire("prefetch-error", msg);
+      this.setState("stopped");
+      this.deps.emitToast(`Couldn't load next episode: ${msg}`);
     }
   }
 
@@ -123,12 +148,14 @@ export class BingeCoordinator {
   private async enterAdvancing() {
     const next = this.deps.getNextEpisode();
     if (!next) {
-      this.state = "finale";
+      this.setState("finale");
+      this.fire("end-of-series");
       this.deps.emitToast("End of series");
       this.deps.exitToShowDetail();
       return;
     }
-    this.state = "advancing";
+    this.setState("advancing");
+    this.fire("advance-start");
     if (!this.prefetchFired) {
       this.prefetchFired = true;
       this.deps.startPrefetch().catch(() => {});
@@ -137,14 +164,16 @@ export class BingeCoordinator {
     while (Date.now() < deadline) {
       if (await this.deps.pollReady()) {
         await this.deps.loadNextEpisode();
-        this.state = "idle";
+        this.fire("advance-ready");
+        this.setState("idle");
         this.introAutoSkipped = false;
         this.prefetchFired = false;
         return;
       }
       await new Promise(r => setTimeout(r, 500));
     }
-    this.state = "stopped";
+    this.fire("advance-timeout");
+    this.setState("stopped");
     this.deps.emitToast("Couldn't load next episode (timeout)");
   }
 }

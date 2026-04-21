@@ -2,7 +2,7 @@ import crypto from "crypto";
 import os from "os";
 import type { Express, Request, Response } from "express";
 import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
-import type { ServerContext, RCSession, RCClient, BingeCapabilities, PersistedTracks } from "../lib/types.js";
+import type { ServerContext, RCSession, RCClient, BingeCapabilities, BingeDiagnostics, PersistedTracks } from "../lib/types.js";
 import { dumpRcSessions } from "../lib/storage/rc-sessions.js";
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
@@ -73,7 +73,7 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
       lastActivity: Date.now(),
       authToken,
       pairingCode,
-      bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null } },
+      bingeMode: { enabled: false, capabilities: null, persistedTracks: { audio: null, subtitles: null }, diagnostics: null },
     });
     log("info", "RC session created", { sessionId, pairingCode });
     dumpRcSessions(rcSessions);
@@ -259,6 +259,12 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
         return res.status(400).json({ error: "tracks required" });
       }
       auth.session.bingeMode.persistedTracks = tracks as PersistedTracks;
+      broadcastBinge(auth.session);
+      return res.json({ ok: true });
+    }
+    if (action === "set-binge-diagnostics") {
+      const diag = (value as { diagnostics?: unknown } | undefined)?.diagnostics;
+      auth.session.bingeMode.diagnostics = (diag ?? null) as BingeDiagnostics | null;
       broadcastBinge(auth.session);
       return res.json({ ok: true });
     }

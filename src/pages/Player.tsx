@@ -34,12 +34,12 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchAniskipMarkers, fetchPrefetchReady } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { computeMarkers, type Markers } from "../../lib/media/episode-markers";
 import { pickAudioTrack, pickSubtitleTrack } from "../../lib/media/track-match";
-import type { BingeCapabilities } from "../../lib/types";
+import type { BingeCapabilities, BingeDiagnostics, BingeEvent } from "../../lib/types";
 import { encode } from "uqr";
 import { waitForBridge, mpvPlay, mpvSeek, mpvSetAudioTrack, mpvSetSubtitleTrack, mpvLoadExternalSubtitle, mpvStop, mpvStopAndWait, mpvSetTitle, onMpvTimeChanged, onMpvDurationChanged, onMpvEofReached, onMpvPauseChanged, onNativeSubChanged, onNativeAudioChanged, onNativeSubSizeChanged, onNativeSubDelayChanged, onBackRequested, onToggleSourcePanel, mpvSetSourceCount, mpvNotifySourcePanel, mpvSetPoster, mpvSetLoading, mpvSetLoadingStatus, mpvSetSlowWarning, mpvGetChapters, bridgeHasChapterSupport } from "../lib/native-bridge";
 import { playbackKey, shouldRestorePosition } from "../lib/playback-position";
@@ -245,12 +245,63 @@ export default function Player() {
   const bingeStateRef = useRef<CoordinatorState>("idle");
   const currentMarkersRef = useRef<Markers>({ introStart: null, introEnd: null, outroStart: null, introSource: "no chapter data", outroSource: "no chapter data" });
   const [bingeCaps, setBingeCaps] = useState<BingeCapabilities | null>(null);
+  // ── Diagnostics (for phone remote observability) ──
+  const diagnosticsRef = useRef<BingeDiagnostics>({
+    state: "idle",
+    duration: 0,
+    markers: null,
+    signals: { chapters: null, aniskip: null, learnedOutro: null },
+    prefetch: { threshold: 0.9, firedAtTime: null, firedAtEpoch: null, resolved: null, ready: false },
+    nextAction: null,
+    events: [],
+  });
+  const rcSessionRef = useRef<{ id: string | null; token: string | null }>({ id: null, token: null });
+  const pushDiagnosticsRef = useRef<() => void>(() => {});
   // True when the coordinator is driving the next-episode transition, so the
   // manual-press learn-offset path knows to skip sampling.
   const coordinatorInitiatedRef = useRef(false);
   const [bingeToast, setBingeToast] = useState<string | null>(null);
   const bingeToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNextEpisodeRef = useRef<((s: number, e: number) => Promise<void>) | null>(null);
+  const prefetchedRef = useRef<{ infoHash: string; fileIndex: number } | null>(null);
+  const modeRef = useRef<"debrid" | "native">("native");
+  useEffect(() => { modeRef.current = state?.debridStreamKey ? "debrid" : "native"; }, [state?.debridStreamKey]);
+
+  // Recompute the "what's next" summary from current coordinator + marker state.
+  const recomputeNextAction = (): BingeDiagnostics["nextAction"] => {
+    const d = diagnosticsRef.current;
+    const m = currentMarkersRef.current;
+    const mode = modeRef.current;
+    const dur = d.duration;
+    if (d.state === "finale") return null;
+    if (d.state === "advancing") return { kind: "advance", atTime: null, reason: "loading next episode" };
+    if (d.state === "stopped") return null;
+    if (m.introStart !== null && m.introEnd !== null && !d.events.some(e => e.kind === "intro-skip")) {
+      return { kind: "skip-intro", atTime: m.introStart, reason: `${m.introSource}` };
+    }
+    if (!d.prefetch.firedAtTime && dur > 0) {
+      const threshold = mode === "debrid" ? 0.5 : 0.9;
+      return { kind: "prefetch", atTime: dur * threshold, reason: `at ${Math.round(threshold * 100)}% (${mode} mode)` };
+    }
+    if (m.outroStart !== null) {
+      return { kind: "advance", atTime: m.outroStart, reason: `${m.outroSource}` };
+    }
+    if (dur > 0) {
+      return { kind: "advance", atTime: dur, reason: m.outroSource };
+    }
+    return null;
+  };
+  const pushDiagnostics = () => {
+    const { id, token } = rcSessionRef.current;
+    if (!id) return;
+    diagnosticsRef.current.nextAction = recomputeNextAction();
+    void setBingeDiagnostics(id, token, { ...diagnosticsRef.current });
+  };
+  pushDiagnosticsRef.current = pushDiagnostics;
+
+  useEffect(() => {
+    rcSessionRef.current = { id: rcSessionId ?? null, token: rcAuthToken ?? null };
+  }, [rcSessionId, rcAuthToken]);
 
   useEffect(() => {
     const coord = new BingeCoordinator({
@@ -261,15 +312,26 @@ export default function Player() {
         if (!next) return;
         const baseTitle = state?.baseName || state?.title || mediaTitle;
         const year = state?.year != null ? Number(state.year) : undefined;
-        await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId);
+        prefetchedRef.current = null;
+        const result = await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId, infoHash) as { infoHash?: string; fileIndex?: number } | undefined;
+        if (result?.infoHash && typeof result.fileIndex === "number") {
+          prefetchedRef.current = { infoHash: result.infoHash, fileIndex: result.fileIndex };
+        }
       },
-      pollReady: async () => true,
+      pollReady: async () => {
+        const p = prefetchedRef.current;
+        if (!p) return false;
+        const ok = await fetchPrefetchReady(p.infoHash, p.fileIndex);
+        diagnosticsRef.current.prefetch.ready = ok;
+        return ok;
+      },
       loadNextEpisode: async () => {
         const ep = episodeInfoRef.current;
         if (!ep) return;
         const next = nextEpisodeFrom({ season: ep.season, episode: ep.episode, seasonEpisodeCount: ep.seasonEpisodeCount, seasonCount: ep.seasonCount });
         if (!next) return;
         coordinatorInitiatedRef.current = true;
+        prefetchedRef.current = null;
         await handleNextEpisodeRef.current?.(next.season, next.episode);
       },
       emitToast: (msg) => {
@@ -289,7 +351,33 @@ export default function Player() {
         const next = nextEpisodeFrom({ season: ep.season, episode: ep.episode, seasonEpisodeCount: ep.seasonEpisodeCount, seasonCount: ep.seasonCount });
         return next ? { tmdbId: ep.tmdbId, season: next.season, episode: next.episode } : null;
       },
-      mode: () => "debrid",
+      mode: () => modeRef.current,
+      onStateChange: (next) => {
+        bingeStateRef.current = next;
+        diagnosticsRef.current.state = next;
+        pushDiagnosticsRef.current();
+      },
+      onEvent: (evt: BingeEvent) => {
+        const d = diagnosticsRef.current;
+        d.events.push(evt);
+        if (d.events.length > 10) d.events.shift();
+        if (evt.kind === "episode-start") {
+          d.prefetch.firedAtTime = null;
+          d.prefetch.firedAtEpoch = null;
+          d.prefetch.resolved = null;
+          d.prefetch.ready = false;
+          d.prefetch.threshold = modeRef.current === "debrid" ? 0.5 : 0.9;
+        } else if (evt.kind === "prefetch-fire") {
+          d.prefetch.firedAtTime = evt.t ?? null;
+          d.prefetch.firedAtEpoch = evt.at;
+        } else if (evt.kind === "prefetch-ok") {
+          d.prefetch.resolved = "ok";
+        } else if (evt.kind === "prefetch-error") {
+          d.prefetch.resolved = "error";
+          d.prefetch.error = evt.detail;
+        }
+        pushDiagnosticsRef.current();
+      },
     });
     bingeCoordinatorRef.current = coord;
     return () => {
@@ -307,8 +395,8 @@ export default function Player() {
 
   useEffect(() => {
     if (!rcSessionId || !bingeCaps) return;
-    void setBingeCapabilities(rcSessionId, bingeCaps);
-  }, [rcSessionId, bingeCaps]);
+    void setBingeCapabilities(rcSessionId, rcAuthToken, bingeCaps);
+  }, [rcSessionId, rcAuthToken, bingeCaps]);
 
   // Raw ffprobe tracks for pickAudio/pickSubtitle — cached per episode so the
   // commandRef handlers can look up {lang, title} when persisting user picks.
@@ -402,7 +490,7 @@ export default function Player() {
     mpvSetLoading(true);
     try {
       const promises: [Promise<any>, Promise<any>, Promise<any>] = [
-        autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId),
+        autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId, infoHash),
         fetchSeason(state.tmdbId, nextSeason).catch(() => null),
         state.hasEpisodeGroups ? fetchEpisodeGroups(state.tmdbId).catch(() => null) : Promise.resolve(null),
       ];
@@ -503,20 +591,27 @@ export default function Player() {
 
       const computeEpisodeCapabilities = async (duration: number): Promise<void> => {
         const tmdbId = state?.tmdbId != null ? String(state.tmdbId) : null;
-        const [chapters, learned] = await Promise.all([
+        const showTitle = state?.baseName || state?.title || mediaTitle;
+        const epNum = state?.episode != null ? Number(state.episode) : null;
+        const seasonNum = state?.season != null ? Number(state.season) : 1;
+        const [chapters, learned, aniskip] = await Promise.all([
           mpvGetChapters().catch(() => []),
           tmdbId ? getLearnedOffset(tmdbId).catch(() => null) : Promise.resolve(null),
+          showTitle && epNum && Number.isFinite(epNum)
+            ? fetchAniskipMarkers(showTitle, epNum, duration, seasonNum).catch(() => null)
+            : Promise.resolve(null),
         ]);
         const markers = computeMarkers({
           bridgeHasChapterSupport: bridgeHasChapterSupport(),
           chapters,
-          aniskip: null,
+          aniskip,
           learnedOutroOffset: learned && learned.outro_offset !== null
             ? { offset: learned.outro_offset, sampleCount: learned.sample_count }
             : null,
           fileDuration: duration,
         });
         currentMarkersRef.current = markers;
+        const prefetchVia = modeRef.current === "debrid" ? "debrid cache" : "torrent pieces";
         const caps: BingeCapabilities = {
           autoSkipIntro: { enabled: markers.introStart !== null, source: markers.introSource },
           autoSkipCredits: {
@@ -526,9 +621,46 @@ export default function Player() {
           },
           persistTracks: { enabled: true },
           autoAdvance: { enabled: true, viaEOF: markers.outroStart === null },
-          prefetch: { enabled: true, via: "debrid cache" },
+          prefetch: { enabled: true, via: prefetchVia },
         };
         setBingeCaps(caps);
+        // Populate diagnostics snapshot of raw signals + markers.
+        const chapterList = (chapters as Array<{ title?: string; time?: number }> | undefined) ?? [];
+        const introIdx = chapterList.findIndex((c) => /\b(intro|opening|op)\b/i.test(c.title ?? ""));
+        const outroIdx = chapterList.findIndex((c) => /\b(outro|ending|credits|ed)\b/i.test(c.title ?? ""));
+        diagnosticsRef.current.duration = duration;
+        diagnosticsRef.current.markers = {
+          introStart: markers.introStart,
+          introEnd: markers.introEnd,
+          outroStart: markers.outroStart,
+          introSource: markers.introSource,
+          outroSource: markers.outroSource,
+        };
+        diagnosticsRef.current.signals = {
+          chapters: chapterList.length > 0 ? {
+            count: chapterList.length,
+            intro: introIdx >= 0 && chapterList[introIdx].time != null
+              ? {
+                  start: chapterList[introIdx].time!,
+                  end: chapterList[introIdx + 1]?.time ?? duration,
+                }
+              : null,
+            outro: outroIdx >= 0 && chapterList[outroIdx].time != null
+              ? { start: chapterList[outroIdx].time! }
+              : null,
+          } : null,
+          aniskip: aniskip ? {
+            op: aniskip.opStart > 0 || aniskip.opEnd > 0 ? { start: aniskip.opStart, end: aniskip.opEnd } : null,
+            ed: aniskip.edStart > 0 ? { start: aniskip.edStart, end: duration } : null,
+            durationMatch: Math.abs(aniskip.episodeLength - duration) <= 30,
+            resolution: aniskip.resolution ?? null,
+          } : null,
+          learnedOutro: learned && learned.outro_offset !== null
+            ? { sampleCount: learned.sample_count, offset: learned.outro_offset }
+            : null,
+        };
+        diagnosticsRef.current.prefetch.threshold = modeRef.current === "debrid" ? 0.5 : 0.9;
+        pushDiagnosticsRef.current();
       };
       onMpvTimeChanged((t) => {
         const prev = effectiveTimeRef.current;
@@ -691,7 +823,7 @@ export default function Player() {
             const streamIdx = parseInt(sub.value.slice("embedded:".length), 10);
             const raw = rawSubtitleTracksRef.current.find(t => t.streamIndex === streamIdx);
             if (raw?.lang) {
-              void setPersistedTracks(rcSessionId, {
+              void setPersistedTracks(rcSessionId, rcAuthToken, {
                 audio: persistedTracks.audio,
                 subtitles: { lang: raw.lang, title: raw.title ?? "" },
               });
@@ -708,7 +840,7 @@ export default function Player() {
         if (rcSessionId) {
           const raw = rawAudioTracksRef.current.find(t => t.streamIndex === streamIdx);
           if (raw?.lang) {
-            void setPersistedTracks(rcSessionId, {
+            void setPersistedTracks(rcSessionId, rcAuthToken, {
               audio: { lang: raw.lang, title: raw.title ?? "" },
               subtitles: persistedTracks.subtitles,
             });
