@@ -58,15 +58,28 @@ export async function lookupIntrodbMarkers(
 ): Promise<IntrodbMarkers | null> {
   const doFetch = getFetcher();
   const url = `${INTRODB_BASE}/segments?imdb_id=${encodeURIComponent(imdbId)}&season=${season}&episode=${episode}`;
+  console.info("[introdb] GET", url);
   try {
     const res = await doFetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.info("[introdb] non-ok response", { url, status: res.status });
+      return null;
+    }
     const data = await res.json() as ApiResponse;
+    console.info("[introdb] raw response", {
+      imdb_id: data.imdb_id, intro: data.intro, outro: data.outro, recap: data.recap,
+    });
     const intro = normalizeSegment(data.intro);
     const outro = normalizeSegment(data.outro);
-    if (!intro && !outro) return null;
+    if (!intro && !outro) {
+      console.info("[introdb] both segments rejected by floor/shape", {
+        introRaw: data.intro, outroRaw: data.outro, floor: SUBMISSION_FLOOR,
+      });
+      return null;
+    }
     return { intro, outro, imdbId };
-  } catch {
+  } catch (err) {
+    console.info("[introdb] fetch threw", { url, error: (err as Error).message });
     return null;
   }
 }
