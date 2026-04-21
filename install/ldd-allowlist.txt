@@ -1,0 +1,47 @@
+# Libraries the AppImage is allowed to pull from the host.
+#
+# Matched against NEEDED entries after version-stripping:
+#   libc.so.6  -> libc.so  -> matches "libc.so" entry below.
+#
+# If you hit a build-time failure from ldd_audit:
+#   - Preferred: fix the bundling so the lib ends up in $APPDIR/usr/lib
+#   - If the lib genuinely must come from the host system, add it here
+#     with a one-line comment explaining why.
+
+# Core C/C++ runtime
+libc.so
+libpthread.so
+libdl.so
+libm.so
+libresolv.so
+librt.so
+libstdc++.so
+libgcc_s.so
+
+# Dynamic linker
+ld-linux-x86-64.so
+
+# Graphics / windowing (host-driven for HW accel)
+libGL.so
+libEGL.so
+libGLX.so
+libgbm.so
+libdrm.so
+libX11.so
+libX11-xcb.so
+libxcb.so
+libxcb-glx.so
+libxcb-present.so
+libxcb-sync.so
+libxkbcommon.so
+libxkbcommon-x11.so
+
+# NSS/NSPR — explicitly removed by build_appimage() after linuxdeploy;
+# host MUST provide these or QtWebEngine crashes with a version mismatch.
+libnss3.so
+libnssutil3.so
+libnspr4.so
+libplc4.so
+libplds4.so
+libsmime3.so
+libssl3.so
