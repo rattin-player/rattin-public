@@ -104,7 +104,15 @@ export default function Remote() {
   const [bingeMode, setBingeModeState] = useState<{ enabled: boolean; capabilities: BingeCapabilities | null; diagnostics: BingeDiagnostics | null }>({ enabled: false, capabilities: null, diagnostics: null });
   const [bingeFlash, setBingeFlash] = useState<string | null>(null);
   const [showBingeDebug, setShowBingeDebug] = useState(false);
+  const [showBingeFeatures, setShowBingeFeatures] = useState(false);
   const bingeToastedRef = useRef(false);
+
+  // Dev-mode flag hides binge diagnostics panel unless explicitly requested
+  const devMode = (() => {
+    if (typeof window === "undefined") return false;
+    if (searchParams.get("dev") === "1") return true;
+    try { return window.localStorage.getItem("rattin.remoteDev") === "1"; } catch { return false; }
+  })();
 
   useEffect(() => {
     if (!bingeMode.enabled) { bingeToastedRef.current = false; setBingeFlash(null); return; }
@@ -729,9 +737,12 @@ export default function Remote() {
         <span className="remote-time">{formatTime(dur)}</span>
       </div>
 
-      <div className="remote-split-row">
-        <div className="remote-volume-row">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--text-secondary)">
+      {/* AUDIO */}
+      <section className="remote-section">
+        <div className="remote-section-label">Audio</div>
+        <div className="remote-control-row">
+          <span className="remote-control-label">Volume</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-muted)" aria-hidden="true">
             <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
           </svg>
           <input
@@ -741,130 +752,287 @@ export default function Remote() {
             value={displayVolume}
             onChange={handleVolumeChange}
             disabled={isDisabled}
+            aria-label="Volume"
           />
+          <span className="remote-volume-value">{Math.round(displayVolume * 100)}%</span>
         </div>
-        {state?.subs?.length > 0 && (
-          <select
-            className="remote-sub-select"
-            value={state.activeSub || ""}
-            onChange={(e) => sendCommand("subtitle", e.target.value)}
-            disabled={isDisabled}
-          >
-            <option value="">Subs Off</option>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.subs.map((s: any) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {state?.subs?.length > 0 && (
-        <div className="remote-split-row">
-          <div className="remote-sub-size">
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", -5)} disabled={isDisabled}>A−</button>
-            <span className="remote-sub-size-val">{state.subSize ?? 55}</span>
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", 5)} disabled={isDisabled}>A+</button>
-          </div>
-          <div className="remote-sub-size">
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", -0.1)} disabled={isDisabled}>−0.1s</button>
-            <span className={`remote-sub-size-val${(state.subDelay ?? 0) !== 0 ? " active" : ""}`}>{(state.subDelay ?? 0).toFixed(1)}s</span>
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", 0.1)} disabled={isDisabled}>+0.1s</button>
-          </div>
-        </div>
-      )}
-
-      {state?.audioTracks?.length > 1 && (
-        <div className="remote-sub-row">
-          <select
-            className="remote-sub-select"
-            value={state.activeAudio ?? ""}
-            onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
-            disabled={isDisabled}
-          >
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.audioTracks.map((t: any) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="remote-split-row">
-        {state?.sources?.length > 1 && (
-          <button
-            className="remote-source-toggle"
-            onClick={() => { setShowSources((v) => !v); setShowEpisodes(false); }}
-            disabled={isDisabled}
-          >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-            </svg>
-            Sources ({state.sources.length})
-          </button>
-        )}
-        {state?.mediaType === "tv" && state?.season > 0 && state?.episode > 0 && (() => {
-          const next = nextEpisodeFrom({
-            season: state.season,
-            episode: state.episode,
-            seasonEpisodeCount: state.seasonEpisodeCount || undefined,
-            seasonCount: state.seasonCount || undefined,
-          });
-          if (!next) return null;
-          return (
-            <button
-              className="remote-next-episode"
-              onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
+        {state?.audioTracks?.length > 1 && (
+          <div className="remote-control-row">
+            <span className="remote-control-label">Track</span>
+            <select
+              className="remote-sub-select"
+              value={state.activeAudio ?? ""}
+              onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
               disabled={isDisabled}
+              aria-label="Audio track"
             >
-              Next Ep
-              <span className="remote-next-episode-label">S{next.season}E{next.episode}</span>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-              </svg>
-            </button>
-          );
-        })()}
-      </div>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {state.audioTracks.map((t: any) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </section>
 
-      {sessionId && (
-        <>
-          <button
-            className={bingeMode.enabled ? "remote-binge-toggle on" : "remote-binge-toggle"}
-            onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
-            disabled={isDisabled}
-          >
-            {bingeMode.enabled ? "Binge mode: ON" : "Binge mode: off"}
-            <span className="remote-binge-beta">BETA</span>
-          </button>
-          {!bingeMode.enabled && (
-            <div className="remote-binge-help">
-              Auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across episodes. Toggle off anytime to stop.
+      {/* SUBTITLES */}
+      {state?.subs?.length > 0 && (
+        <section className="remote-section">
+          <div className="remote-section-label">Subtitles</div>
+          <div className="remote-control-row">
+            <span className="remote-control-label">Track</span>
+            <select
+              className="remote-sub-select"
+              value={state.activeSub || ""}
+              onChange={(e) => sendCommand("subtitle", e.target.value)}
+              disabled={isDisabled}
+              aria-label="Subtitle track"
+            >
+              <option value="">Off</option>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {state.subs.map((s: any) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="remote-sub-controls-row">
+            <div className="remote-sub-control">
+              <span className="remote-sub-control-label">Size</span>
+              <div className="remote-stepper">
+                <button onClick={() => sendCommand("sub-size", -5)} disabled={isDisabled} aria-label="Decrease subtitle size">A−</button>
+                <span className="remote-stepper-value">{state.subSize ?? 55}</span>
+                <button onClick={() => sendCommand("sub-size", 5)} disabled={isDisabled} aria-label="Increase subtitle size">A+</button>
+              </div>
             </div>
+            <div className="remote-sub-control">
+              <span className="remote-sub-control-label">Delay</span>
+              <div className="remote-stepper">
+                <button onClick={() => sendCommand("sub-delay", -0.1)} disabled={isDisabled} aria-label="Decrease subtitle delay">−0.1s</button>
+                <span className={`remote-stepper-value${(state.subDelay ?? 0) !== 0 ? " active" : ""}`}>{(state.subDelay ?? 0).toFixed(1)}s</span>
+                <button onClick={() => sendCommand("sub-delay", 0.1)} disabled={isDisabled} aria-label="Increase subtitle delay">+0.1s</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* CONTENT */}
+      {(() => {
+        const hasMultiSource = state?.sources?.length > 1;
+        const isTv = state?.mediaType === "tv" && state?.tmdbId;
+        const next = isTv && state?.season > 0 && state?.episode > 0
+          ? nextEpisodeFrom({
+              season: state.season,
+              episode: state.episode,
+              seasonEpisodeCount: state.seasonEpisodeCount || undefined,
+              seasonCount: state.seasonCount || undefined,
+            })
+          : null;
+        if (!hasMultiSource && !isTv) return null;
+        return (
+          <section className="remote-section">
+            <div className="remote-section-label">Content</div>
+            <div className="remote-content-row">
+              {isTv && (
+                <button
+                  className={`remote-content-btn${showEpisodes ? " active" : ""}`}
+                  onClick={() => { if (!showEpisodes) openEpisodeBrowser(); else setShowEpisodes(false); setShowSources(false); }}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Episodes</span>
+                  {state.season > 0 && <span className="remote-content-btn-meta">S{state.season}E{state.episode}</span>}
+                </button>
+              )}
+              {next && (
+                <button
+                  className="remote-content-btn"
+                  onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Next Ep</span>
+                  <span className="remote-content-btn-meta">S{next.season}E{next.episode}</span>
+                </button>
+              )}
+              {hasMultiSource && (
+                <button
+                  className={`remote-content-btn${showSources ? " active" : ""}`}
+                  onClick={() => { setShowSources((v) => !v); setShowEpisodes(false); }}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Sources</span>
+                  <span className="remote-content-btn-meta">{state.sources.length}</span>
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
+
+      {showSources && state?.sources?.length > 1 && (
+        <div className="remote-sources-panel">
+          {state.sources.map((s: any) => {
+            const isCurrent = s.infoHash === state.infoHash;
+            return (
+              <button
+                key={s.infoHash}
+                className={`remote-source-item${isCurrent ? " active" : ""}`}
+                onClick={() => {
+                  if (!isCurrent) {
+                    sendCommand("switch-source", s);
+                    setShowSources(false);
+                  }
+                }}
+              >
+                <div className="remote-source-item-name">
+                  {s.name}
+                </div>
+                <div className="remote-source-item-meta">
+                  {isCurrent && <span className="remote-source-tag current">Playing</span>}
+                  {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
+                    <span key={t} className="remote-source-tag">{t}</span>
+                  ))}
+                  <span className="remote-source-seeds">
+                    <span className="remote-source-seed-dot" />
+                    {s.seeders ?? "?"}
+                  </span>
+                  {s.size > 0 && <span className="remote-source-size">{formatBytes(s.size)}</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showEpisodes && state?.mediaType === "tv" && (
+        <div className="remote-episodes-panel">
+          {(state.seasonCount > 1 || epBrowserSeason !== state.season) && (
+            <div className="remote-episodes-season-bar">
+              {Array.from({ length: state.seasonCount || 1 }, (_, i) => i + 1).map((s) => (
+                <button
+                  key={s}
+                  className={`remote-episodes-season-btn${s === epBrowserSeason ? " active" : ""}`}
+                  onClick={() => switchEpBrowserSeason(s)}
+                >
+                  S{s}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="remote-episodes-list">
+            {epBrowserEps === null ? (
+              <div className="remote-episodes-loading"><div className="remote-spinner" /></div>
+            ) : epBrowserEps.length === 0 ? (
+              <div className="remote-episodes-empty">No episodes found</div>
+            ) : (
+              epBrowserEps.map((ep: any) => {
+                const epKey = `s${epBrowserSeason}e${ep.episode_number}`;
+                const prog = epProgress.get(epKey);
+                const pct = prog && prog.duration > 0 ? Math.min(100, (prog.position / prog.duration) * 100) : 0;
+                const isCurrent = epBrowserSeason === state.season && ep.episode_number === state.episode;
+                return (
+                  <button
+                    key={ep.id}
+                    className={`remote-ep-item${isCurrent ? " current" : ""}${prog?.finished ? " watched" : ""}`}
+                    onClick={() => playEpisode(epBrowserSeason, ep.episode_number)}
+                    disabled={isDisabled || isCurrent}
+                  >
+                    <span className="remote-ep-num">E{ep.episode_number}</span>
+                    <div className="remote-ep-info">
+                      <span className="remote-ep-title">{ep.name}</span>
+                      {ep.runtime && <span className="remote-ep-runtime">{ep.runtime}m</span>}
+                    </div>
+                    {isCurrent && (
+                      <span className="remote-ep-playing">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                      </span>
+                    )}
+                    {prog?.finished && !isCurrent && (
+                      <svg className="remote-ep-check" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg>
+                    )}
+                    {pct > 0 && !prog?.finished && (
+                      <div className="remote-ep-progress">
+                        <div className="remote-ep-progress-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* BINGE MODE */}
+      {sessionId && (
+        <section className="remote-section">
+          <div className="remote-binge-header">
+            <div className="remote-section-label">
+              Binge Mode
+              <span className="remote-binge-beta">BETA</span>
+            </div>
+            <button
+              type="button"
+              className={`remote-switch${bingeMode.enabled ? " on" : ""}`}
+              onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
+              disabled={isDisabled}
+              role="switch"
+              aria-checked={bingeMode.enabled}
+              aria-label="Toggle binge mode"
+            />
+          </div>
+          {!bingeMode.enabled && (
+            <p className="remote-binge-help">
+              Auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across episodes.
+            </p>
           )}
           {bingeFlash && <div className="remote-flash">{bingeFlash}</div>}
-          {bingeMode.enabled && bingeMode.capabilities && (
-            <div className="remote-binge-panel">
-              <div className="remote-binge-panel-header">
-                Binge mode: ON{state?.title ? ` — ${state.title}` : ""}
-                {state?.season && state?.episode ? ` S${state.season}E${state.episode}` : ""}
-              </div>
-              <div>{symbolFor(bingeMode.capabilities.autoSkipIntro.enabled)} Auto-skip intro <span className="remote-binge-source">{bingeMode.capabilities.autoSkipIntro.source}</span></div>
-              <div>
-                {symbolFor(bingeMode.capabilities.autoSkipCredits.enabled)} Auto-skip credits{" "}
-                <span className="remote-binge-source">
-                  {bingeMode.capabilities.autoSkipCredits.source}
-                  {bingeMode.capabilities.autoSkipCredits.sampleCount != null
-                    ? ` (${bingeMode.capabilities.autoSkipCredits.sampleCount} sample${bingeMode.capabilities.autoSkipCredits.sampleCount === 1 ? "" : "s"})`
-                    : ""}
-                </span>
-              </div>
-              <div>{symbolFor(bingeMode.capabilities.persistTracks.enabled)} Persist audio/subs</div>
-              <div>{symbolFor(bingeMode.capabilities.autoAdvance.enabled)} Auto-advance{bingeMode.capabilities.autoAdvance.viaEOF ? " on EOF" : ""}</div>
-              <div>{symbolFor(bingeMode.capabilities.prefetch.enabled)} Prefetch next episode <span className="remote-binge-source">{bingeMode.capabilities.prefetch.via ? `via ${bingeMode.capabilities.prefetch.via}` : ""}</span></div>
-            </div>
-          )}
-          {bingeMode.enabled && bingeMode.diagnostics && (
+          {bingeMode.enabled && bingeMode.capabilities && (() => {
+            const c = bingeMode.capabilities;
+            const features = [
+              { key: "intro", label: "Auto-skip intro", enabled: c.autoSkipIntro.enabled, source: c.autoSkipIntro.source },
+              { key: "credits", label: "Auto-skip credits", enabled: c.autoSkipCredits.enabled, source: `${c.autoSkipCredits.source}${c.autoSkipCredits.sampleCount != null ? ` (${c.autoSkipCredits.sampleCount} sample${c.autoSkipCredits.sampleCount === 1 ? "" : "s"})` : ""}` },
+              { key: "tracks", label: "Persist audio/subs", enabled: c.persistTracks.enabled, source: "" },
+              { key: "advance", label: `Auto-advance${c.autoAdvance.viaEOF ? " on EOF" : ""}`, enabled: c.autoAdvance.enabled, source: "" },
+              { key: "prefetch", label: "Prefetch next episode", enabled: c.prefetch.enabled, source: c.prefetch.via ? `via ${c.prefetch.via}` : "" },
+            ];
+            const activeCount = features.filter((f) => f.enabled).length;
+            return (
+              <>
+                <button
+                  type="button"
+                  className="remote-binge-features-toggle"
+                  onClick={() => setShowBingeFeatures((s) => !s)}
+                  aria-expanded={showBingeFeatures}
+                >
+                  <span>{showBingeFeatures ? "▾" : "▸"} Features</span>
+                  <span className="remote-binge-features-count">{activeCount} of {features.length} active</span>
+                </button>
+                {showBingeFeatures && (
+                  <div className="remote-binge-panel">
+                    {features.map((f) => (
+                      <div key={f.key} className="remote-binge-feature">
+                        <span className={`remote-binge-feature-mark${f.enabled ? " on" : ""}`}>{symbolFor(f.enabled)}</span>
+                        <span className="remote-binge-feature-label">{f.label}</span>
+                        {f.source && <span className="remote-binge-source">{f.source}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+          {devMode && bingeMode.enabled && bingeMode.diagnostics && (
             <div className="remote-binge-debug">
               <button
                 className="remote-binge-debug-toggle"
@@ -996,117 +1164,7 @@ export default function Remote() {
               })()}
             </div>
           )}
-        </>
-      )}
-
-      {state?.mediaType === "tv" && state?.tmdbId && (
-        <button
-          className="remote-episodes-toggle"
-          onClick={() => { if (!showEpisodes) openEpisodeBrowser(); else setShowEpisodes(false); setShowSources(false); }}
-          disabled={isDisabled}
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
-          </svg>
-          Episodes
-          {state.season > 0 && <span className="remote-episodes-current">S{state.season}E{state.episode}</span>}
-        </button>
-      )}
-
-      {showSources && state?.sources?.length > 1 && (
-        <div className="remote-sources-panel">
-          {state.sources.map((s: any) => {
-            const isCurrent = s.infoHash === state.infoHash;
-            return (
-              <button
-                key={s.infoHash}
-                className={`remote-source-item${isCurrent ? " active" : ""}`}
-                onClick={() => {
-                  if (!isCurrent) {
-                    sendCommand("switch-source", s);
-                    setShowSources(false);
-                  }
-                }}
-              >
-                <div className="remote-source-item-name">
-                  {s.name}
-                </div>
-                <div className="remote-source-item-meta">
-                  {isCurrent && <span className="remote-source-tag current">Playing</span>}
-                  {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
-                    <span key={t} className="remote-source-tag">{t}</span>
-                  ))}
-                  <span className="remote-source-seeds">
-                    <span className="remote-source-seed-dot" />
-                    {s.seeders ?? "?"}
-                  </span>
-                  {s.size > 0 && <span className="remote-source-size">{formatBytes(s.size)}</span>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {showEpisodes && state?.mediaType === "tv" && (
-        <div className="remote-episodes-panel">
-          {(state.seasonCount > 1 || epBrowserSeason !== state.season) && (
-            <div className="remote-episodes-season-bar">
-              {Array.from({ length: state.seasonCount || 1 }, (_, i) => i + 1).map((s) => (
-                <button
-                  key={s}
-                  className={`remote-episodes-season-btn${s === epBrowserSeason ? " active" : ""}`}
-                  onClick={() => switchEpBrowserSeason(s)}
-                >
-                  S{s}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="remote-episodes-list">
-            {epBrowserEps === null ? (
-              <div className="remote-episodes-loading"><div className="remote-spinner" /></div>
-            ) : epBrowserEps.length === 0 ? (
-              <div className="remote-episodes-empty">No episodes found</div>
-            ) : (
-              epBrowserEps.map((ep: any) => {
-                const epKey = `s${epBrowserSeason}e${ep.episode_number}`;
-                const prog = epProgress.get(epKey);
-                const pct = prog && prog.duration > 0 ? Math.min(100, (prog.position / prog.duration) * 100) : 0;
-                const isCurrent = epBrowserSeason === state.season && ep.episode_number === state.episode;
-                return (
-                  <button
-                    key={ep.id}
-                    className={`remote-ep-item${isCurrent ? " current" : ""}${prog?.finished ? " watched" : ""}`}
-                    onClick={() => playEpisode(epBrowserSeason, ep.episode_number)}
-                    disabled={isDisabled || isCurrent}
-                  >
-                    <span className="remote-ep-num">E{ep.episode_number}</span>
-                    <div className="remote-ep-info">
-                      <span className="remote-ep-title">{ep.name}</span>
-                      {ep.runtime && <span className="remote-ep-runtime">{ep.runtime}m</span>}
-                    </div>
-                    {isCurrent && (
-                      <span className="remote-ep-playing">
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                      </span>
-                    )}
-                    {prog?.finished && !isCurrent && (
-                      <svg className="remote-ep-check" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg>
-                    )}
-                    {pct > 0 && !prog?.finished && (
-                      <div className="remote-ep-progress">
-                        <div className="remote-ep-progress-fill" style={{ width: `${pct}%` }} />
-                      </div>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
+        </section>
       )}
 
       <div className="remote-bottom-row">
