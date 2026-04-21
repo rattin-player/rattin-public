@@ -34,7 +34,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchAniskipMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { startPrefetch as libStartPrefetch } from "../../lib/torrent/prefetch";
@@ -251,7 +251,7 @@ export default function Player() {
     state: "idle",
     duration: 0,
     markers: null,
-    signals: { chapters: null, aniskip: null, learnedOutro: null },
+    signals: { chapters: null, aniskip: null, introdb: null, learnedOutro: null },
     prefetch: { threshold: 0.9, firedAtTime: null, firedAtEpoch: null, resolved: null, ready: false },
     nextAction: null,
     events: [],
@@ -425,27 +425,28 @@ export default function Player() {
 
   // Raw ffprobe tracks for pickAudio/pickSubtitle — cached per episode so the
   // commandRef handlers can look up {lang, title} when persisting user picks.
+  // State (not ref) so the picker effects below re-run when fetches complete.
   interface RawAudioTrack { streamIndex: number; lang: string | null; title: string | null; channels?: number }
   interface RawSubtitleTrack { streamIndex: number; lang: string | null; title: string | null }
-  const rawAudioTracksRef = useRef<RawAudioTrack[]>([]);
-  const rawSubtitleTracksRef = useRef<RawSubtitleTrack[]>([]);
+  const [rawAudioTracks, setRawAudioTracks] = useState<RawAudioTrack[]>([]);
+  const [rawSubtitleTracks, setRawSubtitleTracks] = useState<RawSubtitleTrack[]>([]);
   const appliedPersistedAudio = useRef(false);
   const appliedPersistedSub = useRef(false);
 
   useEffect(() => {
     if (!infoHash || !fileIndex) return;
     let cancelled = false;
-    rawAudioTracksRef.current = [];
-    rawSubtitleTracksRef.current = [];
+    setRawAudioTracks([]);
+    setRawSubtitleTracks([]);
     appliedPersistedAudio.current = false;
     appliedPersistedSub.current = false;
     fetchAudioTracks(infoHash, fileIndex).then((data) => {
       if (cancelled) return;
-      rawAudioTracksRef.current = data.tracks ?? [];
+      setRawAudioTracks(data.tracks ?? []);
     }).catch(() => {});
     fetchSubtitleTracks(infoHash, fileIndex).then((data) => {
       if (cancelled) return;
-      rawSubtitleTracksRef.current = data.tracks ?? [];
+      setRawSubtitleTracks(data.tracks ?? []);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [infoHash, fileIndex]);
@@ -453,36 +454,34 @@ export default function Player() {
   useEffect(() => {
     if (appliedPersistedAudio.current) return;
     if (!persistedTracks.audio) return;
-    const raw = rawAudioTracksRef.current;
-    if (raw.length === 0) return;
+    if (rawAudioTracks.length === 0) return;
     const idx = pickAudioTrack(
-      raw.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined, channels: t.channels })),
+      rawAudioTracks.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined, channels: t.channels })),
       persistedTracks.audio,
       "en",
     );
     if (idx >= 0) {
       mpvSetAudioTrack(idx);
-      activeAudioRef.current = raw[idx].streamIndex;
+      activeAudioRef.current = rawAudioTracks[idx].streamIndex;
       appliedPersistedAudio.current = true;
     }
-  }, [persistedTracks.audio, activeAudioRef, audioTracks]);
+  }, [persistedTracks.audio, activeAudioRef, rawAudioTracks]);
 
   useEffect(() => {
     if (appliedPersistedSub.current) return;
     if (!persistedTracks.subtitles) return;
-    const raw = rawSubtitleTracksRef.current;
-    if (raw.length === 0) return;
+    if (rawSubtitleTracks.length === 0) return;
     const idx = pickSubtitleTrack(
-      raw.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined })),
+      rawSubtitleTracks.map((t, i) => ({ index: i, lang: t.lang ?? "", title: t.title ?? undefined })),
       persistedTracks.subtitles,
       "en",
     );
     if (idx >= 0) {
       mpvSetSubtitleTrack(idx);
-      activeSubRef.current = `embedded:${raw[idx].streamIndex}`;
+      activeSubRef.current = `embedded:${rawSubtitleTracks[idx].streamIndex}`;
       appliedPersistedSub.current = true;
     }
-  }, [persistedTracks.subtitles, activeSubRef, subs]);
+  }, [persistedTracks.subtitles, activeSubRef, rawSubtitleTracks]);
 
   // ── Next episode (triggered by phone remote) ──
   const handleNextEpisode = useCallback(async (nextSeason: number, nextEpisode: number) => {
@@ -619,21 +618,56 @@ export default function Player() {
         const showTitle = state?.baseName || state?.title || mediaTitle;
         const epNum = state?.episode != null ? Number(state.episode) : null;
         const seasonNum = state?.season != null ? Number(state.season) : 1;
-        const [chapters, learned, aniskip] = await Promise.all([
+        console.info("[binge-markers] inputs", {
+          showTitle, seasonNum, epNum, duration,
+          tmdbId, imdbId: state?.imdbId ?? null,
+          bridgeHasChapterSupport: bridgeHasChapterSupport(),
+        });
+        const [chapters, learned, episodeMarkers] = await Promise.all([
           mpvGetChapters().catch(() => []),
           tmdbId ? getLearnedOffset(tmdbId).catch(() => null) : Promise.resolve(null),
           showTitle && epNum && Number.isFinite(epNum)
-            ? fetchAniskipMarkers(showTitle, epNum, duration, seasonNum).catch(() => null)
-            : Promise.resolve(null),
+            ? fetchEpisodeMarkers({
+                title: showTitle,
+                episode: epNum,
+                durationSec: duration,
+                season: seasonNum,
+                tmdbId: state?.tmdbId != null ? String(state.tmdbId) : undefined,
+                imdbId: state?.imdbId ?? undefined,
+              }).catch(() => ({ aniskip: null, introdb: null }))
+            : Promise.resolve({ aniskip: null, introdb: null }),
         ]);
+        const aniskip = episodeMarkers.aniskip;
+        const introdb = episodeMarkers.introdb;
+        console.info("[binge-markers] fetched", {
+          chapterCount: Array.isArray(chapters) ? chapters.length : null,
+          hasLearned: !!learned && learned.outro_offset !== null,
+          aniskipPresent: !!aniskip,
+          introdbPresent: !!introdb,
+          introdbPayload: introdb,
+        });
         const markers = computeMarkers({
           bridgeHasChapterSupport: bridgeHasChapterSupport(),
           chapters,
-          aniskip,
+          aniskip: aniskip ? {
+            opStart: aniskip.opStart, opEnd: aniskip.opEnd,
+            edStart: aniskip.edStart, episodeLength: aniskip.episodeLength,
+          } : null,
+          introdb: introdb ? {
+            introStart: introdb.intro?.startSec ?? null,
+            introEnd: introdb.intro?.endSec ?? null,
+            outroStart: introdb.outro?.startSec ?? null,
+            introSubmissionCount: introdb.intro?.submissionCount ?? 0,
+            outroSubmissionCount: introdb.outro?.submissionCount ?? 0,
+          } : null,
           learnedOutroOffset: learned && learned.outro_offset !== null
             ? { offset: learned.outro_offset, sampleCount: learned.sample_count }
             : null,
           fileDuration: duration,
+        });
+        console.info("[binge-markers] computed", {
+          introStart: markers.introStart, introEnd: markers.introEnd, introSource: markers.introSource,
+          outroStart: markers.outroStart, outroSource: markers.outroSource,
         });
         currentMarkersRef.current = markers;
         const prefetchVia = modeRef.current === "debrid" ? "debrid cache" : "torrent pieces";
@@ -679,6 +713,17 @@ export default function Player() {
             ed: aniskip.edStart > 0 ? { start: aniskip.edStart, end: duration } : null,
             durationMatch: Math.abs(aniskip.episodeLength - duration) <= 30,
             resolution: aniskip.resolution ?? null,
+          } : null,
+          introdb: introdb ? {
+            imdbId: introdb.imdbId,
+            intro: introdb.intro ? {
+              start: introdb.intro.startSec, end: introdb.intro.endSec,
+              confidence: introdb.intro.confidence, submissionCount: introdb.intro.submissionCount,
+            } : null,
+            outro: introdb.outro ? {
+              start: introdb.outro.startSec, end: introdb.outro.endSec,
+              confidence: introdb.outro.confidence, submissionCount: introdb.outro.submissionCount,
+            } : null,
           } : null,
           learnedOutro: learned && learned.outro_offset !== null
             ? { sampleCount: learned.sample_count, offset: learned.outro_offset }
@@ -846,7 +891,7 @@ export default function Player() {
           mpvSetSubtitleTrack(idx);
           if (rcSessionId && sub.value.startsWith("embedded:")) {
             const streamIdx = parseInt(sub.value.slice("embedded:".length), 10);
-            const raw = rawSubtitleTracksRef.current.find(t => t.streamIndex === streamIdx);
+            const raw = rawSubtitleTracks.find(t => t.streamIndex === streamIdx);
             if (raw?.lang) {
               void setPersistedTracks(rcSessionId, rcAuthToken, {
                 audio: persistedTracks.audio,
@@ -863,7 +908,7 @@ export default function Player() {
         const streamIdx = typeof streamIndex === "string" ? parseInt(streamIndex, 10) : streamIndex;
         activeAudioRef.current = streamIdx;
         if (rcSessionId) {
-          const raw = rawAudioTracksRef.current.find(t => t.streamIndex === streamIdx);
+          const raw = rawAudioTracks.find(t => t.streamIndex === streamIdx);
           if (raw?.lang) {
             void setPersistedTracks(rcSessionId, rcAuthToken, {
               audio: { lang: raw.lang, title: raw.title ?? "" },

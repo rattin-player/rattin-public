@@ -12,6 +12,7 @@ describe("computeMarkers — priority fall-through", () => {
         { time: 1260, title: "Ending" },
       ],
       aniskip: null,
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1380,
     });
@@ -27,6 +28,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: true,
       chapters: [],
       aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1380,
     });
@@ -41,6 +43,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: true,
       chapters: [],
       aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1430,
     });
@@ -54,6 +57,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: true,
       chapters: [],
       aniskip: null,
+      introdb: null,
       learnedOutroOffset: { offset: 1295, sampleCount: 3 },
       fileDuration: 1380,
     });
@@ -66,6 +70,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: false,
       chapters: [],
       aniskip: null,
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1380,
     });
@@ -77,6 +82,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: true,
       chapters: [],
       aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1410,
     });
@@ -88,6 +94,7 @@ describe("computeMarkers — priority fall-through", () => {
       bridgeHasChapterSupport: true,
       chapters: [],
       aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1410.01,
     });
@@ -105,6 +112,7 @@ describe("computeMarkers — priority fall-through", () => {
         { time: 1200, title: "Part 2" },
       ],
       aniskip: null,
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1380,
     });
@@ -120,10 +128,119 @@ describe("computeMarkers — priority fall-through", () => {
         { time: 1200, title: "Ending" },
       ],
       aniskip: null,
+      introdb: null,
       learnedOutroOffset: null,
       fileDuration: 1380,
     });
     assert.equal(m.introStart, null);
     assert.equal(m.outroStart, 1200);
+  });
+});
+
+describe("computeMarkers — IntroDB source", () => {
+  it("uses IntroDB when AniSkip absent", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: null,
+      introdb: {
+        introStart: 10, introEnd: 80, outroStart: 1290,
+        introSubmissionCount: 5, outroSubmissionCount: 3,
+      },
+      learnedOutroOffset: null,
+      fileDuration: 1380,
+    });
+    assert.equal(m.introStart, 10);
+    assert.equal(m.introEnd, 80);
+    assert.equal(m.outroStart, 1290);
+    assert.equal(m.introSource, "IntroDB · ok");
+    assert.equal(m.outroSource, "IntroDB · ok");
+  });
+
+  it("AniSkip wins over IntroDB when both present and duration matches", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: {
+        introStart: 5, introEnd: 60, outroStart: 1200,
+        introSubmissionCount: 5, outroSubmissionCount: 5,
+      },
+      learnedOutroOffset: null,
+      fileDuration: 1380,
+    });
+    assert.equal(m.introStart, 20);
+    assert.equal(m.outroStart, 1300);
+    assert.equal(m.introSource, "AniSkip · duration OK");
+    assert.equal(m.outroSource, "AniSkip · duration OK");
+  });
+
+  it("partial merge: AniSkip OP + IntroDB outro when AniSkip has no ED", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: { opStart: 20, opEnd: 110, edStart: 0, episodeLength: 1380 },
+      introdb: {
+        introStart: null, introEnd: null, outroStart: 1295,
+        introSubmissionCount: 0, outroSubmissionCount: 4,
+      },
+      learnedOutroOffset: null,
+      fileDuration: 1380,
+    });
+    assert.equal(m.introStart, 20);
+    assert.equal(m.introEnd, 110);
+    assert.equal(m.outroStart, 1295);
+    assert.equal(m.introSource, "AniSkip · duration OK");
+    assert.equal(m.outroSource, "IntroDB · ok");
+  });
+
+  it("AniSkip duration mismatch — IntroDB fills both axes", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: { opStart: 20, opEnd: 110, edStart: 1300, episodeLength: 1380 },
+      introdb: {
+        introStart: 12, introEnd: 70, outroStart: 1285,
+        introSubmissionCount: 4, outroSubmissionCount: 4,
+      },
+      learnedOutroOffset: null,
+      fileDuration: 1430,
+    });
+    assert.equal(m.introStart, 12);
+    assert.equal(m.outroStart, 1285);
+    assert.equal(m.introSource, "IntroDB · ok");
+    assert.equal(m.outroSource, "IntroDB · ok");
+  });
+
+  it("IntroDB absent, AniSkip absent → learned-outro fallback still applies", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: null,
+      introdb: null,
+      learnedOutroOffset: { offset: 1295, sampleCount: 3 },
+      fileDuration: 1380,
+    });
+    assert.equal(m.outroStart, 1295);
+    assert.equal(m.outroSource, "learned outro offset");
+    assert.equal(m.introSource, "no IntroDB data");
+  });
+
+  it("IntroDB intro only — outro falls to learned-outro", () => {
+    const m = computeMarkers({
+      bridgeHasChapterSupport: true,
+      chapters: [],
+      aniskip: null,
+      introdb: {
+        introStart: 10, introEnd: 60, outroStart: null,
+        introSubmissionCount: 4, outroSubmissionCount: 0,
+      },
+      learnedOutroOffset: { offset: 1290, sampleCount: 2 },
+      fileDuration: 1380,
+    });
+    assert.equal(m.introStart, 10);
+    assert.equal(m.introSource, "IntroDB · ok");
+    assert.equal(m.outroStart, 1290);
+    assert.equal(m.outroSource, "learned outro offset");
   });
 });

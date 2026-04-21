@@ -104,7 +104,15 @@ export default function Remote() {
   const [bingeMode, setBingeModeState] = useState<{ enabled: boolean; capabilities: BingeCapabilities | null; diagnostics: BingeDiagnostics | null }>({ enabled: false, capabilities: null, diagnostics: null });
   const [bingeFlash, setBingeFlash] = useState<string | null>(null);
   const [showBingeDebug, setShowBingeDebug] = useState(false);
+  const [showBingeFeatures, setShowBingeFeatures] = useState(false);
   const bingeToastedRef = useRef(false);
+
+  // Dev-mode flag hides binge diagnostics panel unless explicitly requested
+  const devMode = (() => {
+    if (typeof window === "undefined") return false;
+    if (searchParams.get("dev") === "1") return true;
+    try { return window.localStorage.getItem("rattin.remoteDev") === "1"; } catch { return false; }
+  })();
 
   useEffect(() => {
     if (!bingeMode.enabled) { bingeToastedRef.current = false; setBingeFlash(null); return; }
@@ -729,9 +737,12 @@ export default function Remote() {
         <span className="remote-time">{formatTime(dur)}</span>
       </div>
 
-      <div className="remote-split-row">
-        <div className="remote-volume-row">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--text-secondary)">
+      {/* AUDIO */}
+      <section className="remote-section">
+        <div className="remote-section-label">Audio</div>
+        <div className="remote-control-row">
+          <span className="remote-control-label">Volume</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-muted)" aria-hidden="true">
             <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
           </svg>
           <input
@@ -741,259 +752,130 @@ export default function Remote() {
             value={displayVolume}
             onChange={handleVolumeChange}
             disabled={isDisabled}
+            aria-label="Volume"
           />
+          <span className="remote-volume-value">{Math.round(displayVolume * 100)}%</span>
         </div>
-        {state?.subs?.length > 0 && (
-          <select
-            className="remote-sub-select"
-            value={state.activeSub || ""}
-            onChange={(e) => sendCommand("subtitle", e.target.value)}
-            disabled={isDisabled}
-          >
-            <option value="">Subs Off</option>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.subs.map((s: any) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {state?.subs?.length > 0 && (
-        <div className="remote-split-row">
-          <div className="remote-sub-size">
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", -5)} disabled={isDisabled}>A−</button>
-            <span className="remote-sub-size-val">{state.subSize ?? 55}</span>
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-size", 5)} disabled={isDisabled}>A+</button>
-          </div>
-          <div className="remote-sub-size">
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", -0.1)} disabled={isDisabled}>−0.1s</button>
-            <span className={`remote-sub-size-val${(state.subDelay ?? 0) !== 0 ? " active" : ""}`}>{(state.subDelay ?? 0).toFixed(1)}s</span>
-            <button className="remote-sub-size-btn" onClick={() => sendCommand("sub-delay", 0.1)} disabled={isDisabled}>+0.1s</button>
-          </div>
-        </div>
-      )}
-
-      {state?.audioTracks?.length > 1 && (
-        <div className="remote-sub-row">
-          <select
-            className="remote-sub-select"
-            value={state.activeAudio ?? ""}
-            onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
-            disabled={isDisabled}
-          >
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {state.audioTracks.map((t: any) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="remote-split-row">
-        {state?.sources?.length > 1 && (
-          <button
-            className="remote-source-toggle"
-            onClick={() => { setShowSources((v) => !v); setShowEpisodes(false); }}
-            disabled={isDisabled}
-          >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-            </svg>
-            Sources ({state.sources.length})
-          </button>
-        )}
-        {state?.mediaType === "tv" && state?.season > 0 && state?.episode > 0 && (() => {
-          const next = nextEpisodeFrom({
-            season: state.season,
-            episode: state.episode,
-            seasonEpisodeCount: state.seasonEpisodeCount || undefined,
-            seasonCount: state.seasonCount || undefined,
-          });
-          if (!next) return null;
-          return (
-            <button
-              className="remote-next-episode"
-              onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
+        {state?.audioTracks?.length > 1 && (
+          <div className="remote-control-row">
+            <span className="remote-control-label">Track</span>
+            <select
+              className="remote-sub-select"
+              value={state.activeAudio ?? ""}
+              onChange={(e) => sendCommand("audio", parseInt(e.target.value, 10))}
               disabled={isDisabled}
+              aria-label="Audio track"
             >
-              Next Ep
-              <span className="remote-next-episode-label">S{next.season}E{next.episode}</span>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-              </svg>
-            </button>
-          );
-        })()}
-      </div>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {state.audioTracks.map((t: any) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </section>
 
-      {sessionId && (
-        <>
-          <button
-            className={bingeMode.enabled ? "remote-binge-toggle on" : "remote-binge-toggle"}
-            onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
-            disabled={isDisabled}
-          >
-            {bingeMode.enabled ? "Binge mode: ON" : "Binge mode: off"}
-          </button>
-          {!bingeMode.enabled && (
-            <div className="remote-binge-help">
-              Auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across episodes. Toggle off anytime to stop.
-            </div>
-          )}
-          {bingeFlash && <div className="remote-flash">{bingeFlash}</div>}
-          {bingeMode.enabled && bingeMode.capabilities && (
-            <div className="remote-binge-panel">
-              <div className="remote-binge-panel-header">
-                Binge mode: ON{state?.title ? ` — ${state.title}` : ""}
-                {state?.season && state?.episode ? ` S${state.season}E${state.episode}` : ""}
+      {/* SUBTITLES */}
+      {state?.subs?.length > 0 && (
+        <section className="remote-section">
+          <div className="remote-section-label">Subtitles</div>
+          <div className="remote-control-row">
+            <span className="remote-control-label">Track</span>
+            <select
+              className="remote-sub-select"
+              value={state.activeSub || ""}
+              onChange={(e) => sendCommand("subtitle", e.target.value)}
+              disabled={isDisabled}
+              aria-label="Subtitle track"
+            >
+              <option value="">Off</option>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {state.subs.map((s: any) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="remote-sub-controls-row">
+            <div className="remote-sub-control">
+              <span className="remote-sub-control-label">Size</span>
+              <div className="remote-stepper">
+                <button onClick={() => sendCommand("sub-size", -5)} disabled={isDisabled} aria-label="Decrease subtitle size">A−</button>
+                <span className="remote-stepper-value">{state.subSize ?? 55}</span>
+                <button onClick={() => sendCommand("sub-size", 5)} disabled={isDisabled} aria-label="Increase subtitle size">A+</button>
               </div>
-              <div>{symbolFor(bingeMode.capabilities.autoSkipIntro.enabled)} Auto-skip intro <span className="remote-binge-source">{bingeMode.capabilities.autoSkipIntro.source}</span></div>
-              <div>
-                {symbolFor(bingeMode.capabilities.autoSkipCredits.enabled)} Auto-skip credits{" "}
-                <span className="remote-binge-source">
-                  {bingeMode.capabilities.autoSkipCredits.source}
-                  {bingeMode.capabilities.autoSkipCredits.sampleCount != null
-                    ? ` (${bingeMode.capabilities.autoSkipCredits.sampleCount} sample${bingeMode.capabilities.autoSkipCredits.sampleCount === 1 ? "" : "s"})`
-                    : ""}
-                </span>
+            </div>
+            <div className="remote-sub-control">
+              <span className="remote-sub-control-label">Delay</span>
+              <div className="remote-stepper">
+                <button onClick={() => sendCommand("sub-delay", -0.1)} disabled={isDisabled} aria-label="Decrease subtitle delay">−0.1s</button>
+                <span className={`remote-stepper-value${(state.subDelay ?? 0) !== 0 ? " active" : ""}`}>{(state.subDelay ?? 0).toFixed(1)}s</span>
+                <button onClick={() => sendCommand("sub-delay", 0.1)} disabled={isDisabled} aria-label="Increase subtitle delay">+0.1s</button>
               </div>
-              <div>{symbolFor(bingeMode.capabilities.persistTracks.enabled)} Persist audio/subs</div>
-              <div>{symbolFor(bingeMode.capabilities.autoAdvance.enabled)} Auto-advance{bingeMode.capabilities.autoAdvance.viaEOF ? " on EOF" : ""}</div>
-              <div>{symbolFor(bingeMode.capabilities.prefetch.enabled)} Prefetch next episode <span className="remote-binge-source">{bingeMode.capabilities.prefetch.via ? `via ${bingeMode.capabilities.prefetch.via}` : ""}</span></div>
             </div>
-          )}
-          {bingeMode.enabled && bingeMode.diagnostics && (
-            <div className="remote-binge-debug">
-              <button
-                className="remote-binge-debug-toggle"
-                onClick={() => setShowBingeDebug((s) => !s)}
-                type="button"
-              >
-                {showBingeDebug ? "▾" : "▸"} Details
-                <span className="remote-binge-debug-state">
-                  state: {bingeMode.diagnostics.state}
-                  {bingeMode.diagnostics.nextAction
-                    ? ` → ${bingeMode.diagnostics.nextAction.kind}${bingeMode.diagnostics.nextAction.atTime != null ? ` @ ${fmtSec(bingeMode.diagnostics.nextAction.atTime)}` : ""}`
-                    : ""}
-                </span>
-              </button>
-              {showBingeDebug && (() => {
-                const d = bingeMode.diagnostics!;
-                const now = Date.now();
-                return (
-                  <div className="remote-binge-debug-body">
-                    <div className="remote-binge-debug-section">
-                      <div className="remote-binge-debug-section-title">Next action</div>
-                      {d.nextAction ? (
-                        <div>
-                          <span className="remote-binge-debug-kind">{d.nextAction.kind}</span>
-                          {d.nextAction.atTime != null && (
-                            <span className="remote-binge-debug-time"> @ {fmtSec(d.nextAction.atTime)}</span>
-                          )}
-                          <div className="remote-binge-source">{d.nextAction.reason}</div>
-                        </div>
-                      ) : (
-                        <div className="remote-binge-source">— no action scheduled</div>
-                      )}
-                    </div>
-                    <div className="remote-binge-debug-section">
-                      <div className="remote-binge-debug-section-title">Markers (duration {fmtSec(d.duration)})</div>
-                      {d.markers ? (
-                        <>
-                          <div>
-                            Intro: {d.markers.introStart != null ? `${fmtSec(d.markers.introStart)}–${fmtSec(d.markers.introEnd)}` : "—"}
-                            <span className="remote-binge-source"> {d.markers.introSource}</span>
-                          </div>
-                          <div>
-                            Outro: {d.markers.outroStart != null ? fmtSec(d.markers.outroStart) : "—"}
-                            <span className="remote-binge-source"> {d.markers.outroSource}</span>
-                          </div>
-                        </>
-                      ) : <div className="remote-binge-source">— not computed yet</div>}
-                    </div>
-                    <div className="remote-binge-debug-section">
-                      <div className="remote-binge-debug-section-title">Signals</div>
-                      <div>
-                        Chapters:{" "}
-                        {d.signals.chapters
-                          ? <>
-                              {d.signals.chapters.count} found
-                              {d.signals.chapters.intro && ` · intro ${fmtSec(d.signals.chapters.intro.start)}–${fmtSec(d.signals.chapters.intro.end)}`}
-                              {d.signals.chapters.outro && ` · outro ${fmtSec(d.signals.chapters.outro.start)}`}
-                            </>
-                          : <span className="remote-binge-source">none</span>}
-                      </div>
-                      <div>
-                        AniSkip:{" "}
-                        {d.signals.aniskip
-                          ? <>
-                              {d.signals.aniskip.op && `OP ${fmtSec(d.signals.aniskip.op.start)}–${fmtSec(d.signals.aniskip.op.end)}`}
-                              {d.signals.aniskip.ed && ` · ED ${fmtSec(d.signals.aniskip.ed.start)}`}
-                              {!d.signals.aniskip.durationMatch && <span className="remote-binge-source"> · duration mismatch</span>}
-                              {d.signals.aniskip.resolution && (
-                                <div className="remote-binge-source">
-                                  MAL #{d.signals.aniskip.resolution.malId} · {d.signals.aniskip.resolution.jikanTitle || "(no Jikan title)"}
-                                  {" · queried "}
-                                  <span style={{ fontStyle: "italic" }}>"{d.signals.aniskip.resolution.jikanQuery}"</span>
-                                  {!d.signals.aniskip.resolution.seasonSpecific && " · ⚠ season-ambiguous (fell back to base title)"}
-                                </div>
-                              )}
-                            </>
-                          : <span className="remote-binge-source">none</span>}
-                      </div>
-                      <div>
-                        Learned outro:{" "}
-                        {d.signals.learnedOutro
-                          ? `${fmtSec(d.signals.learnedOutro.offset)} (${d.signals.learnedOutro.sampleCount} sample${d.signals.learnedOutro.sampleCount === 1 ? "" : "s"})`
-                          : <span className="remote-binge-source">none</span>}
-                      </div>
-                    </div>
-                    <div className="remote-binge-debug-section">
-                      <div className="remote-binge-debug-section-title">
-                        Prefetch (fires @ {fmtSec((d.duration || 0) * d.prefetch.threshold)})
-                      </div>
-                      <div>
-                        {d.prefetch.firedAtTime != null
-                          ? <>fired @ {fmtSec(d.prefetch.firedAtTime)} · {d.prefetch.resolved ?? "in progress"}{d.prefetch.resolved === "ok" && ` · ready: ${d.prefetch.ready ? "yes" : "no"}`}</>
-                          : <span className="remote-binge-source">not yet fired</span>}
-                        {d.prefetch.error && <div className="remote-binge-source">error: {d.prefetch.error}</div>}
-                      </div>
-                    </div>
-                    <div className="remote-binge-debug-section">
-                      <div className="remote-binge-debug-section-title">Events (last {d.events.length})</div>
-                      {d.events.length === 0
-                        ? <div className="remote-binge-source">— none yet</div>
-                        : [...d.events].reverse().map((e: BingeEvent, i) => (
-                            <div key={i} className="remote-binge-debug-event">
-                              <span className="remote-binge-debug-event-kind">{e.kind}</span>
-                              {e.t != null && <span className="remote-binge-debug-event-t"> @ {fmtSec(e.t)}</span>}
-                              <span className="remote-binge-source"> · {fmtRelative(e.at, now)}</span>
-                              {e.detail && <div className="remote-binge-source">{e.detail}</div>}
-                            </div>
-                          ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </>
+          </div>
+        </section>
       )}
 
-      {state?.mediaType === "tv" && state?.tmdbId && (
-        <button
-          className="remote-episodes-toggle"
-          onClick={() => { if (!showEpisodes) openEpisodeBrowser(); else setShowEpisodes(false); setShowSources(false); }}
-          disabled={isDisabled}
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
-          </svg>
-          Episodes
-          {state.season > 0 && <span className="remote-episodes-current">S{state.season}E{state.episode}</span>}
-        </button>
-      )}
+      {/* CONTENT */}
+      {(() => {
+        const hasMultiSource = state?.sources?.length > 1;
+        const isTv = state?.mediaType === "tv" && state?.tmdbId;
+        const next = isTv && state?.season > 0 && state?.episode > 0
+          ? nextEpisodeFrom({
+              season: state.season,
+              episode: state.episode,
+              seasonEpisodeCount: state.seasonEpisodeCount || undefined,
+              seasonCount: state.seasonCount || undefined,
+            })
+          : null;
+        if (!hasMultiSource && !isTv) return null;
+        return (
+          <section className="remote-section">
+            <div className="remote-section-label">Content</div>
+            <div className="remote-content-row">
+              {isTv && (
+                <button
+                  className={`remote-content-btn${showEpisodes ? " active" : ""}`}
+                  onClick={() => { if (!showEpisodes) openEpisodeBrowser(); else setShowEpisodes(false); setShowSources(false); }}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Episodes</span>
+                  {state.season > 0 && <span className="remote-content-btn-meta">S{state.season}E{state.episode}</span>}
+                </button>
+              )}
+              {next && (
+                <button
+                  className="remote-content-btn"
+                  onClick={() => sendCommand("next-episode", { season: next.season, episode: next.episode })}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Next Ep</span>
+                  <span className="remote-content-btn-meta">S{next.season}E{next.episode}</span>
+                </button>
+              )}
+              {hasMultiSource && (
+                <button
+                  className={`remote-content-btn${showSources ? " active" : ""}`}
+                  onClick={() => { setShowSources((v) => !v); setShowEpisodes(false); }}
+                  disabled={isDisabled}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+                  </svg>
+                  <span className="remote-content-btn-label">Sources</span>
+                  <span className="remote-content-btn-meta">{state.sources.length}</span>
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       {showSources && state?.sources?.length > 1 && (
         <div className="remote-sources-panel">
@@ -1089,6 +971,200 @@ export default function Remote() {
             )}
           </div>
         </div>
+      )}
+
+      {/* BINGE MODE */}
+      {sessionId && state?.mediaType === "tv" && (
+        <section className="remote-section">
+          <div className="remote-binge-header">
+            <div className="remote-section-label">
+              Binge Mode
+              <span className="remote-binge-beta">BETA</span>
+            </div>
+            <button
+              type="button"
+              className={`remote-switch${bingeMode.enabled ? " on" : ""}`}
+              onClick={() => setBingeMode(sessionId, !bingeMode.enabled)}
+              disabled={isDisabled}
+              role="switch"
+              aria-checked={bingeMode.enabled}
+              aria-label="Toggle binge mode"
+            />
+          </div>
+          {!bingeMode.enabled && (
+            <p className="remote-binge-help">
+              Auto-skip intros and credits, auto-advance to the next episode, and keep your audio/subtitle picks across episodes.
+            </p>
+          )}
+          {bingeFlash && <div className="remote-flash">{bingeFlash}</div>}
+          {bingeMode.enabled && bingeMode.capabilities && (() => {
+            const c = bingeMode.capabilities;
+            const features = [
+              { key: "intro", label: "Auto-skip intro", enabled: c.autoSkipIntro.enabled, source: c.autoSkipIntro.source },
+              { key: "credits", label: "Auto-skip credits", enabled: c.autoSkipCredits.enabled, source: `${c.autoSkipCredits.source}${c.autoSkipCredits.sampleCount != null ? ` (${c.autoSkipCredits.sampleCount} sample${c.autoSkipCredits.sampleCount === 1 ? "" : "s"})` : ""}` },
+              { key: "tracks", label: "Persist audio/subs", enabled: c.persistTracks.enabled, source: "" },
+              { key: "advance", label: `Auto-advance${c.autoAdvance.viaEOF ? " on EOF" : ""}`, enabled: c.autoAdvance.enabled, source: "" },
+              { key: "prefetch", label: "Prefetch next episode", enabled: c.prefetch.enabled, source: c.prefetch.via ? `via ${c.prefetch.via}` : "" },
+            ];
+            const activeCount = features.filter((f) => f.enabled).length;
+            return (
+              <>
+                <button
+                  type="button"
+                  className="remote-binge-features-toggle"
+                  onClick={() => setShowBingeFeatures((s) => !s)}
+                  aria-expanded={showBingeFeatures}
+                >
+                  <span>{showBingeFeatures ? "▾" : "▸"} Features</span>
+                  <span className="remote-binge-features-count">{activeCount} of {features.length} active</span>
+                </button>
+                {showBingeFeatures && (
+                  <div className="remote-binge-panel">
+                    {features.map((f) => (
+                      <div key={f.key} className="remote-binge-feature">
+                        <span className={`remote-binge-feature-mark${f.enabled ? " on" : ""}`}>{symbolFor(f.enabled)}</span>
+                        <span className="remote-binge-feature-label">{f.label}</span>
+                        {f.source && <span className="remote-binge-source">{f.source}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+          {devMode && bingeMode.enabled && bingeMode.diagnostics && (
+            <div className="remote-binge-debug">
+              <button
+                className="remote-binge-debug-toggle"
+                onClick={() => setShowBingeDebug((s) => !s)}
+                type="button"
+              >
+                {showBingeDebug ? "▾" : "▸"} Details
+                <span className="remote-binge-debug-state">
+                  state: {bingeMode.diagnostics.state}
+                  {bingeMode.diagnostics.nextAction
+                    ? ` → ${bingeMode.diagnostics.nextAction.kind}${bingeMode.diagnostics.nextAction.atTime != null ? ` @ ${fmtSec(bingeMode.diagnostics.nextAction.atTime)}` : ""}`
+                    : ""}
+                </span>
+              </button>
+              {showBingeDebug && (() => {
+                const d = bingeMode.diagnostics!;
+                const now = Date.now();
+                return (
+                  <div className="remote-binge-debug-body">
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Next action</div>
+                      {d.nextAction ? (
+                        <div>
+                          <span className="remote-binge-debug-kind">{d.nextAction.kind}</span>
+                          {d.nextAction.atTime != null && (
+                            <span className="remote-binge-debug-time"> @ {fmtSec(d.nextAction.atTime)}</span>
+                          )}
+                          <div className="remote-binge-source">{d.nextAction.reason}</div>
+                        </div>
+                      ) : (
+                        <div className="remote-binge-source">— no action scheduled</div>
+                      )}
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Markers (duration {fmtSec(d.duration)})</div>
+                      {d.markers ? (
+                        <>
+                          <div>
+                            Intro: {d.markers.introStart != null ? `${fmtSec(d.markers.introStart)}–${fmtSec(d.markers.introEnd)}` : "—"}
+                            <span className="remote-binge-source"> {d.markers.introSource}</span>
+                          </div>
+                          <div>
+                            Outro: {d.markers.outroStart != null ? fmtSec(d.markers.outroStart) : "—"}
+                            <span className="remote-binge-source"> {d.markers.outroSource}</span>
+                          </div>
+                        </>
+                      ) : <div className="remote-binge-source">— not computed yet</div>}
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Signals</div>
+                      <div>
+                        Chapters:{" "}
+                        {d.signals.chapters
+                          ? <>
+                              {d.signals.chapters.count} found
+                              {d.signals.chapters.intro && ` · intro ${fmtSec(d.signals.chapters.intro.start)}–${fmtSec(d.signals.chapters.intro.end)}`}
+                              {d.signals.chapters.outro && ` · outro ${fmtSec(d.signals.chapters.outro.start)}`}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        AniSkip:{" "}
+                        {d.signals.aniskip
+                          ? <>
+                              {d.signals.aniskip.op && `OP ${fmtSec(d.signals.aniskip.op.start)}–${fmtSec(d.signals.aniskip.op.end)}`}
+                              {d.signals.aniskip.ed && ` · ED ${fmtSec(d.signals.aniskip.ed.start)}`}
+                              {!d.signals.aniskip.durationMatch && <span className="remote-binge-source"> · duration mismatch</span>}
+                              {d.signals.aniskip.resolution && (
+                                <div className="remote-binge-source">
+                                  MAL #{d.signals.aniskip.resolution.malId} · {d.signals.aniskip.resolution.jikanTitle || "(no Jikan title)"}
+                                  {" · queried "}
+                                  <span style={{ fontStyle: "italic" }}>"{d.signals.aniskip.resolution.jikanQuery}"</span>
+                                  {!d.signals.aniskip.resolution.seasonSpecific && " · ⚠ season-ambiguous (fell back to base title)"}
+                                </div>
+                              )}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        IntroDB:{" "}
+                        {d.signals.introdb
+                          ? <>
+                              <span className="remote-binge-source">imdb {d.signals.introdb.imdbId}</span>
+                              {d.signals.introdb.intro && (
+                                <div>intro {fmtSec(d.signals.introdb.intro.start)}–{fmtSec(d.signals.introdb.intro.end)} (n={d.signals.introdb.intro.submissionCount}, c={d.signals.introdb.intro.confidence.toFixed(2)})</div>
+                              )}
+                              {d.signals.introdb.outro && (
+                                <div>outro {fmtSec(d.signals.introdb.outro.start)}–{fmtSec(d.signals.introdb.outro.end)} (n={d.signals.introdb.outro.submissionCount}, c={d.signals.introdb.outro.confidence.toFixed(2)})</div>
+                              )}
+                              {!d.signals.introdb.intro && !d.signals.introdb.outro && (
+                                <span className="remote-binge-source"> · no segments passed floor</span>
+                              )}
+                            </>
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                      <div>
+                        Learned outro:{" "}
+                        {d.signals.learnedOutro
+                          ? `${fmtSec(d.signals.learnedOutro.offset)} (${d.signals.learnedOutro.sampleCount} sample${d.signals.learnedOutro.sampleCount === 1 ? "" : "s"})`
+                          : <span className="remote-binge-source">none</span>}
+                      </div>
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">
+                        Prefetch (fires @ {fmtSec((d.duration || 0) * d.prefetch.threshold)})
+                      </div>
+                      <div>
+                        {d.prefetch.firedAtTime != null
+                          ? <>fired @ {fmtSec(d.prefetch.firedAtTime)} · {d.prefetch.resolved ?? "in progress"}{d.prefetch.resolved === "ok" && ` · ready: ${d.prefetch.ready ? "yes" : "no"}`}</>
+                          : <span className="remote-binge-source">not yet fired</span>}
+                        {d.prefetch.error && <div className="remote-binge-source">error: {d.prefetch.error}</div>}
+                      </div>
+                    </div>
+                    <div className="remote-binge-debug-section">
+                      <div className="remote-binge-debug-section-title">Events (last {d.events.length})</div>
+                      {d.events.length === 0
+                        ? <div className="remote-binge-source">— none yet</div>
+                        : [...d.events].reverse().map((e: BingeEvent, i) => (
+                            <div key={i} className="remote-binge-debug-event">
+                              <span className="remote-binge-debug-event-kind">{e.kind}</span>
+                              {e.t != null && <span className="remote-binge-debug-event-t"> @ {fmtSec(e.t)}</span>}
+                              <span className="remote-binge-source"> · {fmtRelative(e.at, now)}</span>
+                              {e.detail && <div className="remote-binge-source">{e.detail}</div>}
+                            </div>
+                          ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </section>
       )}
 
       <div className="remote-bottom-row">

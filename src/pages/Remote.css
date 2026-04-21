@@ -1,4 +1,11 @@
 .remote-page {
+  /* Scoped contrast bump: remote surfaces sit on near-black with faint
+     translucent panels, so the default muted/secondary tones read as
+     gray-on-gray. These overrides raise every label and hint above 7:1
+     without touching the global tokens used elsewhere. */
+  --text-muted: #a8a1b3;
+  --text-secondary: #c6bfd1;
+
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg-deep);
@@ -451,7 +458,6 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-  opacity: 0.7;
 }
 
 .remote-torrent-info span {
@@ -803,6 +809,20 @@
 .remote-binge-toggle:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.remote-binge-beta {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--accent-bright);
+  color: var(--bg-deep);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(226, 192, 109, 0.25);
 }
 
 .remote-binge-panel {
@@ -1201,4 +1221,301 @@
   height: 100%;
   background: var(--accent-bright);
   border-radius: 0 1px 1px 0;
+}
+
+/* ── Grouped control sections ── */
+.remote-section {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.remote-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.remote-control-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.remote-control-row .remote-volume-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-control-row .remote-sub-select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.remote-volume-value {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Stepper (size / delay) ── */
+.remote-sub-controls-row {
+  display: flex;
+  gap: 10px;
+}
+
+.remote-sub-control {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.remote-sub-control-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.remote-stepper {
+  display: flex;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.remote-stepper button {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.remote-stepper button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.remote-stepper button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.remote-stepper-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.remote-stepper-value.active {
+  color: var(--accent-bright);
+}
+
+/* ── Content row: compact grouped buttons ── */
+.remote-content-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.remote-content-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  cursor: pointer;
+}
+
+.remote-content-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  background: var(--bg-hover);
+}
+
+.remote-content-btn.active {
+  border-color: var(--accent);
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.remote-content-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.remote-content-btn-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.remote-content-btn-meta {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── Binge header with switch ── */
+.remote-binge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remote-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.remote-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: left var(--transition), background var(--transition);
+}
+
+.remote-switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.remote-switch.on::after {
+  left: 22px;
+  background: var(--bg-deep);
+}
+
+.remote-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Binge features collapsible ── */
+.remote-binge-features-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.remote-binge-features-toggle:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.remote-binge-features-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.remote-binge-feature {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.remote-binge-feature-mark {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.remote-binge-feature-mark.on {
+  color: var(--green);
+}
+
+.remote-binge-feature-label {
+  flex-shrink: 0;
+}
+
+/* Override inherited binge-panel padding so it fits inside a section */
+.remote-section .remote-binge-panel {
+  margin-top: 0;
+  padding: 10px 12px;
+}
+
+.remote-section .remote-binge-help {
+  margin-top: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
