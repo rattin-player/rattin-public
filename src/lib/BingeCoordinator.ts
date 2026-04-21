@@ -142,6 +142,13 @@ export class BingeCoordinator {
     const m = this.deps.getMarkers();
     if (m.outroStart !== null && t >= m.outroStart) {
       this.enterAdvancing();
+      return;
+    }
+    // EOF fallback: some containers report a duration slightly past the real stream end
+    // (e.g. 46:01 reported vs 46:00 actual), so mpv never emits eofReached. When we have
+    // no outro marker, treat "within 1s of reported duration" as EOF.
+    if (m.outroStart === null && this.duration > 0 && t >= this.duration - 1) {
+      this.enterAdvancing();
     }
   }
 
