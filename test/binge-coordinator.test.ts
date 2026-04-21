@@ -77,6 +77,39 @@ describe("BingeCoordinator", () => {
     assert.ok(["advancing", "idle"].includes(c.state));
   });
 
+  it("time-based EOF fallback advances when outroStart is null and t is within 1s of duration", async () => {
+    const { deps, bingeEvents } = makeDeps({
+      getMarkers: () => ({
+        introStart: null, introEnd: null, outroStart: null,
+        outroSource: "no signal — advance on EOF" as const,
+        introSource: "no IntroDB data" as const,
+      }),
+    });
+    const c = new BingeCoordinator(deps);
+    c.setBingeEnabled(true);
+    c.onEpisodeStart({ duration: 2761, currentTime: 0 });
+    c.onTimeUpdate(2760);
+    await new Promise(r => setImmediate(r));
+    assert.ok(bingeEvents.some(e => e.kind === "advance-start"));
+    assert.ok(["advancing", "idle"].includes(c.state));
+  });
+
+  it("time-based EOF fallback does NOT fire when outroStart is set", async () => {
+    const { deps, bingeEvents } = makeDeps({
+      getMarkers: () => ({
+        introStart: null, introEnd: null, outroStart: 1300,
+        outroSource: "chapter markers" as const,
+        introSource: "no IntroDB data" as const,
+      }),
+    });
+    const c = new BingeCoordinator(deps);
+    c.setBingeEnabled(true);
+    c.onEpisodeStart({ duration: 1380, currentTime: 0 });
+    c.onTimeUpdate(1200); // before outroStart and before near-EOF window
+    await new Promise(r => setImmediate(r));
+    assert.ok(!bingeEvents.some(e => e.kind === "advance-start"));
+  });
+
   it("transitions to stopped on prefetch terminal failure", async () => {
     const { deps } = makeDeps({
       startPrefetch: async () => { throw new Error("no sources"); },

@@ -197,10 +197,12 @@ export type MarkerSource =
   | "chapter markers"
   | "AniSkip · duration OK"
   | "AniSkip · duration mismatch"
+  | "IntroDB · ok"
   | "learned outro offset"
   | "no signal — advance on EOF"
   | "no chapter data"
   | "no AniSkip data"
+  | "no IntroDB data"
   | "bridge missing chapter support";
 
 export interface BingeCapabilities {
@@ -262,6 +264,11 @@ export interface BingeDiagnostics {
         aniskipUrl: string;
         seasonSpecific: boolean;
       } | null;
+    } | null;
+    introdb: {
+      imdbId: string;
+      intro: { start: number; end: number; confidence: number; submissionCount: number } | null;
+      outro: { start: number; end: number; confidence: number; submissionCount: number } | null;
     } | null;
     learnedOutro: { sampleCount: number; offset: number } | null;
   };

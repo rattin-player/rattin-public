@@ -8,6 +8,8 @@ import { getFileOffset } from "../lib/torrent/torrent-compat.js";
 import { hasPiece } from "../lib/torrent/torrent-compat.js";
 import { VIDEO_EXTENSIONS, SUBTITLE_EXTENSIONS, srtToVtt } from "../lib/media/media-utils.js";
 import { detectIntro, lookupExternal, lookupAniskipMarkers } from "../lib/media/intro-detect.js";
+import { lookupIntrodbMarkers } from "../lib/media/introdb.js";
+import { isAnime } from "../lib/media/anime-detect.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
 import { getActiveDebridUrl, getActiveDebridFiles, getDebridFileUrl } from "../lib/torrent/debrid.js";
 
@@ -480,10 +482,13 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     }
   });
 
-  // Binge mode: fetch both OP and ED markers from AniSkip for capability computation.
-  // Returns null when AniSkip has no coverage or title can't be resolved.
-  app.get("/api/aniskip-markers", async (req: Request, res: Response) => {
-    const { title, episode, duration, season } = req.query as { title?: string; episode?: string; duration?: string; season?: string };
+  // Binge mode: fetch OP/ED markers from AniSkip (anime only, via anime-gate) and/or
+  // IntroDB (IMDb-keyed). Returns null for each source when data is unavailable.
+  app.get("/api/episode-markers", async (req: Request, res: Response) => {
+    const { title, episode, duration, season, tmdbId, imdbId } = req.query as {
+      title?: string; episode?: string; duration?: string; season?: string;
+      tmdbId?: string; imdbId?: string;
+    };
     if (!title || !episode || !duration) {
       return res.status(400).json({ error: "title, episode, duration required" });
     }
@@ -493,26 +498,56 @@ export default function mediaRoutes(app: Express, ctx: ServerContext): void {
     if (!Number.isFinite(ep) || !Number.isFinite(dur) || !Number.isFinite(seasonNum)) {
       return res.status(400).json({ error: "episode, duration, and season must be numbers" });
     }
-    try {
-      const markers = await lookupAniskipMarkers(title, ep, dur, seasonNum);
-      if (markers) {
-        log("info", "AniSkip lookup", {
-          title, season: seasonNum, episode: ep,
-          malId: markers.resolution.malId,
-          jikanTitle: markers.resolution.jikanTitle,
-          jikanQuery: markers.resolution.jikanQuery,
-          seasonSpecific: markers.resolution.seasonSpecific,
-          op: `${markers.opStart}-${markers.opEnd}`,
-          ed: markers.edStart,
-        });
-      } else {
-        log("info", "AniSkip lookup: no markers", { title, season: seasonNum, episode: ep });
+
+    log("info", "episode-markers request", {
+      title, season: seasonNum, episode: ep, duration: dur,
+      tmdbId: tmdbId ?? null, imdbId: imdbId ?? null,
+      willCallAniskipGate: !!tmdbId, willCallIntrodb: !!imdbId,
+    });
+
+    const [anime, introdb] = await Promise.all([
+      tmdbId ? isAnime(tmdbId).catch(() => false) : Promise.resolve(false),
+      imdbId ? lookupIntrodbMarkers(imdbId, seasonNum, ep, log).catch((err) => {
+        log("warn", "IntroDB lookup threw", { error: (err as Error).message });
+        return null;
+      }) : Promise.resolve(null),
+    ]);
+
+    log("info", "episode-markers gates", {
+      anime, introdbNull: introdb === null, imdbProvided: !!imdbId,
+    });
+
+    let aniskip = null;
+    if (anime) {
+      try {
+        aniskip = await lookupAniskipMarkers(title, ep, dur, seasonNum);
+        if (aniskip) {
+          log("info", "AniSkip lookup", {
+            title, season: seasonNum, episode: ep,
+            malId: aniskip.resolution.malId,
+            jikanTitle: aniskip.resolution.jikanTitle,
+            op: `${aniskip.opStart}-${aniskip.opEnd}`,
+            ed: aniskip.edStart,
+          });
+        } else {
+          log("info", "AniSkip lookup: no markers", { title, season: seasonNum, episode: ep });
+        }
+      } catch (err) {
+        log("warn", "AniSkip markers lookup failed", { error: (err as Error).message });
       }
-      res.json({ markers });
-    } catch (err) {
-      log("warn", "AniSkip markers lookup failed", { error: (err as Error).message });
-      res.json({ markers: null });
     }
+
+    if (introdb) {
+      log("info", "IntroDB lookup: hit", {
+        imdbId: introdb.imdbId, season: seasonNum, episode: ep,
+        intro: introdb.intro ? `${introdb.intro.startSec}-${introdb.intro.endSec} (n=${introdb.intro.submissionCount})` : null,
+        outro: introdb.outro ? `${introdb.outro.startSec} (n=${introdb.outro.submissionCount})` : null,
+      });
+    } else if (imdbId) {
+      log("info", "IntroDB lookup: no usable segments", { imdbId, season: seasonNum, episode: ep });
+    }
+
+    res.json({ aniskip, introdb });
   });
 
   // Extract an embedded subtitle stream as WebVTT
