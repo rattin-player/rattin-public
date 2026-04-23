@@ -19,9 +19,10 @@ describe("VPN routes", () => {
     it("returns status with active and configured fields", async () => {
       const res = await fetch(`${baseUrl}/api/vpn/status`);
       assert.equal(res.status, 200);
-      const body = await res.json() as { active: boolean; configured: boolean };
+      const body = await res.json() as { active: boolean; configured: boolean; supported?: boolean };
       assert.equal(typeof body.active, "boolean");
       assert.equal(typeof body.configured, "boolean");
+      if (body.supported !== undefined) assert.equal(typeof body.supported, "boolean");
       // No WireGuard config in test env
       assert.equal(body.active, false);
     });
@@ -50,15 +51,20 @@ describe("VPN routes", () => {
       assert.equal(res.status, 400);
     });
 
-    it("returns 400 when no WireGuard config exists", async () => {
+    it("returns a platform or config error when VPN cannot be enabled", async () => {
       const res = await fetch(`${baseUrl}/api/vpn/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "on" }),
       });
-      assert.equal(res.status, 400);
+      assert.ok(res.status === 400 || res.status === 501);
       const body = await res.json() as { error: string };
-      assert.ok(body.error.includes("WireGuard") || body.error.includes("config") || body.error.includes("supervisor"));
+      assert.ok(
+        body.error.includes("WireGuard")
+        || body.error.includes("config")
+        || body.error.includes("supervisor")
+        || body.error.includes("Linux")
+      );
     });
   });
 

@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+set(RATTIN_APP_VERSION "${PROJECT_VERSION}" CACHE STRING "Rattin app version")
 
 # Qt6 modules
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickDialogs2 WebEngineQuick WebChannel Network)
@@ -44,6 +45,10 @@ endif()
 
 add_executable(rattin-shell ${SOURCES})
 
+target_compile_definitions(rattin-shell PRIVATE
+    RATTIN_APP_VERSION="${RATTIN_APP_VERSION}"
+)
+
 target_link_libraries(rattin-shell PRIVATE
     Qt6::Quick
     Qt6::QuickDialogs2
@@ -58,5 +63,20 @@ if(WIN32)
     set_target_properties(rattin-shell PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
+if(APPLE)
+    set_target_properties(rattin-shell PROPERTIES
+        MACOSX_BUNDLE TRUE
+        OUTPUT_NAME "Rattin"
+        MACOSX_BUNDLE_BUNDLE_NAME "Rattin"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.rattin.player"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${RATTIN_APP_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${RATTIN_APP_VERSION}
+        BUILD_RPATH "@executable_path/../Frameworks"
+        INSTALL_RPATH "@executable_path/../Frameworks"
+    )
+endif()
+
 # Install
-install(TARGETS rattin-shell DESTINATION bin)
+install(TARGETS rattin-shell
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION bin)

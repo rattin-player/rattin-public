@@ -2,12 +2,17 @@ import path from "path";
 import os from "os";
 
 export const isWindows = process.platform === "win32";
+export const isMac = process.platform === "darwin";
 
 export function configDir(): string {
   if (process.env.MAGNET_CONFIG_DIR) return process.env.MAGNET_CONFIG_DIR;
-  return isWindows
-    ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Rattin")
-    : path.join(os.homedir(), ".config", "rattin");
+  if (isWindows) {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Rattin");
+  }
+  if (isMac) {
+    return path.join(os.homedir(), "Library", "Application Support", "Rattin");
+  }
+  return path.join(os.homedir(), ".config", "rattin");
 }
 
 export function downloadDir(): string {

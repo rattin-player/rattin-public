@@ -13,10 +13,19 @@ interface VpnState {
   configured: boolean;
 }
 
+const VPN_SUPPORTED = process.platform === "linux";
+
 function readState(): VpnState {
+  if (!VPN_SUPPORTED) {
+    return { active: false, configured: false };
+  }
   try {
     const raw = readFileSync(STATE_FILE, "utf8");
-    return JSON.parse(raw) as VpnState;
+    const state = JSON.parse(raw) as VpnState;
+    return {
+      active: Boolean(state.active),
+      configured: existsSync(WG_CONF),
+    };
   } catch {
     return { active: false, configured: existsSync(WG_CONF) };
   }
@@ -31,18 +40,19 @@ export default function vpnRoutes(app: Express, ctx: ServerContext): void {
     res.json({
       active: state.active,
       configured: state.configured,
+      supported: VPN_SUPPORTED,
     });
   });
 
   // Toggle VPN on/off — signals the supervisor via SIGUSR1
   app.post("/api/vpn/toggle", async (req: Request, res: Response) => {
-    if (process.platform === "win32") {
-      return res.status(501).json({ error: "VPN routing is not available on Windows" });
-    }
-
     const { action } = req.body as { action?: "on" | "off" };
     if (action !== "on" && action !== "off") {
       return res.status(400).json({ error: "action must be 'on' or 'off'" });
+    }
+
+    if (!VPN_SUPPORTED) {
+      return res.status(501).json({ error: "VPN routing is only available on Linux" });
     }
 
     const state = readState();

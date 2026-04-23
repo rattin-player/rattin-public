@@ -19,10 +19,15 @@
 #include <windows.h>
 #else
 #include <signal.h>
+#include <unistd.h>
 #endif
 
 #include "mpvobject.h"
 #include "mpvbridge.h"
+
+#ifndef RATTIN_APP_VERSION
+#define RATTIN_APP_VERSION "1.0.0"
+#endif
 
 static int findFreePort()
 {
@@ -64,6 +69,71 @@ static void messageHandler(QtMsgType, const QMessageLogContext &, const QString 
     fprintf(stderr, "qml: %s\n", msg.toUtf8().constData());
 }
 
+static bool looksLikeAppDir(const QString &path)
+{
+    return QFile::exists(path + "/package.json")
+        && (QFile::exists(path + "/server.ts") || QFile::exists(path + "/server.js"));
+}
+
+static QString canonicalAppDir(const QString &path)
+{
+    const QString canonical = QDir(path).canonicalPath();
+    if (canonical.isEmpty() || !looksLikeAppDir(canonical))
+        return QString();
+    return canonical.endsWith('/') ? canonical : canonical + "/";
+}
+
+static QString detectAppDir(const QString &binDir)
+{
+    if (qEnvironmentVariableIsSet("MAGNET_APP_DIR")) {
+        QString path = qEnvironmentVariable("MAGNET_APP_DIR");
+        return path.endsWith('/') ? path : path + "/";
+    }
+
+#ifdef Q_OS_WIN
+    const QString installedDir = canonicalAppDir(binDir + "/app");
+    if (!installedDir.isEmpty()) return installedDir;
+#elif defined(Q_OS_MACOS)
+    const QString bundledDir = canonicalAppDir(binDir + "/../Resources/app");
+    if (!bundledDir.isEmpty()) return bundledDir;
+
+    const QString devBundleDir = canonicalAppDir(binDir + "/../../../../");
+    if (!devBundleDir.isEmpty()) return devBundleDir;
+#endif
+
+    const QString devDir = canonicalAppDir(binDir + "/../../");
+    if (!devDir.isEmpty()) return devDir;
+
+    return QString();
+}
+
+static QString detectConfigDir(const QString &appDir)
+{
+    if (qEnvironmentVariableIsSet("MAGNET_CONFIG_DIR"))
+        return qEnvironmentVariable("MAGNET_CONFIG_DIR");
+
+#ifdef Q_OS_WIN
+    return qEnvironmentVariable("APPDATA", QDir::homePath() + "/AppData/Roaming") + "/Rattin";
+#elif defined(Q_OS_MACOS)
+    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    if (!configDir.isEmpty())
+        return configDir;
+    return QDir::homePath() + "/Library/Application Support/Rattin";
+#else
+    return appDir;
+#endif
+}
+
+static QString detectBundledRuntimeDir(const QString &binDir)
+{
+#ifdef Q_OS_MACOS
+    return QDir(binDir + "/../Resources/runtime/bin").canonicalPath();
+#else
+    Q_UNUSED(binDir);
+    return QString();
+#endif
+}
+
 int main(int argc, char *argv[])
 {
     qInstallMessageHandler(messageHandler);
@@ -91,7 +161,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("Rattin");
     app.setOrganizationName("Rattin");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(QStringLiteral(RATTIN_APP_VERSION));
 
     // Set window icon — on Linux, look next to the binary or in standard paths;
     // on Windows the .exe already embeds the icon via rattin.rc.
@@ -99,6 +169,9 @@ int main(int argc, char *argv[])
     {
         QString binDir = QCoreApplication::applicationDirPath();
         QStringList iconPaths = {
+#ifdef Q_OS_MACOS
+            binDir + "/../Resources/Rattin.icns",
+#endif
             binDir + "/../share/icons/hicolor/scalable/apps/rattin.svg",
             binDir + "/../../packaging/linux/rattin.svg",
         };
@@ -130,35 +203,21 @@ int main(int argc, char *argv[])
 #endif
     serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
 
-    // Find the app directory (where server.ts and node_modules live).
-    // When MAGNET_APP_DIR is set (AppImage mode), use that directly.
-    // Otherwise, binary lives at <root>/shell/build/rattin-shell — go up 2 levels.
+    // Find the app directory (where server.{ts,js} and node_modules live).
+    // Handles AppImage/Windows packaging, the macOS .app bundle layout, and
+    // local source builds.
     QString binDir = QCoreApplication::applicationDirPath();
-    QString appDir;
-    if (qEnvironmentVariableIsSet("MAGNET_APP_DIR"))
-        appDir = qEnvironmentVariable("MAGNET_APP_DIR");
-    else
-#ifdef Q_OS_WIN
-        // Installed layout: binary sits in root, app code in app/ subdirectory
-        appDir = QDir(binDir + "/app/").canonicalPath() + "/";
-#else
-        // Dev layout: binary at shell/build/rattin-shell — go up 2 levels
-        appDir = QDir(binDir + "/../../").canonicalPath() + "/";
-#endif
+    QString appDir = detectAppDir(binDir);
+    if (appDir.isEmpty()) {
+        fprintf(stderr, "[shell] ERROR: could not locate app directory from %s\n", binDir.toUtf8().constData());
+        return 1;
+    }
     serverProcess->setWorkingDirectory(appDir);
 
-    // Config directory for .env file (writable — outside AppImage mount).
-    // Falls back to appDir for non-AppImage installs.
-    QString configDir;
-    if (qEnvironmentVariableIsSet("MAGNET_CONFIG_DIR"))
-        configDir = qEnvironmentVariable("MAGNET_CONFIG_DIR");
-    else
-#ifdef Q_OS_WIN
-        // %APPDATA%/Rattin — matches lib/paths.ts configDir() on Windows
-        configDir = qEnvironmentVariable("APPDATA", QDir::homePath() + "/AppData/Roaming") + "/Rattin";
-#else
-        configDir = appDir;
-#endif
+    // Config directory for .env file (writable — outside packaged assets).
+    // Uses platform-native config locations on macOS/Windows and appDir on Linux.
+    QString configDir = detectConfigDir(appDir);
+    QString bundledRuntimeDir = detectBundledRuntimeDir(binDir);
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("PORT", QString::number(port));
@@ -169,6 +228,16 @@ int main(int argc, char *argv[])
     // Add the directory containing rattin-runtime.exe to PATH
     QString nodePath = QDir(binDir).canonicalPath();
     env.insert("PATH", nodePath + ";" + env.value("PATH"));
+#elif defined(Q_OS_MACOS)
+    env.insert("MAGNET_CONFIG_DIR", configDir);
+    if (!bundledRuntimeDir.isEmpty()) {
+        QString pathValue = env.value("PATH");
+        env.insert("PATH", bundledRuntimeDir + (pathValue.isEmpty() ? "" : ":" + pathValue));
+
+        QString bundledNode = bundledRuntimeDir + "/node";
+        if (QFile::exists(bundledNode))
+            env.insert("MAGNET_NODE_PATH", bundledNode);
+    }
 #endif
 
     // Load .env file and inject vars into process environment directly.

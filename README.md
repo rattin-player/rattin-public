@@ -10,6 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/desktop-linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux" />
+  <img src="https://img.shields.io/badge/desktop-macOS-111111?style=for-the-badge&logo=apple&logoColor=white" alt="macOS" />
   <img src="https://img.shields.io/badge/desktop-windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/remote-phone-34A853?style=for-the-badge&logo=android&logoColor=white" alt="Remote" />
 </p>
@@ -93,6 +94,43 @@ Download the installer or portable ZIP from the [latest release](https://github.
 - **Rattin-x64-Portable.zip** — extract and run, no install needed
 
 On first launch, go to Settings (gear icon) and enter a free [TMDB API key](https://www.themoviedb.org/settings/api).
+
+### :apple: macOS
+
+macOS support is a local source-build preview for now. The app can be built on current Apple Silicon macOS releases, and the build script produces a self-contained `.app` bundle plus a ZIP for local use. Public signed/notarized release artifacts are not available yet.
+
+Install the native dependencies with Homebrew:
+
+```bash
+brew install cmake pkgconf qt qtwebengine mpv ffmpeg node@20
+```
+
+Then build the app bundle:
+
+```bash
+bash install/build-macos.sh
+open build-macos/Rattin.app
+```
+
+To force a full rebuild:
+
+```bash
+bash install/build-macos.sh --clean
+```
+
+If Finder blocks the bundle on first launch, clear quarantine once:
+
+```bash
+xattr -dr com.apple.quarantine build-macos/Rattin.app
+```
+
+Notes:
+
+- This produces a local `.app` bundle plus a ZIP in the repo root.
+- The build applies a local ad-hoc code signature so the bundle is structurally valid on macOS, but Gatekeeper will still treat it as an unidentified developer build until it is Developer ID signed and notarized.
+- If macOS still blocks launch after clearing quarantine, use Finder's `Open` action once or allow it from `System Settings -> Privacy & Security`.
+- Settings and saved config live under `~/Library/Application Support/Rattin`.
+- Per-app VPN routing is still Linux-only.
 
 ---
 

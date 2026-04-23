@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { AddressInfo } from "node:net";
-import { createApp } from "../../server.js";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { TorrentClient } from "../../lib/types.js";
 
 interface MockTorrent extends EventEmitter {
@@ -34,7 +36,24 @@ export interface MockClient extends EventEmitter {
   resume(): void;
 }
 
-type AppResult = ReturnType<typeof createApp>;
+const TEST_CONFIG_DIR = mkdtempSync(path.join(os.tmpdir(), "rattin-test-config-"));
+let serverModulePromise: Promise<typeof import("../../server.js")> | null = null;
+
+process.once("exit", () => {
+  rmSync(TEST_CONFIG_DIR, { recursive: true, force: true });
+});
+
+async function loadServerModule(): Promise<typeof import("../../server.js")> {
+  process.env.MAGNET_CONFIG_DIR = TEST_CONFIG_DIR;
+  mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+
+  if (!serverModulePromise) {
+    serverModulePromise = import("../../server.js");
+  }
+  return serverModulePromise;
+}
+
+type AppResult = ReturnType<(typeof import("../../server.js"))["createApp"]>;
 
 export interface TestServerResult extends AppResult {
   baseUrl: string;
@@ -95,8 +114,9 @@ export function mockClient(): MockClient {
  * Create an Express app with a mock WebTorrent client.
  * Returns everything createApp returns.
  */
-export function createTestApp(overrides: Record<string, unknown> = {}): AppResult {
+export async function createTestApp(overrides: Record<string, unknown> = {}): Promise<AppResult> {
   const client = (overrides.client || mockClient()) as TorrentClient;
+  const { createApp } = await loadServerModule();
   return createApp({ client, ...overrides });
 }
 
@@ -104,9 +124,9 @@ export function createTestApp(overrides: Record<string, unknown> = {}): AppResul
  * Start the Express app on a random port.
  * Returns { baseUrl, server, close, ...appResult }.
  */
-export function startTestServer(overrides: Record<string, unknown> = {}): Promise<TestServerResult> {
-  return new Promise((resolve, reject) => {
-    const appResult = createTestApp(overrides);
+export async function startTestServer(overrides: Record<string, unknown> = {}): Promise<TestServerResult> {
+  const appResult = await createTestApp(overrides);
+  return await new Promise((resolve, reject) => {
     const server = appResult.app.listen(0, () => {
       const { port } = server.address() as AddressInfo;
       const baseUrl = `http://127.0.0.1:${port}`;
