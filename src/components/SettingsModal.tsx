@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount, getPluginStatus, getPluginIndex, installPlugin, reloadPlugin, uninstallPlugin, getSettings, updateSettings, browseFolder } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount, getPluginStatus, getPluginIndex, installPlugin, installPluginFromUrl, reloadPlugin, uninstallPlugin, getSettings, updateSettings, browseFolder } from "../lib/api";
 import UpdateSection from "./UpdateSection";
 import "./SettingsModal.css";
 
@@ -137,6 +137,18 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     } catch {}
   }
 
+  async function loadPluginStatus() {
+    try {
+      const status = await getPluginStatus();
+      setPluginStatus(status);
+      if (status.sourceUrl) {
+        setSourceUrlInput(status.sourceUrl);
+      }
+    } catch {
+      setPluginStatus({ installed: false, running: false, plugin: null, sourceUrl: null });
+    }
+  }
+
   async function loadSettings() {
     try {
       const s = await getSettings();
@@ -157,83 +169,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     } catch (err) {
       setPluginError((err as Error).message || "Installation failed");
     }
-    setPluginInstalling(false);
-  }
-
-  async function handleUninstallPlugin() {
-    try { await uninstallPlugin(); await loadPluginStatus(); }
-    catch { setPluginError("Uninstall failed"); }
-  }
-
-  async function handleReloadPlugin() {
-    try { await reloadPlugin(); await loadPluginStatus(); }
-    catch { setPluginError("Reload failed"); }
-  }
-    } catch {
-      setPluginStatus({ installed: false, running: false, plugin: null, sourceUrl: null });
-    }
-  }
-
-  async function loadPluginIndex() {
-    try { setPluginIndex(await getPluginIndex()); }
-    catch { setPluginIndex([]); }
-  }
-
-  async function loadSettings() {
-    try {
-      const s = await getSettings();
-      setSettingsState(s);
-      setDownloadPathInput(s.downloadPath || "");
-    } catch {}
-  }
-
-  // ── Plugin handlers ──
-
-  async function handleInstallPlugin() {
-    const entry = pluginIndex[0];
-    if (!entry) return;
-    setPluginInstalling(true);
-    setPluginError("");
-    try {
-      await installPlugin(entry.downloadUrl, {
-        id: entry.id, name: entry.name, description: entry.description,
-        author: "rattin", downloadUrl: entry.downloadUrl,
-        sha256: entry.sha256, version: entry.version, apiVersion: 1,
-      });
-      await loadPluginStatus();
-    } catch { setPluginError("Installation failed"); }
-    setPluginInstalling(false);
-  }
-
-  async function handleUpdatePlugin() {
-    const entry = pluginIndex[0];
-    if (!entry) return;
-    setPluginInstalling(true);
-    setPluginError("");
-    try {
-      await installPlugin(entry.downloadUrl, {
-        id: entry.id, name: entry.name, description: entry.description,
-        author: "rattin", downloadUrl: entry.downloadUrl,
-        sha256: entry.sha256, version: entry.version, apiVersion: 1,
-      });
-      await loadPluginStatus();
-    } catch { setPluginError("Update failed"); }
-    setPluginInstalling(false);
-  }
-
-  async function handleManualInstall() {
-    if (!manualUrl.trim()) return;
-    setPluginInstalling(true);
-    setPluginError("");
-    try {
-      await installPlugin(manualUrl.trim(), {
-        id: "manual", name: "Manual Install", description: "Installed from URL",
-        author: "unknown", downloadUrl: manualUrl.trim(),
-        sha256: "", version: "0.0.0", apiVersion: 1,
-      });
-      await loadPluginStatus();
-      setManualUrl("");
-    } catch { setPluginError("Manual install failed — plugin may be unsigned"); }
     setPluginInstalling(false);
   }
 
