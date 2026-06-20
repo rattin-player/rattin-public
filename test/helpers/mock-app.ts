@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type { AddressInfo } from "node:net";
 import { createApp } from "../../server.js";
 import type { TorrentClient } from "../../lib/types.js";
+import type { PluginRegistry } from "../../lib/plugins/types.js";
 
 interface MockTorrent extends EventEmitter {
   infoHash: string;
@@ -97,7 +98,8 @@ export function mockClient(): MockClient {
  */
 export function createTestApp(overrides: Record<string, unknown> = {}): AppResult {
   const client = (overrides.client || mockClient()) as TorrentClient;
-  return createApp({ client, ...overrides });
+  const { pluginRegistry, ...rest } = overrides;
+  return createApp({ client, pluginRegistry: pluginRegistry as PluginRegistry | undefined, ...rest });
 }
 
 /**
