@@ -23,6 +23,7 @@ interface StoredMeta {
   id: string;
   name: string;
   version: string;
+  sourceUrl?: string;
 }
 
 export class PluginRegistryImpl implements PluginRegistry {
@@ -65,6 +66,7 @@ export class PluginRegistryImpl implements PluginRegistry {
     return {
       installed: this.isInstalled(),
       plugin: this.meta ? { id: this.meta.id, name: this.meta.name, version: this.meta.version } : null,
+      sourceUrl: this.meta?.sourceUrl ?? null,
       running: this.isRunning(),
     };
   }
@@ -91,7 +93,35 @@ export class PluginRegistryImpl implements PluginRegistry {
       id: entry.id,
       name: entry.name,
       version: entry.version,
+      sourceUrl: url,
     });
+  }
+
+  async installFromUrlSimple(url: string): Promise<void> {
+    this.deps.log("info", "Installing plugin from URL (simple)", { url });
+    const content = await this.downloadPlugin(url);
+    // Verify signature (primary trust gate)
+    const signature = await this.downloadSignature(url);
+    if (!signature || !verifyPluginSignature(content, signature)) {
+      if (!this.allowUnsigned) {
+        throw new Error("Plugin signature verification failed — plugin is not signed by a trusted publisher");
+      }
+      this.deps.log("warn", "Allowing unsigned plugin (developer mode)", { url });
+    }
+    // Save and spawn temporarily to get health info
+    await this.killProcess();
+    mkdirSync(this.dir, { recursive: true });
+    writeFileSync(this.filePath, content);
+    await this.spawnProcess(this.filePath);
+    const health = await this.healthCheck();
+    this.meta = {
+      id: health?.id || "unknown",
+      name: health?.name || "Plugin",
+      version: health?.version || "0.0.0",
+      sourceUrl: url,
+    };
+    this.saveMeta();
+    // Already spawned, we're done
   }
 
   async installFromFile(filePath: string): Promise<void> {

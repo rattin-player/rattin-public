@@ -65,6 +65,22 @@ export default function pluginRoutes(app: Express, ctx: ServerContext): void {
     }
   });
 
+  // POST /api/plugins/install-url — simple URL install (auto-detect metadata from /health)
+  app.post("/api/plugins/install-url", async (req: Request, res: Response) => {
+    const { url } = req.body as { url?: string };
+    if (!url) {
+      return res.status(400).json({ error: "url is required" });
+    }
+    try {
+      await pluginRegistry.installFromUrlSimple(url);
+      log("info", "Plugin installed from URL", { url });
+      res.json(pluginRegistry.getStatus());
+    } catch (err) {
+      log("err", "Plugin install failed", { error: (err as Error).message });
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // POST /api/plugins/reload — kill and respawn
   app.post("/api/plugins/reload", async (_req: Request, res: Response) => {
     try {

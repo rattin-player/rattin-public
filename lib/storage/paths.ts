@@ -1,5 +1,6 @@
 import path from "path";
 import os from "os";
+import { readFileSync } from "fs";
 
 export const isWindows = process.platform === "win32";
 
@@ -15,6 +16,13 @@ function cacheBase(): string {
 }
 
 export function downloadDir(): string {
+  // Check settings file first (read directly to avoid circular import with settings.ts)
+  try {
+    const settingsPath = path.join(configDir(), "settings.json");
+    const raw = readFileSync(settingsPath, "utf8");
+    const settings = JSON.parse(raw);
+    if (settings.downloadPath) return path.join(settings.downloadPath, "rattin-tmp");
+  } catch {}
   return process.env.DOWNLOAD_PATH || path.join(cacheBase(), "rattin");
 }
 

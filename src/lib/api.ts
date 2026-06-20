@@ -555,10 +555,44 @@ export async function installPlugin(url: string, entry: {
   if (!res.ok) throw new Error("install_failed");
 }
 
+export async function installPluginFromUrl(url: string): Promise<void> {
+  const res = await fetch("/api/plugins/install-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || "install_failed");
+  }
+}
+
 export async function reloadPlugin(): Promise<void> {
   await fetch("/api/plugins/reload", { method: "POST" });
 }
 
 export async function uninstallPlugin(): Promise<void> {
   await fetch("/api/plugins", { method: "DELETE" });
+}
+
+// ── Settings API ─────────────────────────────────────────────────
+
+export async function getSettings(): Promise<{ downloadPath?: string }> {
+  return get("/api/settings");
+}
+
+export async function updateSettings(patch: { downloadPath?: string }): Promise<{ downloadPath?: string }> {
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("update_failed");
+  return res.json();
+}
+
+export async function browseFolder(): Promise<string | null> {
+  const res = await fetch("/api/browse-folder", { method: "POST" });
+  const data = await res.json() as { path: string | null; error?: string };
+  return data.path || null;
 }

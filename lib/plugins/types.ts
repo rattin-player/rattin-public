@@ -40,6 +40,7 @@ export interface PluginIndexEntry {
 export interface PluginStatus {
   installed: boolean;
   plugin: { id: string; name: string; version: string } | null;
+  sourceUrl: string | null;
   running: boolean;
 }
 
@@ -72,6 +73,7 @@ export interface PluginRegistry {
   searchBatch(queries: SearchQuery[]): Promise<SearchResult[][]>;
   availability(items: AvailabilityItem[]): Promise<AvailabilityResult>;
   installFromUrl(url: string, entry: PluginIndexEntry): Promise<void>;
+  installFromUrlSimple(url: string): Promise<void>;
   installFromFile(filePath: string): Promise<void>;
   reload(): Promise<void>;
   uninstall(): Promise<void>;

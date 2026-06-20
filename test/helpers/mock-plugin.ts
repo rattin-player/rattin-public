@@ -46,6 +46,7 @@ export class MockPluginRegistry implements PluginRegistry {
     return {
       installed: this.installed,
       plugin: this.meta,
+      sourceUrl: this.meta ? "https://mock.example.com/plugin.js" : null,
       running: this.running,
     };
   }
@@ -78,6 +79,12 @@ export class MockPluginRegistry implements PluginRegistry {
   }
 
   async installFromUrl(_url: string, _entry: PluginIndexEntry): Promise<void> {
+    this.installed = true;
+    this.running = true;
+    this.meta = { id: "mock", name: "Mock Plugin", version: "1.0.0" };
+  }
+
+  async installFromUrlSimple(_url: string): Promise<void> {
     this.installed = true;
     this.running = true;
     this.meta = { id: "mock", name: "Mock Plugin", version: "1.0.0" };

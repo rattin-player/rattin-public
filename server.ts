@@ -23,6 +23,7 @@ import learnOffsetRoutes from "./routes/learn-offset.js";
 import storageRoutes from "./routes/storage.js";
 import updateRoutes from "./routes/update.js";
 import pluginRoutes from "./routes/plugins.js";
+import settingsRoutes from "./routes/settings.js";
 import { createPluginRegistry } from "./lib/plugins/registry.js";
 import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker, RCSession } from "./lib/types.js";
@@ -176,6 +177,7 @@ learnOffsetRoutes(app, ctx);
 storageRoutes(app, ctx);
 updateRoutes(app, ctx);
 pluginRoutes(app, ctx);
+settingsRoutes(app, ctx);
 
 // Disk space janitor — every 60s, evict oldest cache files if free space < 2GB
 const _diskJanitor = setInterval(() => {
