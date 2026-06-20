@@ -17,10 +17,13 @@ export interface SearchResult {
   seeders: number;
   leechers?: number;
   source: string;
+  seasonPack?: boolean;
   fileIdx?: number;
   languages?: string[];
   hasSubs?: boolean;
-  seasonPack?: boolean;
+  subLanguages?: string[];
+  multiAudio?: boolean;
+  foreignOnly?: boolean;
 }
 
 export interface PluginIndexEntry {
