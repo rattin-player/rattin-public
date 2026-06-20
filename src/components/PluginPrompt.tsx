@@ -57,7 +57,6 @@ export default function PluginPrompt({ onInstalled, onClose }: PluginPromptProps
           {entry && (
             <div className="plugin-prompt-entry">
               <div className="plugin-prompt-entry-name">{entry.name}</div>
-              <div className="plugin-prompt-entry-version">v{entry.version}</div>
               <div className="plugin-prompt-entry-desc">{entry.description}</div>
               <div className="plugin-prompt-entry-author">
                 <span className="plugin-prompt-meta-label">Author</span>

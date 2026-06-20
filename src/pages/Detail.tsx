@@ -186,8 +186,14 @@ export default function Detail() {
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const results = await searchStreams(title, year, type, season, episode, imdbId);
       setStreams(results);
-    } catch {
-      setStreams([]);
+    } catch (err: unknown) {
+      if ((err as Error).message === "no_source") {
+        setShowPicker(false);
+        lastPlayRef.current = { season, episode };
+        setShowPluginPrompt(true);
+      } else {
+        setStreams([]);
+      }
     }
   }
 
