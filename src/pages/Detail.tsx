@@ -6,6 +6,7 @@ import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
 import SourcePicker from "../components/SourcePicker";
+import PluginPrompt from "../components/PluginPrompt";
 import "./Detail.css";
 
 // Helper to check if resume point season exists in available seasons
@@ -55,6 +56,8 @@ export default function Detail() {
   const [episodeGroupSeasons, setEpisodeGroupSeasons] = useState<any[] | null>(null);
   const [recoveryKey, setRecoveryKey] = useState(0);
   useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
+  const [showPluginPrompt, setShowPluginPrompt] = useState(false);
+  const lastPlayRef = useRef<{ season?: number; episode?: number } | null>(null);
 
   // Reset visible state on navigation only (not on recovery)
   useEffect(() => {
@@ -274,8 +277,15 @@ export default function Detail() {
       navigate(`/play/${result.infoHash}/${result.fileIndex}`, { state: navState });
     } catch (err: unknown) {
       mpvSetLoading(false);
-      setPlayState("error");
-      setPlayError((err as Error).message);
+      const msg = (err as Error).message;
+      if (msg === "no_source") {
+        lastPlayRef.current = { season: pickerSeason, episode: pickerEpisode };
+        setShowPluginPrompt(true);
+        setPlayState(null);
+      } else {
+        setPlayState("error");
+        setPlayError(msg);
+      }
     }
   }
 
@@ -325,8 +335,15 @@ export default function Detail() {
       }
     } catch (err: unknown) {
       mpvSetLoading(false);
-      setPlayState("error");
-      setPlayError((err as Error).message);
+      const msg = (err as Error).message;
+      if (msg === "no_source") {
+        lastPlayRef.current = { season, episode };
+        setShowPluginPrompt(true);
+        setPlayState(null);
+      } else {
+        setPlayState("error");
+        setPlayError(msg);
+      }
     }
   }
 
@@ -762,6 +779,21 @@ export default function Detail() {
           streams={streams}
           onPick={handlePickStream}
           onClose={() => setShowPicker(false)}
+        />
+      )}
+      {showPluginPrompt && (
+        <PluginPrompt
+          onInstalled={() => {
+            setShowPluginPrompt(false);
+            const last = lastPlayRef.current;
+            if (last) {
+              handlePlay(last.season, last.episode);
+            } else {
+              handlePlay();
+            }
+            lastPlayRef.current = null;
+          }}
+          onClose={() => setShowPluginPrompt(false)}
         />
       )}
     </div>
