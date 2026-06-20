@@ -254,7 +254,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                     onClick={handleInstallPlugin}
                     disabled={pluginInstalling}
                   >
-                    {pluginInstalling ? "Installing..." : `Install ${pluginIndex[0].name} v${pluginIndex[0].version}`}
+                    {pluginInstalling ? "Installing..." : "Install Content Sources"}
                   </button>
                 )}
               </div>
