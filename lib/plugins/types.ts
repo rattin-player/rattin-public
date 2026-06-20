@@ -15,6 +15,7 @@ export interface SearchResult {
   name: string;
   size: number;
   seeders: number;
+  leechers?: number;
   source: string;
   fileIdx?: number;
   languages?: string[];

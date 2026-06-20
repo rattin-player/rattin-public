@@ -1,16 +1,16 @@
 import type { Express, Request, Response } from "express";
 import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, findExactEpisodeFile, findLargestVideoFile, hasWrongEpisode, coversTargetSeason } from "../lib/torrent/torrent-scoring.js";
 import { fmtBytes, throttle } from "../lib/media/media-utils.js";
-import { searchTorrentio } from "../lib/torrent/torrentio.js";
 import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/torrent/debrid.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
+import type { SearchQuery, SearchResult as PluginSearchResult, PluginRegistry } from "../lib/plugins/types.js";
 
 interface SearchResult {
   name: string;
   infoHash: string;
   size: number;
   seeders: number;
-  leechers: number;
+  leechers?: number;
   source: string;
   seasonPack?: boolean;
   fileIdx?: number;
@@ -22,7 +22,7 @@ interface SearchResult {
 }
 
 export default function searchRoutes(app: Express, ctx: ServerContext): void {
-  const { log, DOWNLOAD_PATH, availabilityCache, AVAIL_TTL } = ctx;
+  const { log, DOWNLOAD_PATH } = ctx;
   // Access ctx.client via getter (not destructured) so deferred init is visible
   const client = () => ctx.client;
 
@@ -37,218 +37,26 @@ const TRACKERS = [
   "udp://open.demonii.com:1337/announce",
 ];
 
-async function searchTPB(query: string): Promise<SearchResult[]> {
-  const url = `https://search-provider-1.example/q.php?q=${encodeURIComponent(query)}`;
-  const resp = await fetch(url, {
-    headers: { "User-Agent": "Rattin/2.0" },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!resp.ok) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any = await resp.json();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Array.isArray(data) ? data : [])
-    .filter((r: any) => r.id !== "0" && r.name !== "No results returned")
-    .map((r: any) => ({
-      name: r.name,
-      infoHash: (r.info_hash || "").toLowerCase(),
-      size: parseInt(r.size, 10) || 0,
-      seeders: parseInt(r.seeders, 10) || 0,
-      leechers: parseInt(r.leechers, 10) || 0,
-      source: "tpb",
-    }));
-}
-
-async function searchEZTV(query: string, imdbId: string | undefined): Promise<SearchResult[]> {
-  if (!imdbId) return [];
-  // EZTV API requires IMDB ID (numeric part only)
-  const numericId = imdbId.replace(/\D/g, "");
-  if (!numericId) return [];
-  try {
-    const results: SearchResult[] = [];
-    // Fetch up to 3 pages to get good coverage
-    for (let page = 1; page <= 3; page++) {
-      const url = `https://search-provider-2.example/api/get-torrents?imdb_id=${numericId}&limit=100&page=${page}`;
-      const resp = await fetch(url, {
-        headers: { "User-Agent": "Rattin/2.0" },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!resp.ok) break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data: any = await resp.json();
-      if (!data.torrents || data.torrents.length === 0) break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const t of data.torrents as any[]) {
-        results.push({
-          name: t.title || t.filename,
-          infoHash: (t.hash || "").toLowerCase(),
-          size: parseInt(t.size_bytes, 10) || 0,
-          seeders: parseInt(t.seeds, 10) || 0,
-          leechers: parseInt(t.peers, 10) || 0,
-          source: "eztv",
-        });
-      }
-      if (data.torrents.length < 100) break;
-    }
-    // Filter by query terms (to match specific episode)
-    const terms = query.toLowerCase().split(/\s+/);
-    return results.filter((r) => {
-      const name = r.name.toLowerCase();
-      return terms.every((term) => name.includes(term));
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function searchYTS(query: string): Promise<SearchResult[]> {
-  try {
-    const url = `https://search-provider-3.example/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=20&sort_by=seeds`;
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Rattin/2.0" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await resp.json();
-    if (!data.data?.movies) return [];
-    const results: SearchResult[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const movie of data.data.movies as any[]) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const torrent of (movie.torrents || []) as any[]) {
-        results.push({
-          name: `${movie.title_long} ${torrent.quality} ${torrent.type}`.trim(),
-          infoHash: (torrent.hash || "").toLowerCase(),
-          size: parseInt(torrent.size_bytes, 10) || 0,
-          seeders: parseInt(torrent.seeds, 10) || 0,
-          leechers: parseInt(torrent.peers, 10) || 0,
-          source: "yts",
-        });
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-}
-
-async function searchTorrents(query: string, imdbId?: string): Promise<SearchResult[]> {
-  const [tpb, eztv, yts] = await Promise.allSettled([
-    searchTPB(query),
-    searchEZTV(query, imdbId),
-    searchYTS(query),
-  ]);
-
-  const all: SearchResult[] = [
-    ...(tpb.status === "fulfilled" ? tpb.value : []),
-    ...(eztv.status === "fulfilled" ? eztv.value : []),
-    ...(yts.status === "fulfilled" ? yts.value : []),
-  ];
-
-  // Dedupe by infoHash, keep the one with more seeders
-  const seen = new Map<string, SearchResult>();
-  for (const r of all) {
-    if (!r.infoHash) continue;
-    const existing = seen.get(r.infoHash);
-    if (!existing || r.seeders > existing.seeders) {
-      seen.set(r.infoHash, r);
-    }
-  }
-
-  const merged = [...seen.values()];
-  log("info", "Multi-provider search", {
-    query,
-    tpb: tpb.status === "fulfilled" ? tpb.value.length : 0,
-    eztv: eztv.status === "fulfilled" ? eztv.value.length : 0,
-    yts: yts.status === "fulfilled" ? yts.value.length : 0,
-    merged: merged.length,
-  });
-
-  return merged;
-}
-
-
-// ---- Availability Check ----
-
-async function checkOneAvailability(title: string, year: string | number | undefined, type: string): Promise<boolean> {
-  const cacheKey = `${title.toLowerCase()}:${year || ""}`;
-  const cached = availabilityCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < AVAIL_TTL) return cached.available;
-
-  const query = year ? `${title} ${year}` : title;
-  try {
-    const results = await searchTorrents(query);
-    const hasMatch = results.some((r) => scoreTorrent(r, title, year as number | undefined, type) > 0);
-    availabilityCache.set(cacheKey, { available: hasMatch, ts: Date.now() });
-    return hasMatch;
-  } catch {
-    return false;
-  }
-}
-
-async function runPool<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
-  const results: T[] = [];
-  let i = 0;
-  async function worker() {
-    while (i < tasks.length) {
-      const idx = i++;
-      results[idx] = await tasks[idx]();
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
-  return results;
-}
-
-app.post("/api/check-availability", async (req: Request, res: Response) => {
-  const { items } = req.body as { items?: Array<{ id: number; title: string; year?: string; type?: string }> };
-  if (!Array.isArray(items) || items.length === 0) return res.json({ available: [] });
-
-  const capped = items.slice(0, 40);
-  const tasks = capped.map((item) => () =>
-    checkOneAvailability(item.title, item.year, item.type || "movie").then((ok) => ok ? item.id : null)
-  );
-
-  try {
-    const results = await runPool(tasks, 6);
-    const available = results.filter(Boolean);
-    log("info", "Availability check", { requested: capped.length, available: available.length });
-    res.json({ available });
-  } catch (err) {
-    log("err", "Availability check failed", { error: (err as Error).message });
-    res.json({ available: capped.map((i) => i.id) }); // fail open — show everything
-  }
-});
-
-
-async function searchTV(title: string, season: number, episode: number, imdbId?: string): Promise<SearchResult[]> {
-  // Primary: try Torrentio (requires IMDB ID)
-  if (imdbId) {
-    try {
-      const torrentioResults = await searchTorrentio(imdbId, "tv", season, episode);
-      if (torrentioResults.length > 0) {
-        log("info", "Torrentio search succeeded", { title, season, episode, results: torrentioResults.length });
-        return torrentioResults;
-      }
-    } catch (err) {
-      log("warn", "Torrentio search failed, falling back", { error: (err as Error).message });
-    }
-  }
-
-  // Fallback: existing multi-provider search
-  log("info", "Using fallback search", { title, season, episode });
+async function searchTVViaPlugin(
+  pluginRegistry: PluginRegistry,
+  title: string,
+  season: number,
+  episode: number,
+  imdbId?: string,
+): Promise<SearchResult[]> {
   const s = String(season).padStart(2, "0");
   const e = String(episode).padStart(2, "0");
   const episodeQuery = `${title} S${s}E${e}`;
   const seasonQuery = `${title} S${s}`;
   const titleQuery = title;
 
-  const [episodeResults, seasonResults, titleResults] = await Promise.all([
-    searchTorrents(episodeQuery, imdbId),
-    searchTorrents(seasonQuery, imdbId),
-    searchTorrents(titleQuery, imdbId),
+  const batchResults = await pluginRegistry.searchBatch([
+    { query: episodeQuery, type: "tv", season, episode, imdbId },
+    { query: seasonQuery, type: "tv", season, imdbId },
+    { query: titleQuery, type: "tv", imdbId },
   ]);
 
+  const [episodeResults, seasonResults, titleResults] = batchResults;
   const filteredTitleResults = titleResults.filter((r) => coversTargetSeason(r.name, season));
 
   const seen = new Map<string, SearchResult>();
@@ -266,11 +74,36 @@ async function searchTV(title: string, season: number, episode: number, imdbId?:
         || /complete|full.season|season.\d|all.seasons/i.test(r.name)
         || coversTargetSeason(r.name, season);
       const isSeasonPack = !hasEp && hasSsn;
-      seen.set(r.infoHash, { ...r, seasonPack: isSeasonPack });
+      seen.set(r.infoHash, { ...r, leechers: 0, seasonPack: isSeasonPack });
     }
   }
   return [...seen.values()];
 }
+
+app.post("/api/check-availability", async (req: Request, res: Response) => {
+  const { items } = req.body as { items?: Array<{ id: number; title: string; year?: string; type?: string }> };
+  if (!Array.isArray(items) || items.length === 0) return res.json({ available: [] });
+
+  // No plugin installed — fail open (show everything)
+  if (!ctx.pluginRegistry?.isRunning()) {
+    const capped = items.slice(0, 40);
+    return res.json({ available: capped.map((i) => i.id) });
+  }
+
+  const capped = items.slice(0, 40);
+  try {
+    const result = await ctx.pluginRegistry.availability(
+      capped.map((item) => ({ title: item.title, year: Number(item.year) || undefined, type: item.type || "movie" }))
+    );
+    const available = result.available.map((idx) => capped[idx]?.id).filter(Boolean);
+    log("info", "Availability check", { requested: capped.length, available: available.length });
+    res.json({ available });
+  } catch (err) {
+    log("err", "Availability check failed", { error: (err as Error).message });
+    res.json({ available: capped.map((i) => i.id) }); // fail open
+  }
+});
+
 
 // Return scored torrent options for user selection
 app.post("/api/search-streams", async (req: Request, res: Response) => {
@@ -279,29 +112,21 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
   };
   if (!title) return res.status(400).json({ error: "Title is required" });
 
+  if (!ctx.pluginRegistry?.isRunning()) {
+    return res.status(503).json({ error: "no_source" });
+  }
+
   let results: SearchResult[];
-  if (type === "tv" && season && episode) {
-    results = await searchTV(title, season, episode, imdbId);
-  } else {
-    // Primary: try Torrentio for movies
-    if (imdbId) {
-      try {
-        const torrentioResults = await searchTorrentio(imdbId, "movie");
-        if (torrentioResults.length > 0) {
-          log("info", "Torrentio movie search succeeded", { title, results: torrentioResults.length });
-          results = torrentioResults;
-        } else {
-          const query = year ? `${title} ${year}` : title;
-          results = await searchTorrents(query, imdbId);
-        }
-      } catch {
-        const query = year ? `${title} ${year}` : title;
-        results = await searchTorrents(query, imdbId);
-      }
+  try {
+    if (type === "tv" && season && episode) {
+      results = await searchTVViaPlugin(ctx.pluginRegistry, title, season, episode, imdbId);
     } else {
       const query = year ? `${title} ${year}` : title;
-      results = await searchTorrents(query, imdbId);
+      results = await ctx.pluginRegistry.search({ query, type: (type as "movie" | "tv") || "movie", imdbId });
     }
+  } catch (err) {
+    log("err", "Plugin search failed", { error: (err as Error).message });
+    return res.status(502).json({ error: "search_failed" });
   }
 
   try {
@@ -500,32 +325,19 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     }
   }
 
+  // ── Plugin check — only reached if preferInfoHash didn't short-circuit ──
+  if (!ctx.pluginRegistry?.isRunning()) {
+    return res.status(503).json({ error: "no_source" });
+  }
+
   let results: SearchResult[];
   if (type === "tv" && season && episode) {
     log("info", "Auto-play search (TV)", { title, season, episode });
-    results = await searchTV(title, season, episode, imdbId);
+    results = await searchTVViaPlugin(ctx.pluginRegistry, title, season, episode, imdbId);
   } else {
-    if (imdbId) {
-      try {
-        const torrentioResults = await searchTorrentio(imdbId, "movie");
-        if (torrentioResults.length > 0) {
-          log("info", "Auto-play Torrentio succeeded", { title, results: torrentioResults.length });
-          results = torrentioResults;
-        } else {
-          const query = year ? `${title} ${year}` : title;
-          log("info", "Auto-play search", { query });
-          results = await searchTorrents(query, imdbId);
-        }
-      } catch {
-        const query = year ? `${title} ${year}` : title;
-        log("info", "Auto-play fallback search", { query });
-        results = await searchTorrents(query, imdbId);
-      }
-    } else {
-      const query = year ? `${title} ${year}` : title;
-      log("info", "Auto-play search", { query });
-      results = await searchTorrents(query, imdbId);
-    }
+    const query = year ? `${title} ${year}` : title;
+    log("info", "Auto-play search", { query });
+    results = await ctx.pluginRegistry.search({ query, type: "movie", imdbId });
   }
 
   try {
