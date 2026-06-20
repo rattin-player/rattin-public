@@ -89,6 +89,7 @@ export async function autoPlay(title: string, year: number | undefined, type: st
   });
   if (!res.ok) {
     const code = (await res.json().catch(() => ({} as Record<string, string>))).error;
+    if (code === "no_source") throw new Error("no_source");
     if (code === "not_found") throw new Error("not_found");
     throw new Error("stream_failed");
   }
@@ -102,6 +103,7 @@ export async function searchStreams(title: string, year: number | undefined, typ
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, year, type, season, episode, imdbId }),
   });
+  if (res.status === 503) throw new Error("no_source");
   const data = await res.json();
   return data.results || [];
 }
@@ -527,4 +529,36 @@ export async function fetchPrefetchReady(infoHash: string, fileIndex: number): P
   } catch {
     return false;
   }
+}
+
+// ── Plugin API ───────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getPluginStatus(): Promise<any> {
+  return get("/api/plugins/status");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getPluginIndex(): Promise<any[]> {
+  return get("/api/plugins/index");
+}
+
+export async function installPlugin(url: string, entry: {
+  id: string; name: string; description: string; author: string;
+  downloadUrl: string; sha256: string; version: string; apiVersion: number;
+}): Promise<void> {
+  const res = await fetch("/api/plugins/install", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, entry }),
+  });
+  if (!res.ok) throw new Error("install_failed");
+}
+
+export async function reloadPlugin(): Promise<void> {
+  await fetch("/api/plugins/reload", { method: "POST" });
+}
+
+export async function uninstallPlugin(): Promise<void> {
+  await fetch("/api/plugins", { method: "DELETE" });
 }
