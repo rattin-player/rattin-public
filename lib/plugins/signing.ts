@@ -22,3 +22,24 @@ export function verifyPluginSignature(pluginBuffer: Buffer, signatureBuffer: Buf
     return false;
   }
 }
+
+/**
+ * Verify a signature against a specific public key (for testing).
+ * Production code uses verifyPluginSignature() which uses the hardcoded key.
+ */
+export function verifyPluginSignatureWithKey(
+  pluginBuffer: Buffer,
+  signatureBuffer: Buffer,
+  publicKeyDer: Buffer,
+): boolean {
+  try {
+    const publicKey = crypto.createPublicKey({
+      key: publicKeyDer,
+      format: "der",
+      type: "spki",
+    });
+    return crypto.verify(null, pluginBuffer, publicKey, signatureBuffer);
+  } catch {
+    return false;
+  }
+}
