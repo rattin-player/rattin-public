@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount, getPluginStatus, getPluginIndex, installPlugin, reloadPlugin, uninstallPlugin } from "../lib/api";
 import UpdateSection from "./UpdateSection";
 import "./SettingsModal.css";
 
@@ -29,11 +29,25 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [clearingSaved, setClearingSaved] = useState(false);
   const [historyCount, setHistoryCount] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
+  const [pluginStatus, setPluginStatus] = useState<{
+    installed: boolean; running: boolean;
+    plugin: { id: string; name: string; version: string } | null;
+  } | null>(null);
+  const [pluginIndex, setPluginIndex] = useState<Array<{
+    id: string; name: string; description: string;
+    downloadUrl: string; sha256: string; version: string;
+  }>>([]);
+  const [pluginInstalling, setPluginInstalling] = useState(false);
+  const [pluginError, setPluginError] = useState("");
+  const [manualUrl, setManualUrl] = useState("");
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     loadStatus();
     loadCacheSize();
     loadDataCounts();
+    loadPluginStatus();
+    loadPluginIndex();
   }, []);
 
   async function loadStatus() {
@@ -66,6 +80,94 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       setHistoryCount(h.count);
       setSavedCount(s.count);
     } catch {}
+  }
+
+  async function loadPluginStatus() {
+    try {
+      setPluginStatus(await getPluginStatus());
+    } catch {
+      setPluginStatus({ installed: false, running: false, plugin: null });
+    }
+  }
+
+  async function loadPluginIndex() {
+    try {
+      setPluginIndex(await getPluginIndex());
+    } catch {
+      setPluginIndex([]);
+    }
+  }
+
+  async function handleInstallPlugin() {
+    const entry = pluginIndex[0];
+    if (!entry) return;
+    setPluginInstalling(true);
+    setPluginError("");
+    try {
+      await installPlugin(entry.downloadUrl, {
+        id: entry.id, name: entry.name, description: entry.description,
+        author: "rattin", downloadUrl: entry.downloadUrl,
+        sha256: entry.sha256, version: entry.version, apiVersion: 1,
+      });
+      await loadPluginStatus();
+    } catch {
+      setPluginError("Installation failed");
+    }
+    setPluginInstalling(false);
+  }
+
+  async function handleUpdatePlugin() {
+    const entry = pluginIndex[0];
+    if (!entry) return;
+    setPluginInstalling(true);
+    setPluginError("");
+    try {
+      await installPlugin(entry.downloadUrl, {
+        id: entry.id, name: entry.name, description: entry.description,
+        author: "rattin", downloadUrl: entry.downloadUrl,
+        sha256: entry.sha256, version: entry.version, apiVersion: 1,
+      });
+      await loadPluginStatus();
+    } catch {
+      setPluginError("Update failed");
+    }
+    setPluginInstalling(false);
+  }
+
+  async function handleManualInstall() {
+    if (!manualUrl.trim()) return;
+    setPluginInstalling(true);
+    setPluginError("");
+    try {
+      await installPlugin(manualUrl.trim(), {
+        id: "manual", name: "Manual Install", description: "Installed from URL",
+        author: "unknown", downloadUrl: manualUrl.trim(),
+        sha256: "", version: "0.0.0", apiVersion: 1,
+      });
+      await loadPluginStatus();
+      setManualUrl("");
+    } catch {
+      setPluginError("Manual install failed — plugin may be unsigned");
+    }
+    setPluginInstalling(false);
+  }
+
+  async function handleUninstallPlugin() {
+    try {
+      await uninstallPlugin();
+      await loadPluginStatus();
+    } catch {
+      setPluginError("Uninstall failed");
+    }
+  }
+
+  async function handleReloadPlugin() {
+    try {
+      await reloadPlugin();
+      await loadPluginStatus();
+    } catch {
+      setPluginError("Reload failed");
+    }
   }
 
   async function handleClearCache() {
@@ -128,6 +230,104 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
         <div className="pair-body">
           <UpdateSection />
+
+          <div className="settings-divider" />
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4>Content Sources</h4>
+              {pluginStatus?.installed && pluginStatus?.running && (
+                <span className="settings-badge settings-badge-green">Running</span>
+              )}
+              {pluginStatus?.installed && !pluginStatus?.running && (
+                <span className="settings-badge settings-badge-red">Stopped</span>
+              )}
+            </div>
+            <p className="pair-desc">
+              Content source plugins provide search results. Install one to enable search and play.
+            </p>
+            {!pluginStatus?.installed ? (
+              <div>
+                <p className="settings-status">No content source installed.</p>
+                {pluginIndex[0] && (
+                  <button
+                    className="pair-create-btn"
+                    onClick={handleInstallPlugin}
+                    disabled={pluginInstalling}
+                  >
+                    {pluginInstalling ? "Installing..." : `Install ${pluginIndex[0].name} v${pluginIndex[0].version}`}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="settings-info">
+                <div className="settings-info-row">
+                  <span className="settings-info-label">Plugin</span>
+                  <span className="settings-info-value">{pluginStatus.plugin?.name}</span>
+                </div>
+                <div className="settings-info-row">
+                  <span className="settings-info-label">Version</span>
+                  <span className="settings-info-value">{pluginStatus.plugin?.version}</span>
+                </div>
+                {pluginIndex[0] && pluginIndex[0].version !== pluginStatus.plugin?.version && (
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">Update</span>
+                    <span className="settings-info-value">
+                      v{pluginIndex[0].version} available{" "}
+                      <button
+                        className="settings-clear-btn"
+                        style={{ display: "inline", width: "auto", padding: "2px 10px" }}
+                        onClick={handleUpdatePlugin}
+                        disabled={pluginInstalling}
+                      >
+                        {pluginInstalling ? "Updating..." : "Update"}
+                      </button>
+                    </span>
+                  </div>
+                )}
+                <div className="settings-data-actions">
+                  <button className="settings-clear-btn" onClick={handleReloadPlugin}>
+                    Restart
+                  </button>
+                  <button className="settings-remove-btn" onClick={handleUninstallPlugin}>
+                    Uninstall
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="settings-divider" style={{ margin: "16px 0" }} />
+            <div className="settings-form">
+              <input
+                className="settings-input"
+                type="text"
+                placeholder="Install from URL (signed plugins only)..."
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                autoComplete="off"
+              />
+              <button
+                className="pair-create-btn"
+                onClick={handleManualInstall}
+                disabled={pluginInstalling || !manualUrl.trim()}
+              >
+                {pluginInstalling ? "Installing..." : "Install from URL"}
+              </button>
+            </div>
+            <div className="settings-divider" style={{ margin: "16px 0" }} />
+            <label className="settings-info-row" style={{ cursor: "pointer" }}>
+              <span className="settings-info-label">Developer mode</span>
+              <input
+                type="checkbox"
+                checked={devMode}
+                onChange={(e) => setDevMode(e.target.checked)}
+              />
+            </label>
+            {devMode && (
+              <p className="settings-status" style={{ color: "var(--red)" }}>
+                Developer mode allows unsigned plugins from local files. Use at your own risk.
+              </p>
+            )}
+            {pluginError && <p className="settings-error">{pluginError}</p>}
+          </div>
 
           <div className="settings-divider" />
           <div className="settings-section">
