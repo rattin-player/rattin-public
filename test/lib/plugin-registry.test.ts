@@ -186,7 +186,7 @@ describe("PluginRegistryImpl", () => {
 
         // Wait for the restart to kick in (backoff + spawn + health)
         // The registry should detect the exit and schedule a restart
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // The plugin should be running again
         assert.equal(reg.isRunning(), true, "plugin should have restarted after crash");

@@ -6,6 +6,7 @@ import type { Request, Response, NextFunction } from "express";
 import type { Readable } from "stream";
 import type { WatchHistory } from "./storage/watch-history.js";
 import type { SavedList } from "./storage/saved-list.js";
+import type { PluginRegistry } from "./plugins/types.js";
 
 // ── Log ───────────────────────────────────────────────────────────────
 
@@ -398,4 +399,5 @@ export interface ServerContext {
   trackStreamClose(infoHash: string): void;
   streamTracking(req: Request, res: Response, next: NextFunction): void;
   initClient(): TorrentClient;
+  pluginRegistry?: PluginRegistry;
 }
