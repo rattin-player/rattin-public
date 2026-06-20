@@ -188,7 +188,8 @@ export class PluginRegistryImpl implements PluginRegistry {
     this.port = null;
     this.stopped = false;
 
-    const proc = spawn("node", [pluginPath], {
+    const nodeBinary = process.env.MAGNET_NODE_PATH || "node";
+    const proc = spawn(nodeBinary, [pluginPath], {
       env: {
         ...process.env,
         RATTIN_PLUGIN_PORT: "0",
