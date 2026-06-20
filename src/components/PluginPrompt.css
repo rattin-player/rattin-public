@@ -1,0 +1,149 @@
+/* src/components/PluginPrompt.css */
+.plugin-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.plugin-prompt-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 420px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  animation: fadeUp 0.3s ease-out;
+}
+
+.plugin-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-prompt-header h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.plugin-prompt-close {
+  color: var(--text-muted);
+  padding: 5px;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition);
+}
+
+.plugin-prompt-close:hover {
+  color: var(--text-primary);
+}
+
+.plugin-prompt-body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plugin-prompt-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.plugin-prompt-entry {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 16px;
+}
+
+.plugin-prompt-entry-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.plugin-prompt-entry-version {
+  display: inline-block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.plugin-prompt-entry-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 8px 0 12px;
+  line-height: 1.5;
+}
+
+.plugin-prompt-entry-author,
+.plugin-prompt-entry-signed,
+.plugin-prompt-entry-hash {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+}
+
+.plugin-prompt-meta-label {
+  color: var(--text-muted);
+  min-width: 60px;
+}
+
+.plugin-prompt-meta-value {
+  color: var(--text-secondary);
+}
+
+.plugin-prompt-signed-badge {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.plugin-prompt-hash {
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+.plugin-prompt-install-btn {
+  width: 100%;
+  padding: 13px 22px;
+  background: var(--accent);
+  color: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all var(--transition);
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.2);
+}
+
+.plugin-prompt-install-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.plugin-prompt-install-btn:hover:not(:disabled) {
+  background: var(--accent-bright);
+  box-shadow: 0 6px 22px rgba(201, 168, 76, 0.3);
+}
+
+.plugin-prompt-empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.plugin-prompt-error {
+  color: var(--red);
+  font-size: 0.82rem;
+}
