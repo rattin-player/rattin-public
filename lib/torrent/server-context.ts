@@ -17,10 +17,12 @@ import type {
   AvailEntry, IntroEntry, ProbeResult, RCSession, SeekEntry,
   Torrent, TorrentFile, TorrentClient, LogLevel, ServerContext,
 } from "../types.js";
+import type { PluginRegistry } from "../plugins/types.js";
 
 interface CreateContextOverrides {
   client?: TorrentClient;
   deferClient?: boolean;
+  pluginRegistry?: PluginRegistry;
 }
 
 export function createContext(overrides: CreateContextOverrides = {}): ServerContext {
@@ -181,5 +183,6 @@ export function createContext(overrides: CreateContextOverrides = {}): ServerCon
     rcSessions, watchHistory, savedList,
     log, diskPath, isFileComplete, cleanupTorrentCaches,
     trackStreamOpen, trackStreamClose, streamTracking,
+    pluginRegistry: overrides.pluginRegistry,
   };
 }
