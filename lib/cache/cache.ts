@@ -98,7 +98,7 @@ export const CACHE_TTL: Record<string, number> = {
 
 // TMDB proxy URL — set via env var or .env file.
 // The proxy adds the API key server-side so it's never exposed to clients.
-const TMDB_PROXY_URL = process.env.TMDB_PROXY_URL || "";
+const TMDB_PROXY_URL = process.env.TMDB_PROXY_URL || "https://rattin-tmdb.pages.dev";
 
 export async function fetchTMDB(path: string): Promise<unknown> {
   const userKey = loadTmdbKey();
