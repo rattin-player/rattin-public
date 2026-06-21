@@ -306,6 +306,19 @@ int main(int argc, char *argv[])
 
     engine->load(QUrl("qrc:/main.qml"));
 
+    // On Windows, the Qt app may not quit when the window is closed if
+    // WebEngine or mpv is still active. Explicitly connect to the window's
+    // closing signal and force the app to quit.
+    QObject::connect(engine, &QQmlApplicationEngine::objectCreated, [&app](QObject *obj) {
+        if (!obj) return;
+        auto *window = qobject_cast<QQuickWindow *>(obj);
+        if (window) {
+            QObject::connect(window, &QQuickWindow::closing, [&app]() {
+                app.quit();
+            });
+        }
+    });
+
     // Poll for server readiness. When ready, tell QML to show the WebView.
     waitForServer(port, &app, [engine]() {
         fprintf(stderr, "[shell] server ready\n");

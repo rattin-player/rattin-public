@@ -26,5 +26,10 @@ export function deleteTmdbKey(): void {
 }
 
 export function tmdbConfigured(): boolean {
+  // TMDB is always available — either via the user's own key or the built-in proxy.
+  return true;
+}
+
+export function hasUserTmdbKey(): boolean {
   return !!loadTmdbKey();
 }

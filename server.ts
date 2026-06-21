@@ -4,7 +4,7 @@ import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSy
 import { fileURLToPath } from "url";
 import { sessionsPath, downloadDir } from "./lib/storage/paths.js";
 import { dumpRcSessions, restoreRcSessions } from "./lib/storage/rc-sessions.js";
-import { tmdbCache } from "./lib/cache/cache.js";
+import { tmdbCache, loadCacheFromDisk, saveCacheToDisk } from "./lib/cache/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/cache/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
 import { createApiAccessControl } from "./lib/access-control.js";
@@ -22,8 +22,12 @@ import openUrlRoutes from "./routes/open-url.js";
 import learnOffsetRoutes from "./routes/learn-offset.js";
 import storageRoutes from "./routes/storage.js";
 import updateRoutes from "./routes/update.js";
+import pluginRoutes from "./routes/plugins.js";
+import settingsRoutes from "./routes/settings.js";
+import { createPluginRegistry } from "./lib/plugins/registry.js";
 import { sweepOldFiles, evictIfLowSpace } from "./lib/cache/cache-cleanup.js";
 import type { ServerContext, TorrentClient, IdleTracker, RCSession } from "./lib/types.js";
+import type { PluginRegistry } from "./lib/plugins/types.js";
 import type { WatchHistory } from "./lib/storage/watch-history.js";
 import type { SavedList } from "./lib/storage/saved-list.js";
 
@@ -31,6 +35,7 @@ interface CreateAppOverrides {
   __dirname?: string;
   client?: TorrentClient;
   deferClient?: boolean;
+  pluginRegistry?: PluginRegistry;
 }
 
 interface AppContext {
@@ -52,12 +57,20 @@ interface AppContext {
   idleTracker: IdleTracker;
   pcAuthToken: string;
   initClient: ServerContext["initClient"];
+  pluginRegistry?: PluginRegistry;
 }
 
 export function createApp(overrides: CreateAppOverrides = {}): AppContext {
   const __dirname = overrides.__dirname || path.dirname(fileURLToPath(import.meta.url));
   const app = express();
   const ctx = createContext(overrides);
+
+  // Create plugin registry if not provided via overrides (tests)
+  if (!ctx.pluginRegistry) {
+    const registry = createPluginRegistry({ log: ctx.log });
+    (ctx as ServerContext & { pluginRegistry: typeof registry }).pluginRegistry = registry;
+  }
+
   const {
     durationCache, seekIndexCache, seekIndexPending,
     activeFiles, completedFiles, streamTracker, activeTranscodes,
@@ -163,6 +176,8 @@ openUrlRoutes(app, ctx);
 learnOffsetRoutes(app, ctx);
 storageRoutes(app, ctx);
 updateRoutes(app, ctx);
+pluginRoutes(app, ctx);
+settingsRoutes(app, ctx);
 
 // Disk space janitor — every 60s, evict oldest cache files if free space < 2GB
 const _diskJanitor = setInterval(() => {
@@ -199,6 +214,7 @@ app.get("/{*splat}", (_req: Request, res: Response) => {
     probeCache, introCache, rcSessions,
     watchHistory: ctx.watchHistory, savedList: ctx.savedList,
     idleTracker, pcAuthToken,
+    pluginRegistry: ctx.pluginRegistry,
   };
 }
 
@@ -257,6 +273,8 @@ if (isMain) {
       entry.cleanup();
       activeTranscodes.delete(key);
     }
+    ctx.pluginRegistry?.stop();
+    saveCacheToDisk();
     ctx.client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
       process.exit(0);
@@ -274,6 +292,9 @@ if (isMain) {
   const HOST = process.env.HOST || "127.0.0.1";
   app.listen(PORT, HOST, () => {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://${HOST}:${PORT}`);
+
+    // Load persisted TMDB cache from disk (avoids re-fetching everything on restart)
+    loadCacheFromDisk();
 
     // Phase 2: heavy init — runs after server is listening so the
     // Qt shell's health-check poll succeeds immediately.

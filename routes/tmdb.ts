@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { tmdbCache, CACHE_TTL, fetchTMDB, startCacheJanitor } from "../lib/cache/cache.js";
-import { tmdbConfigured, saveTmdbKey, deleteTmdbKey } from "../lib/tmdb-config.js";
+import { tmdbConfigured, saveTmdbKey, deleteTmdbKey, hasUserTmdbKey } from "../lib/tmdb-config.js";
 import type { ServerContext } from "../lib/types.js";
 
 interface RedditThread {
@@ -28,7 +28,7 @@ export default function tmdbRoutes(app: Express, ctx: ServerContext): void {
   // ── TMDB API key configuration ──────────────────────────────────────
 
   app.get("/api/tmdb/status", (_req: Request, res: Response) => {
-    res.json({ configured: tmdbConfigured() });
+    res.json({ configured: true, hasUserKey: hasUserTmdbKey() });
   });
 
   app.post("/api/tmdb/config", async (req: Request, res: Response) => {
@@ -36,7 +36,7 @@ export default function tmdbRoutes(app: Express, ctx: ServerContext): void {
     if (!apiKey) return res.status(400).json({ error: "apiKey required" });
     try {
       const testRes = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`,
-        { signal: AbortSignal.timeout(10000) });
+        { headers: { "User-Agent": "Rattin/2.0" }, signal: AbortSignal.timeout(10000) });
       if (!testRes.ok) return res.status(400).json({ error: "Invalid TMDB API key" });
     } catch {
       return res.status(400).json({ error: "Failed to verify key with TMDB" });
