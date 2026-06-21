@@ -96,10 +96,9 @@ export const CACHE_TTL: Record<string, number> = {
   REVIEWS:   6 * 60 * 60 * 1000,
 };
 
-// Cloudflare Worker proxy for TMDB API.
-// The proxy adds the API key server-side — no key exposed to clients.
-// Replace with your deployed Worker URL before release.
-const TMDB_PROXY_URL = "https://tmdb-proxy.<YOUR_SUBDOMAIN>.workers.dev";
+// TMDB proxy URL — set via env var or .env file.
+// The proxy adds the API key server-side so it's never exposed to clients.
+const TMDB_PROXY_URL = process.env.TMDB_PROXY_URL || "";
 
 export async function fetchTMDB(path: string): Promise<unknown> {
   const userKey = loadTmdbKey();
@@ -108,9 +107,11 @@ export async function fetchTMDB(path: string): Promise<unknown> {
   if (userKey) {
     // User has their own TMDB key — use the direct API
     url = `https://api.themoviedb.org/3${path}${path.includes("?") ? "&" : "?"}api_key=${userKey}`;
-  } else {
-    // No user key — use the proxy (key is added server-side by the Worker)
+  } else if (TMDB_PROXY_URL) {
+    // Proxy configured — use it (key is added server-side by the Worker)
     url = `${TMDB_PROXY_URL}/3${path}`;
+  } else {
+    throw new Error("TMDB_API_KEY not set and no proxy configured");
   }
 
   const res = await fetch(url, {
