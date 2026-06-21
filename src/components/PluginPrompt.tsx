@@ -45,7 +45,7 @@ export default function PluginPrompt({ onInstalled, onClose }: PluginPromptProps
     <div className="plugin-prompt-overlay" onClick={onClose}>
       <div className="plugin-prompt-modal" onClick={(e) => e.stopPropagation()}>
         <div className="plugin-prompt-header">
-          <h3>Install Content Source</h3>
+          <h3>Install Content Source Plugin</h3>
           <button className="plugin-prompt-close" onClick={onClose}>
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
@@ -59,10 +59,10 @@ export default function PluginPrompt({ onInstalled, onClose }: PluginPromptProps
           </p>
           {entry ? (
             <button className="plugin-prompt-install-btn" onClick={handleInstall} disabled={installing}>
-              {installing ? "Installing..." : "Install Content Source"}
+              {installing ? "Installing content source plugin..." : "Install Content Source Plugin"}
             </button>
           ) : (
-            <p className="plugin-prompt-empty">No compatible content sources available.</p>
+            <p className="plugin-prompt-empty">No compatible content sources available. Check your connection and try again.</p>
           )}
           {error && <p className="plugin-prompt-error">{error}</p>}
         </div>

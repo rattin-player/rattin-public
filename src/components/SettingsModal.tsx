@@ -159,9 +159,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       const status = await getPluginStatus();
       setPluginStatus(status);
-      if (status.sourceUrl) {
-        setSourceUrlInput(status.sourceUrl);
-      }
     } catch {
       setPluginStatus({ installed: false, running: false, plugin: null, sourceUrl: null });
     }
@@ -183,9 +180,10 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     setPluginError("");
     try {
       await installPluginFromUrl(availablePlugin.downloadUrl);
+      // Refresh status — the backend now has the plugin installed and running
       await loadPluginStatus();
     } catch (err) {
-      setPluginError((err as Error).message || "Installation failed");
+      setPluginError((err as Error).message || "Installation failed. Check your connection and try again.");
     }
     setPluginInstalling(false);
   }
@@ -282,22 +280,23 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     return (
       <div className="settings-section">
         <div className="settings-section-header">
-          <h4>Content Sources</h4>
+          <h4>Content Source Plugin</h4>
           {pluginStatus?.installed && pluginStatus?.running && (
-            <span className="settings-badge settings-badge-green">Running</span>
+            <span className="settings-badge settings-badge-green">Installed & Running</span>
           )}
           {pluginStatus?.installed && !pluginStatus?.running && (
-            <span className="settings-badge settings-badge-red">Stopped</span>
+            <span className="settings-badge settings-badge-red">Installed — Stopped</span>
           )}
         </div>
         {!pluginStatus?.installed ? (
           <>
             <p className="settings-desc">
               Install a community-made and verified content source plugin to enable search and play.
+              The plugin runs locally on your machine and provides search results from multiple sources.
             </p>
             {availablePlugin ? (
               <button className="settings-btn-primary" onClick={handleInstallPlugin} disabled={pluginInstalling}>
-                {pluginInstalling ? "Installing..." : "Install Content Source"}
+                {pluginInstalling ? "Installing content source plugin..." : "Install Content Source Plugin"}
               </button>
             ) : (
               <p className="settings-status">No compatible content sources available.</p>
@@ -306,7 +305,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         ) : (
           <>
             <p className="settings-desc">
-              Content source plugin is installed and provides search results.
+              Content source plugin is installed and provides search results from multiple sources.
             </p>
             <div className="settings-card">
               <div className="settings-info-row">
