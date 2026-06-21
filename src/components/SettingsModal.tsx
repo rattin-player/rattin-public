@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount, getPluginStatus, getPluginIndex, installPlugin, installPluginFromUrl, reloadPlugin, uninstallPlugin, getSettings, updateSettings, browseFolder } from "../lib/api";
+import { getDebridStatus, verifyDebridKey, setDebridConfig, deleteDebridConfig, setDebridMode, getCacheSize, clearCache, clearWatchHistory, clearSavedList, getWatchHistoryCount, getSavedListCount, getPluginStatus, getPluginIndex, installPlugin, installPluginFromUrl, reloadPlugin, uninstallPlugin, getSettings, updateSettings, browseFolder, getTmdbStatus, setTmdbConfig, deleteTmdbConfig } from "../lib/api";
 import UpdateSection from "./UpdateSection";
 import "./SettingsModal.css";
 
-type Tab = "sources" | "streaming" | "storage" | "data" | "about";
+type Tab = "sources" | "streaming" | "metadata" | "storage" | "data" | "about";
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -25,6 +25,15 @@ const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
     icon: (
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="5 3 19 12 5 21 5 3" />
+      </svg>
+    ),
+  },
+  {
+    id: "metadata",
+    label: "Metadata",
+    icon: (
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
       </svg>
     ),
   },
@@ -86,6 +95,13 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   } | null>(null);
   const [devMode, setDevMode] = useState(false);
 
+  // ── TMDB state ──
+  const [tmdbStatus, setTmdbStatus] = useState<{ configured: boolean; hasUserKey: boolean } | null>(null);
+  const [tmdbKeyInput, setTmdbKeyInput] = useState("");
+  const [tmdbSaving, setTmdbSaving] = useState(false);
+  const [tmdbError, setTmdbError] = useState("");
+  const [tmdbSuccess, setTmdbSuccess] = useState("");
+
   // ── Storage state ──
   const [settings, setSettingsState] = useState<{ downloadPath?: string }>({});
   const [downloadPathInput, setDownloadPathInput] = useState("");
@@ -107,6 +123,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     loadPluginStatus();
     loadSettings();
     loadAvailablePlugin();
+    loadTmdbStatus();
   }, []);
 
   // ── Loaders ──
@@ -196,6 +213,44 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   async function handleReloadPlugin() {
     try { await reloadPlugin(); await loadPluginStatus(); }
     catch { setPluginError("Reload failed"); }
+  }
+
+  // ── TMDB handlers ──
+
+  async function loadTmdbStatus() {
+    try {
+      const s = await getTmdbStatus();
+      setTmdbStatus(s);
+    } catch {
+      setTmdbStatus({ configured: true, hasUserKey: false });
+    }
+  }
+
+  async function handleSaveTmdbKey() {
+    if (!tmdbKeyInput.trim()) return;
+    setTmdbSaving(true);
+    setTmdbError("");
+    setTmdbSuccess("");
+    try {
+      await setTmdbConfig(tmdbKeyInput.trim());
+      setTmdbSuccess("TMDB API key saved. Using your personal key.");
+      setTmdbKeyInput("");
+      await loadTmdbStatus();
+    } catch (err) {
+      setTmdbError((err as Error).message || "Failed to save TMDB key");
+    }
+    setTmdbSaving(false);
+  }
+
+  async function handleRemoveTmdbKey() {
+    try {
+      await deleteTmdbConfig();
+      setTmdbSuccess("Removed personal key. Using built-in proxy.");
+      setTmdbKeyInput("");
+      await loadTmdbStatus();
+    } catch {
+      setTmdbError("Failed to remove TMDB key");
+    }
   }
 
   // ── Debrid handlers ──
@@ -418,6 +473,67 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     );
   }
 
+  function renderMetadata() {
+    return (
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <h4>TMDB Metadata</h4>
+          {tmdbStatus?.hasUserKey ? (
+            <span className="settings-badge settings-badge-green">Personal Key</span>
+          ) : (
+            <span className="settings-badge settings-badge-muted">Built-in Proxy</span>
+          )}
+        </div>
+        <p className="settings-desc">
+          Rattin uses TMDB for movie and TV metadata. By default, a built-in proxy provides access — no setup required.
+          You can use your own TMDB API key for direct access.
+        </p>
+
+        {tmdbStatus?.hasUserKey ? (
+          <div className="settings-card">
+            <div className="settings-info-row">
+              <span className="settings-info-label">Source</span>
+              <span className="settings-info-value">Personal TMDB API key</span>
+            </div>
+            <button className="settings-btn-danger" onClick={handleRemoveTmdbKey}>
+              Remove key (use built-in proxy)
+            </button>
+          </div>
+        ) : (
+          <div className="settings-card">
+            <div className="settings-info-row">
+              <span className="settings-info-label">Source</span>
+              <span className="settings-info-value">Built-in proxy (rattin-tmdb.pages.dev)</span>
+            </div>
+          </div>
+        )}
+
+        <div className="settings-divider" />
+        <p className="settings-desc">
+          Want direct access? Get a free API key from{" "}
+          <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" className="settings-link">
+            themoviedb.org
+          </a>{" "}
+          and paste it below.
+        </p>
+        <div className="settings-form">
+          <input className="settings-input" type="password"
+            placeholder="TMDB API key (v3 or v4 auth)"
+            value={tmdbKeyInput}
+            onChange={(e) => setTmdbKeyInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSaveTmdbKey()}
+            autoComplete="off" />
+          <button className="settings-btn-secondary" onClick={handleSaveTmdbKey}
+            disabled={tmdbSaving || !tmdbKeyInput.trim()}>
+            {tmdbSaving ? "Saving..." : "Save Key"}
+          </button>
+        </div>
+        {tmdbError && <p className="settings-error">{tmdbError}</p>}
+        {tmdbSuccess && <p className="settings-success">{tmdbSuccess}</p>}
+      </div>
+    );
+  }
+
   function renderStorage() {
     return (
       <div className="settings-section">
@@ -522,6 +638,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const sectionRenderers: Record<Tab, () => JSX.Element> = {
     sources: renderSources,
     streaming: renderStreaming,
+    metadata: renderMetadata,
     storage: renderStorage,
     data: renderData,
     about: renderAbout,
