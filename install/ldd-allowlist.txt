@@ -70,3 +70,19 @@ libfribidi.so
 # Wayland runtime — on every modern distro; bundling risks protocol version
 # skew with the host compositor.
 libwayland-client.so
+
+# PipeWire — modern Linux audio/video stream routing (replaces PulseAudio/JACK
+# on Wayland desktops). Host-provided, cannot be bundled reliably.
+libpipewire-0.3.so
+
+# GLIBC vector math library — part of glibc itself, always available.
+libmvec.so
+
+# XCB DRI3 extension — needed by VA-API (hardware video decode) and
+# QtWebEngine for GPU acceleration. Provided by xcb-util on all distros.
+libxcb-dri3.so
+
+# MuJS — embedded JavaScript engine linked by mpv for user scripts.
+# On Arch the NEEDED entry uses an absolute path; both forms listed.
+libmujs.so
+/usr/lib/libmujs.so
