@@ -1,9 +1,9 @@
 /* ── Settings Modal — Tabbed Layout ── */
 
 .settings-modal {
-  max-width: 680px;
+  width: 680px;
+  height: 520px;
   max-height: 80vh;
-  width: 90%;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
