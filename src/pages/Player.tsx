@@ -34,7 +34,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { startPrefetch as libStartPrefetch } from "../../lib/torrent/prefetch";
@@ -320,7 +320,15 @@ export default function Player() {
           currentInfoHash: infoHash,
           deps: {
             resolveNext: async () => {
-              // Search for the next episode via the plugin
+              // Try same-torrent reuse first (instant for season packs)
+              try {
+                const r = await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId, infoHash);
+                if (r?.infoHash) {
+                  return { infoHash: r.infoHash, fileIndex: r.fileIndex || 0, magnet: r.infoHash };
+                }
+              } catch { /* autoPlay returns 404 if no reuse — fall through to search */ }
+
+              // No reuse — search via the plugin
               const results = await searchStreams(baseTitle, year, "tv", next.season, next.episode, ep.imdbId);
               if (!results || results.length === 0) {
                 return { infoHash: "", fileIndex: 0, magnet: "" };
