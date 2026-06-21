@@ -8,7 +8,7 @@ import type {
   SearchQuery, SearchResult, PluginIndexEntry, PluginStatus,
   PluginHealth, AvailabilityItem, AvailabilityResult, PluginRegistry,
 } from "./types.js";
-import { pluginDir as defaultPluginDir, pluginFilePath as defaultPluginPath, pluginMetaPath as defaultMetaPath } from "./plugin-paths.js";
+import { pluginDir as defaultPluginDir, pluginMetaPath as defaultMetaPath } from "./plugin-paths.js";
 import { verifyPluginSignature } from "./signing.js";
 
 export interface PluginRegistryDeps {
