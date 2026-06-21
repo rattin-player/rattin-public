@@ -52,6 +52,14 @@
   letter-spacing: -0.2px;
 }
 
+.picker-plugin-byline {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
 .picker-count {
   font-size: 0.72rem;
   color: var(--text-muted);

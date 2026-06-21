@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile, getPluginStatus } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
@@ -37,6 +37,7 @@ export default function Detail() {
   const [showPicker, setShowPicker] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [streams, setStreams] = useState<any[] | null>(null);
+  const [pluginName, setPluginName] = useState<string>("");
   const [pickerSeason, setPickerSeason] = useState<number | undefined>(undefined);
   const [pickerEpisode, setPickerEpisode] = useState<number | undefined>(undefined);
   const [expandedEps, setExpandedEps] = useState(new Set<number>());
@@ -70,6 +71,16 @@ export default function Detail() {
     setShowAllReviews(false);
     setResumePoint(null);
   }, [id, type]);
+
+  // Load plugin name for source picker attribution
+  useEffect(() => {
+    getPluginStatus().then((statuses) => {
+      const name = Array.isArray(statuses)
+        ? statuses.find((s) => s.capability === "search" && s.plugin)?.plugin?.name || ""
+        : (statuses as any).plugin?.name || "";
+      setPluginName(name);
+    }).catch(() => {});
+  }, []);
 
   // Detect flat-season anime and fetch episode groups
   useEffect(() => {
@@ -807,6 +818,7 @@ export default function Detail() {
           streams={streams}
           onPick={handlePickStream}
           onClose={() => setShowPicker(false)}
+          pluginName={pluginName}
         />
       )}
       {showPluginPrompt && (

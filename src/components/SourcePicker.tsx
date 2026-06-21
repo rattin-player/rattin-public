@@ -21,9 +21,10 @@ interface SourcePickerProps {
   streams: Stream[] | null;
   onPick: (stream: Stream) => void;
   onClose: () => void;
+  pluginName?: string;
 }
 
-export default function SourcePicker({ streams, onPick, onClose }: SourcePickerProps) {
+export default function SourcePicker({ streams, onPick, onClose, pluginName }: SourcePickerProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const groups = useMemo<ResGroup[]>(() => {
@@ -73,7 +74,7 @@ export default function SourcePicker({ streams, onPick, onClose }: SourcePickerP
         <div className="picker-header">
           <div>
             <span className="picker-eyebrow app-eyebrow">Pick what to play</span>
-            <h3>Available versions</h3>
+            <h3>Available versions{pluginName ? <span className="picker-plugin-byline"> via {pluginName}</span> : null}</h3>
           </div>
           {streams && <span className="picker-count">{streams.length} matches</span>}
           <button className="picker-close" onClick={onClose}>&#10005;</button>
