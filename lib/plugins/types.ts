@@ -60,7 +60,8 @@ export interface AvailabilityItem {
 
 export interface AvailabilityResult {
   available: number[];
-  warning?: string;  // plugin-provided warning — app displays blindly, never interprets
+  warning?: string;  // aggregate — set when all items are all-low-quality
+  warnings?: Record<number, string>;  // per-item warnings (index → text)
 }
 
 /**

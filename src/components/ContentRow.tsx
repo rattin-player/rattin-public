@@ -15,7 +15,7 @@ interface ContentRowProps {
 export default function ContentRow({ title, fetchFn, filterAvailability = false }: ContentRowProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [items, setItems] = useState<any[] | null>(null);
-  const [rowWarning, setRowWarning] = useState<string>("");
+  const [itemWarnings, setItemWarnings] = useState<Record<number, string>>({});
   const [recoveryKey, setRecoveryKey] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +28,7 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
     if (cached) setItems(cached.results || []);
 
     let cancelled = false;
-    setRowWarning("");
+    setItemWarnings({});
     fetchFn()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then(async (data: any) => {
@@ -49,11 +49,19 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
           year: parseInt((r.release_date || r.first_air_date || "").slice(0, 4)) || undefined,
           type: r.media_type || (r.first_air_date ? "tv" : "movie"),
         }));
-        const { available, warning } = await checkAvailability(batch);
+        const { available, warnings } = await checkAvailability(batch);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!cancelled) {
           setItems(results.filter((r: any) => available.has(r.id)));
-          if (warning) setRowWarning(warning);
+          // Map per-item warnings from batch index to item ID
+          if (warnings) {
+            const byId: Record<number, string> = {};
+            for (const [idx, text] of Object.entries(warnings)) {
+              const item = batch[Number(idx)];
+              if (item) byId[item.id] = text;
+            }
+            setItemWarnings(byId);
+          }
         }
       })
       .catch(() => { if (!cancelled) setItems([]); });
@@ -81,7 +89,7 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
                   <div className="movie-card-poster skeleton" />
                 </div>
               ))
-            : items.map((item) => <MovieCard key={item.id} item={item} warning={rowWarning} />)}
+            : items.map((item) => <MovieCard key={item.id} item={item} warning={itemWarnings[item.id]} />)}
         </div>
         <button className="content-row-arrow right" onClick={() => scroll(1)}>&rsaquo;</button>
       </div>

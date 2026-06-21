@@ -98,7 +98,7 @@ app.post("/api/check-availability", async (req: Request, res: Response) => {
     );
     const available = result.available.map((idx) => capped[idx]?.id).filter(Boolean);
     log("info", "Availability check", { requested: capped.length, available: available.length, warning: result.warning });
-    res.json({ available, warning: result.warning });
+    res.json({ available, warning: result.warning, warnings: result.warnings });
   } catch {
     // Plugin not installed or search failed — fail open (show everything)
     res.json({ available: capped.map((i) => i.id) });
@@ -171,7 +171,7 @@ app.post("/api/search-streams", async (req: Request, res: Response) => {
     // the value; it just passes through whatever the plugin set.
     const warning =
       scored.length > 0 && scored.every((r) => r.qualityHint === "low")
-        ? "Limited quality sources available"
+        ? "Limited quality"
         : undefined;
 
     // Check debrid cache availability if configured

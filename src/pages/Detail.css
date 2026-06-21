@@ -169,24 +169,19 @@
   cursor: default;
 }
 
-.detail-availability-warning {
-  font-size: 0.8rem;
-  color: var(--yellow);
-  font-weight: 500;
-}
-
-.detail-quality-warning {
+.detail-quality-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
+  gap: 5px;
+  font-size: 0.7rem;
   color: #b8952e;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 20px;
-  background: rgba(184, 149, 46, 0.08);
-  border: 1px solid rgba(184, 149, 46, 0.18);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: rgba(184, 149, 46, 0.07);
+  border: 1px solid rgba(184, 149, 46, 0.16);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .detail-save-btn {
