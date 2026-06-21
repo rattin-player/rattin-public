@@ -4,7 +4,7 @@ import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSy
 import { fileURLToPath } from "url";
 import { sessionsPath, downloadDir } from "./lib/storage/paths.js";
 import { dumpRcSessions, restoreRcSessions } from "./lib/storage/rc-sessions.js";
-import { tmdbCache } from "./lib/cache/cache.js";
+import { tmdbCache, loadCacheFromDisk, saveCacheToDisk } from "./lib/cache/cache.js";
 import { pruneOrphans, cacheStats } from "./lib/cache/torrent-caches.js";
 import { createIdleTracker } from "./lib/idle-tracker.js";
 import { createApiAccessControl } from "./lib/access-control.js";
@@ -274,6 +274,7 @@ if (isMain) {
       activeTranscodes.delete(key);
     }
     ctx.pluginRegistry?.stop();
+    saveCacheToDisk();
     ctx.client.destroy(() => {
       console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Stopped`);
       process.exit(0);
@@ -291,6 +292,9 @@ if (isMain) {
   const HOST = process.env.HOST || "127.0.0.1";
   app.listen(PORT, HOST, () => {
     console.log(`[${new Date().toISOString().slice(11, 23)}] INFO  Rattin running at http://${HOST}:${PORT}`);
+
+    // Load persisted TMDB cache from disk (avoids re-fetching everything on restart)
+    loadCacheFromDisk();
 
     // Phase 2: heavy init — runs after server is listening so the
     // Qt shell's health-check poll succeeds immediately.
