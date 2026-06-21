@@ -319,7 +319,7 @@ export default function Detail() {
         waitForBridge().then(() => {
           if (data.poster_path) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${data.poster_path}`);
           mpvSetTitle(displayTitle(season, episode));
-          mpvSetLoadingStatus("Finding a match...");
+          mpvSetLoadingStatus(pluginName ? `Searching via ${pluginName}...` : "Searching...");
           mpvSetLoading(true);
         });
       }
@@ -468,7 +468,7 @@ export default function Detail() {
                 disabled={playState === "loading"}
               >
                 {playState === "loading" ? (
-                  "Finding a match..."
+                  "Searching..."
                 ) : (
                   <>
                     <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">

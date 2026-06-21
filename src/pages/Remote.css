@@ -448,8 +448,8 @@
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
-/* ── Torrent info ── */
-.remote-torrent-info {
+/* ── Stream info ── */
+.remote-stream-info {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -460,7 +460,7 @@
   flex-shrink: 0;
 }
 
-.remote-torrent-info span {
+.remote-stream-info span {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1028,13 +1028,6 @@
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.remote-source-seed-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green, #22c55e);
 }
 
 .remote-source-size {

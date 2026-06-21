@@ -210,17 +210,9 @@
   align-items: center;
   gap: 5px;
   font-size: 0.76rem;
-  color: var(--green);
+  color: var(--text-secondary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.picker-seed-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
 }
 
 .picker-size {
@@ -272,7 +264,7 @@
   }
 }
 
-.picker-copy-magnet {
+.picker-copy-link {
   position: relative;
   display: flex;
   align-items: center;
@@ -285,12 +277,12 @@
   flex-shrink: 0;
 }
 
-.picker-copy-magnet:hover {
+.picker-copy-link:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
 }
 
-.picker-copy-magnet.copied {
+.picker-copy-link.copied {
   color: var(--green);
 }
 

@@ -79,7 +79,7 @@ export default function Home() {
       waitForBridge().then(() => {
         if (item.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${item.posterPath}`);
         mpvSetTitle(displayTitle);
-        mpvSetLoadingStatus("Finding best stream...");
+        mpvSetLoadingStatus("Searching...");
         mpvSetLoading(true);
       });
     }

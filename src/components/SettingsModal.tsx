@@ -96,7 +96,7 @@ const TAB_META: Record<Tab, { eyebrow: string; title: string; lede: string }> = 
   streaming: {
     eyebrow: "Streaming",
     title: "How media reaches the player",
-    lede: "By default Rattin downloads over peer-to-peer. Route through a private cache service for instant playback, full seeking, and IP privacy.",
+    lede: "By default Rattin downloads over a decentralized network. Route through a private cache service for instant playback, full seeking, and IP privacy.",
   },
   metadata: {
     eyebrow: "Metadata",
@@ -454,86 +454,19 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   function renderPlugins() {
     const installedId = pluginStatus?.plugin?.id ?? null;
     const isRunning = !!pluginStatus?.running;
-    const installedEntry = pluginIndex.find((p) => p.id === installedId);
-    const updateAvailable =
-      installedEntry && pluginStatus?.plugin
-        ? installedEntry.version !== pluginStatus.plugin.version &&
-          installedEntry.version.localeCompare(pluginStatus.plugin.version, undefined, { numeric: true }) > 0
-        : false;
+    const hasAnyInstalled = pluginStatus?.installed && pluginStatus.plugin;
 
     return (
       <div className="settings-tab">
         <TabHeader tab="plugins" />
 
-        {/* ── Currently installed (if any) ── */}
-        {pluginStatus?.installed && pluginStatus.plugin && (
-          <div className="settings-section">
-            <div className="settings-section-header">
-              <h3>Installed</h3>
-              {isRunning ? (
-                <span className="settings-badge settings-badge-green">
-                  <span className="settings-badge-dot" />
-                  Running
-                </span>
-              ) : (
-                <span className="settings-badge settings-badge-red">
-                  <span className="settings-badge-dot" />
-                  Stopped
-                </span>
-              )}
-            </div>
-
-            <div className="settings-card is-elevated is-active">
-              <div className="plugin-detail-grid">
-                <div className="settings-info-row">
-                  <span className="settings-info-label">Plugin</span>
-                  <span className="settings-info-value">{pluginStatus.plugin.name}</span>
-                </div>
-                <div className="settings-info-row">
-                  <span className="settings-info-label">Version</span>
-                  <span className="settings-info-value mono">v{pluginStatus.plugin.version}</span>
-                </div>
-              </div>
-              {updateAvailable && installedEntry && (
-                <div className="settings-info-row">
-                  <span className="settings-info-label">Update</span>
-                  <span className="settings-info-value">
-                    v{installedEntry.version} available
-                    <button
-                      className="settings-btn-inline"
-                      onClick={() => handleInstallPlugin(installedEntry.id)}
-                      disabled={installingId === installedEntry.id}
-                      style={{ marginLeft: 6 }}
-                    >
-                      {installingId === installedEntry.id ? "Updating…" : "Update"}
-                    </button>
-                  </span>
-                </div>
-              )}
-              <div className="settings-row-actions">
-                <button className="settings-btn settings-btn-secondary" onClick={handleReloadPlugin}>
-                  <RefreshIcon /> Restart
-                </button>
-                <button className="settings-btn settings-btn-danger" onClick={handleUninstallPlugin}>
-                  <UninstallIcon /> Uninstall
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Registry ── */}
         <div className="settings-section">
-          <div className="settings-section-header">
-            <h3>Registry</h3>
-            {pluginIndex.length > 0 && (
-              <span className="settings-badge settings-badge-muted">{pluginIndex.length}</span>
-            )}
-          </div>
-          <p className="settings-section-desc">
-            Signed plugins from the Rattin registry. Install only what you need —
-            each runs locally and stays separate from the rest of the app.
-          </p>
+          {!hasAnyInstalled && (
+            <p className="settings-section-desc">
+              Signed plugins from the Rattin registry. Install only what you need —
+              each runs locally and stays separate from the rest of the app.
+            </p>
+          )}
 
           {pluginIndex.length === 0 ? (
             <div className="settings-status-inline">Loading registry…</div>
@@ -542,6 +475,12 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               {pluginIndex.map((entry) => {
                 const isInstalled = entry.id === installedId;
                 const isInstalling = installingId === entry.id;
+                const updateAvailable =
+                  isInstalled && pluginStatus?.plugin
+                    ? entry.version !== pluginStatus.plugin.version &&
+                      entry.version.localeCompare(pluginStatus.plugin.version, undefined, { numeric: true }) > 0
+                    : false;
+
                 return (
                   <div
                     key={entry.id}
@@ -556,21 +495,45 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                           <span className="plugin-row-name">{entry.name}</span>
                           <span className="plugin-row-version mono">v{entry.version}</span>
                           {isInstalled && (
-                            <span className="settings-badge settings-badge-green">
+                            <span className={`settings-badge ${isRunning ? "settings-badge-green" : "settings-badge-red"}`}>
                               <span className="settings-badge-dot" />
-                              {isRunning ? "Running" : "Installed"}
+                              {isRunning ? "Running" : "Stopped"}
                             </span>
+                          )}
+                          {updateAvailable && (
+                            <span className="settings-badge settings-badge-accent">Update available</span>
                           )}
                         </div>
                         <div className="plugin-row-desc">{entry.description}</div>
+                        {isInstalled && (
+                          <div className="plugin-row-actions">
+                            {updateAvailable && (
+                              <button
+                                className="settings-btn settings-btn-primary settings-btn-sm"
+                                onClick={() => handleInstallPlugin(entry.id)}
+                                disabled={isInstalling}
+                              >
+                                {isInstalling ? "Updating…" : "Update"}
+                              </button>
+                            )}
+                            <button
+                              className="settings-btn settings-btn-secondary settings-btn-sm"
+                              onClick={handleReloadPlugin}
+                            >
+                              Restart
+                            </button>
+                            <button
+                              className="settings-btn settings-btn-danger settings-btn-sm"
+                              onClick={handleUninstallPlugin}
+                            >
+                              Uninstall
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="plugin-row-action">
-                      {isInstalled ? (
-                        <span className="plugin-row-check" aria-label="Installed">
-                          <CheckIcon />
-                        </span>
-                      ) : (
+                    {!isInstalled && (
+                      <div className="plugin-row-action">
                         <button
                           className="settings-btn settings-btn-secondary"
                           onClick={() => handleInstallPlugin(entry.id)}
@@ -578,8 +541,8 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                         >
                           {isInstalling ? <><Spinner /> Installing…</> : <><DownloadIcon /> Install</>}
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -625,8 +588,8 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             <a href="https://real-debrid.com" target="_blank" rel="noopener noreferrer">Real-Debrid</a>
             {" or "}
             <a href="https://torbox.app" target="_blank" rel="noopener noreferrer">TorBox</a>
-            {" "}for instant HTTPS streaming, full seeking, and zero swarm exposure. Optional — you
-            can keep using peer-to-peer WebTorrent if you prefer.
+            {" "}for instant HTTPS streaming, full seeking, and privacy protection. Optional — you
+            can keep using the direct streaming engine if you prefer.
           </p>
 
           {!debridStatus ? (
@@ -684,7 +647,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                       Cached only
                     </span>
                     <span className="debrid-mode-option-desc">
-                      Use the cache when media is already there. Fall back to peer-to-peer for the rest.
+                      Use the cache when media is already there. Fall back to direct streaming for the rest.
                     </span>
                   </button>
                 </div>
@@ -1072,7 +1035,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           <p className="about-statement">
             A single desktop app for browsing, clicking, and watching —{" "}
             <strong>no waiting, no accounts, no telemetry</strong>.
-            Built on libmpv, peer-to-peer, TMDB, and a signed add-on system.
+            Built on libmpv, decentralized streaming, TMDB, and a signed add-on system.
           </p>
         </div>
 
@@ -1167,7 +1130,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         <div className="settings-section">
           <p className="about-credits">
             <strong>Credits.</strong>{" "}
-            Built on the shoulders of libmpv, the peer-to-peer stack behind it, TMDB, Express, React,
+            Built on the shoulders of libmpv, the decentralized streaming stack behind it, TMDB, Express, React,
             and the open-source community. Poster and metadata art is © their respective rights
             holders; Rattin just looks it up.
           </p>

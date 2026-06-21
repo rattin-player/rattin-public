@@ -526,7 +526,7 @@ export default function Player() {
     await waitForBridge();
     if (state.posterPath) mpvSetPoster(`https://image.tmdb.org/t/p/w1280${state.posterPath}`);
     mpvSetTitle(`${title} — S${nextSeason}E${nextEpisode}`);
-    mpvSetLoadingStatus("Finding a match...");
+    mpvSetLoadingStatus("Searching next episode...");
     mpvSetLoading(true);
     try {
       // Search for next episode and fetch metadata in parallel
@@ -606,12 +606,12 @@ export default function Player() {
         : dlSpeed >= 1024
           ? `${(dlSpeed / 1024).toFixed(0)} KB/s`
           : `${dlSpeed} B/s`;
-      status = `Connected to ${numPeers} peer${numPeers !== 1 ? "s" : ""} \u00b7 ${speed}`;
+      status = `Downloading \u00b7 ${speed}`;
     } else {
       status = "Starting playback...";
     }
     mpvSetLoadingStatus(status);
-  }, [numPeers, dlSpeed, dlProgress, state?.debridStreamKey]);
+  }, [dlSpeed, dlProgress, state?.debridStreamKey]);
 
   // Sync PlayerContext.active with URL params (Detail.tsx navigates here without calling startStream)
   useEffect(() => {
@@ -1191,7 +1191,7 @@ export default function Player() {
         <div className="player-sources-overlay" onClick={() => setShowSources(false)}>
           <div className="player-sources-panel" onClick={(e) => e.stopPropagation()}>
             <div className="player-sources-header">
-              <h3>Switch version</h3>
+              <h3>Available versions</h3>
               <button className="player-sources-close" onClick={() => setShowSources(false)}>&#10005;</button>
             </div>
             <div className="player-sources-list">
@@ -1211,8 +1211,8 @@ export default function Player() {
                       <span className="player-source-item-name">{s.name}</span>
                       <div className="player-source-item-tags">
                         {isCurrent && <span className="player-source-tag current">Playing</span>}
-                        {s.cached && <span className="player-source-tag cached">Cached</span>}
-                        {s.seasonPack && <span className="player-source-tag season-pack">Season Pack</span>}
+                        {s.cached && <span className="player-source-tag cached">Instant</span>}
+                        {s.seasonPack && <span className="player-source-tag season-pack">Full season</span>}
                         {s.tags?.filter((t: string) => t !== "Native").map((t: string) => (
                           <span key={t} className="player-source-tag">{t}</span>
                         ))}
@@ -1220,9 +1220,7 @@ export default function Player() {
                     </div>
                     <div className="player-source-item-meta">
                       <span className="player-source-seeds">
-                        <span className="player-source-seed-dot" />
                         {live ? live.numPeers : s.seeders}
-                        {live && <span className="player-source-seed-label">live</span>}
                       </span>
                       <span className="player-source-size">{formatBytes(s.size)}</span>
                       {isSwitching && <span className="player-source-switching">Switching...</span>}

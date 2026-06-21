@@ -713,9 +713,9 @@ export default function Remote() {
       )}
 
       {(state?.dlProgress ?? 1) < 1 && (
-        <div className="remote-torrent-info">
+        <div className="remote-stream-info">
           {state.dlSpeed > 0 && <span>{formatBytes(state.dlSpeed)}/s</span>}
-          {state.dlPeers > 0 && <span>{state.dlPeers} peer{state.dlPeers !== 1 ? "s" : ""}</span>}
+          {state.dlPeers > 0 && <span>{state.dlPeers} connections</span>}
           <span>{Math.round((state.dlProgress || 0) * 100)}%</span>
         </div>
       )}
@@ -868,7 +868,7 @@ export default function Remote() {
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
                     <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
                   </svg>
-                  <span className="remote-content-btn-label">Sources</span>
+                  <span className="remote-content-btn-label">Versions</span>
                   <span className="remote-content-btn-meta">{state.sources.length}</span>
                 </button>
               )}
@@ -901,7 +901,6 @@ export default function Remote() {
                     <span key={t} className="remote-source-tag">{t}</span>
                   ))}
                   <span className="remote-source-seeds">
-                    <span className="remote-source-seed-dot" />
                     {s.seeders ?? "?"}
                   </span>
                   {s.size > 0 && <span className="remote-source-size">{formatBytes(s.size)}</span>}

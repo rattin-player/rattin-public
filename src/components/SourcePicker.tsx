@@ -108,8 +108,8 @@ export default function SourcePicker({ streams, onPick, onClose, pluginName }: S
                         <div className="picker-item-main">
                           <span className="picker-item-name">{s.name}</span>
                           <div className="picker-item-tags">
-                            {s.cached && <span className="picker-tag cached">Cached</span>}
-                            {s.seasonPack && <span className="picker-tag season-pack">Season Pack</span>}
+                            {s.cached && <span className="picker-tag cached">Instant</span>}
+                            {s.seasonPack && <span className="picker-tag season-pack">Full season</span>}
                             {s.tags.filter((t: string) => t !== "Native").map((t: string) => (
                               <span key={t} className="picker-tag">{t}</span>
                             ))}
@@ -117,14 +117,13 @@ export default function SourcePicker({ streams, onPick, onClose, pluginName }: S
                         </div>
                         <div className="picker-item-meta">
                           <span className="picker-seeds">
-                            <span className="picker-seed-dot" />
                             {s.seeders}
                           </span>
                           <span className="picker-size">{formatBytes(s.size)}</span>
                           <button
-                            className={`picker-copy-magnet${copied ? " copied" : ""}`}
+                            className={`picker-copy-link${copied ? " copied" : ""}`}
                             onClick={(e) => handleCopy(e, s)}
-                            title="Copy magnet link"
+                            title="Copy link"
                           >
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
                               <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
