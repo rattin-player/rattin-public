@@ -258,7 +258,7 @@ export async function checkDebridCached(infoHashes: string[]): Promise<Record<st
 
 // ── TMDB ──────────────────────────────────────────────────────────
 
-export function getTmdbStatus(): Promise<{ configured: boolean }> {
+export function getTmdbStatus(): Promise<{ configured: boolean; hasUserKey: boolean }> {
   return get("/api/tmdb/status");
 }
 
