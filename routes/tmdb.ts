@@ -87,13 +87,13 @@ app.get("/api/tmdb/trending", async (req: Request, res: Response) => {
   if (cached && !stale) return res.json(cached);
   if (cached && stale) {
     res.json(cached);
-    fetchTMDB(`/trending/all/week?page=${page}`)
+    fetchTMDB(`/trending/all/week?page=${page}&language=en-US&language=en-US`)
       .then((data) => tmdbCache.set(key, data, CACHE_TTL.TRENDING))
       .catch(() => {});
     return;
   }
   try {
-    const data = await fetchTMDB(`/trending/all/week?page=${page}`);
+    const data = await fetchTMDB(`/trending/all/week?page=${page}&language=en-US`);
     tmdbCache.set(key, data, CACHE_TTL.TRENDING);
     res.json(data);
   } catch (e) {
