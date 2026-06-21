@@ -219,6 +219,13 @@ export class PluginRegistryImpl implements PluginRegistry {
     this.port = null;
     this.stopped = false;
 
+    // Ensure the plugin directory has a package.json with type:module
+    // so Node treats plugin.js as an ES module (needed for CDN-served ESM plugins).
+    const pkgPath = path.join(this.dir, "package.json");
+    if (!existsSync(pkgPath)) {
+      writeFileSync(pkgPath, JSON.stringify({ type: "module" }));
+    }
+
     const nodeBinary = process.env.MAGNET_NODE_PATH || "node";
     const proc = spawn(nodeBinary, [pluginPath], {
       env: {
