@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, autoPlay, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
+import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
@@ -314,7 +314,21 @@ export default function Detail() {
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__rattinCancelPlay = false;
-      const result = await autoPlay(title, year, type, season, episode, imdbId);
+
+      // Search for streams via the plugin
+      const results = await searchStreams(title, year, type, season, episode, imdbId);
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
+      if (!results || results.length === 0) {
+        throw new Error("not_found");
+      }
+
+      // Pick the best result — prefer 1080p, then first by score
+      let best = results[0];
+      const best1080 = results.find((r: any) => /1080p/i.test(r.name));
+      if (best1080) best = best1080;
+
+      // Play the selected torrent
+      const result = await playTorrent(best.infoHash, best.name, season, episode, best.fileIdx);
       if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (isRemote) {
         sendRemoteStart(result, result.tags, season, episode);

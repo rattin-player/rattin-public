@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/HeroSection";
 import ContentRow from "../components/ContentRow";
 import WatchHistoryRow from "../components/WatchHistoryRow";
-import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, dismissWatchHistory, autoPlay, poster as posterUrl } from "../lib/api";
+import { fetchTrending, fetchDiscover, fetchGenres, fetchContinueWatching, dismissWatchHistory, searchStreams, playTorrent, poster as posterUrl } from "../lib/api";
 import { waitForBridge, mpvSetPoster, mpvSetTitle, mpvSetLoading, mpvSetLoadingStatus } from "../lib/native-bridge";
 import { useRemoteMode } from "../lib/PlayerContext";
 import { useRefetchOnRecovery } from "../lib/useRefetchOnRecovery";
@@ -69,7 +69,9 @@ export default function Home() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__rattinCancelPlay = false;
-      result = await autoPlay(
+
+      // Search for streams via the plugin
+      const results = await searchStreams(
         item.title,
         item.year,
         item.mediaType,
@@ -77,6 +79,20 @@ export default function Home() {
         item.episode,
         item.imdbId,
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; if (!isRemote) mpvSetLoading(false); return; }
+      if (!results || results.length === 0) {
+        throw new Error("not_found");
+      }
+
+      // Pick the best result — prefer 1080p, then first by score
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let best: any = results[0];
+      const best1080 = results.find((r: any) => /1080p/i.test(r.name));
+      if (best1080) best = best1080;
+
+      // Play the selected torrent
+      result = await playTorrent(best.infoHash, best.name, item.season, item.episode, best.fileIdx);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; if (!isRemote) mpvSetLoading(false); return; }
     } catch (err) {

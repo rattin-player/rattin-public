@@ -34,7 +34,7 @@ import { useAudioTracks } from "../lib/useAudioTracks";
 import { useSeek } from "../lib/useSeek";
 import { useIntro } from "../lib/useIntro";
 import { formatBytes } from "../lib/utils";
-import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, autoPlay, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
+import { playTorrent, fetchLivePeers, fetchLanIp, searchStreams, fetchSeason, fetchEpisodeGroups, reportWatchProgress, postLearnOffset, getLearnedOffset, setBingeCapabilities, setBingeDiagnostics, setPersistedTracks, fetchAudioTracks, fetchSubtitleTracks, fetchEpisodeMarkers, fetchPrefetchReady, fetchSeriesProgress } from "../lib/api";
 import { BingeCoordinator, type CoordinatorState } from "../lib/BingeCoordinator";
 import { nextEpisodeFrom } from "../../lib/media/next-episode";
 import { startPrefetch as libStartPrefetch } from "../../lib/torrent/prefetch";
@@ -320,11 +320,17 @@ export default function Player() {
           currentInfoHash: infoHash,
           deps: {
             resolveNext: async () => {
-              const r = await autoPlay(baseTitle, year, "tv", next.season, next.episode, ep.imdbId, infoHash) as { infoHash?: string; fileIndex?: number } | undefined;
-              const hash = r?.infoHash ?? "";
-              const fi = typeof r?.fileIndex === "number" ? r.fileIndex : 0;
-              // autoPlay already resolved + warmed/added server-side, so warmCache/addTorrent
-              // below are no-ops; magnet just needs to be truthy for the lib guard.
+              // Search for the next episode via the plugin
+              const results = await searchStreams(baseTitle, year, "tv", next.season, next.episode, ep.imdbId);
+              if (!results || results.length === 0) {
+                return { infoHash: "", fileIndex: 0, magnet: "" };
+              }
+              // Pick the best result — prefer 1080p, then first by score
+              let best: any = results[0];
+              const best1080 = results.find((r: any) => /1080p/i.test(r.name));
+              if (best1080) best = best1080;
+              const hash = best.infoHash ?? "";
+              const fi = typeof best.fileIdx === "number" ? best.fileIdx : 0;
               return { infoHash: hash, fileIndex: fi, magnet: hash };
             },
             warmCache: async () => {},
@@ -513,12 +519,24 @@ export default function Player() {
     mpvSetLoadingStatus("Finding best stream...");
     mpvSetLoading(true);
     try {
-      const promises: [Promise<any>, Promise<any>, Promise<any>] = [
-        autoPlay(title, year, "tv", nextSeason, nextEpisode, imdbId, infoHash),
-        fetchSeason(state.tmdbId, nextSeason).catch(() => null),
-        state.hasEpisodeGroups ? fetchEpisodeGroups(state.tmdbId).catch(() => null) : Promise.resolve(null),
-      ];
-      const [result, seasonData, episodeGroups] = await Promise.all(promises);
+      // Search for next episode and fetch metadata in parallel
+      const searchPromise = searchStreams(title, year, "tv", nextSeason, nextEpisode, imdbId);
+      const seasonPromise = fetchSeason(state.tmdbId, nextSeason).catch(() => null);
+      const episodeGroupsPromise = state.hasEpisodeGroups ? fetchEpisodeGroups(state.tmdbId).catch(() => null) : Promise.resolve(null);
+      const [results, seasonData, episodeGroups] = await Promise.all([searchPromise, seasonPromise, episodeGroupsPromise]);
+
+      if (!results || results.length === 0) {
+        mpvSetLoading(false);
+        return;
+      }
+
+      // Pick the best result — prefer 1080p, then first by score
+      let best: any = results[0];
+      const best1080 = results.find((r: any) => /1080p/i.test(r.name));
+      if (best1080) best = best1080;
+
+      // Play the selected torrent
+      const result = await playTorrent(best.infoHash, best.name, nextSeason, nextEpisode, best.fileIdx);
       // Use episode group data if available (for anime with flat TMDB seasons)
       const groupSeason = episodeGroups?.found
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

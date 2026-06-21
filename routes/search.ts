@@ -26,16 +26,7 @@ export default function searchRoutes(app: Express, ctx: ServerContext): void {
   // Access ctx.client via getter (not destructured) so deferred init is visible
   const client = () => ctx.client;
 
-const TRACKERS = [
-  "udp://tracker.opentrackr.org:1337/announce",
-  "udp://open.stealth.si:80/announce",
-  "udp://tracker.torrent.eu.org:451/announce",
-  "udp://tracker.bittor.pw:1337/announce",
-  "udp://public.popcorn-tracker.org:6969/announce",
-  "udp://tracker.dler.org:6969/announce",
-  "udp://exodus.desync.com:6969",
-  "udp://open.demonii.com:1337/announce",
-];
+const SEARCH_TIMEOUT = 10000;
 
 async function searchTVViaPlugin(
   pluginRegistry: PluginRegistry,
@@ -240,15 +231,14 @@ function respondWithTorrent(torrent: Torrent, season: number | undefined, episod
 }
 
 app.post("/api/auto-play", async (req: Request, res: Response) => {
-  const { title, year, type, season, episode, imdbId, preferInfoHash } = req.body as {
+  const { type, season, episode, preferInfoHash } = req.body as {
     title: string; year?: number; type?: string; season?: number; episode?: number; imdbId?: string;
     preferInfoHash?: string;
   };
-  if (!title) return res.status(400).json({ error: "Title is required" });
 
   // Same-torrent reuse: when the caller is already playing a torrent (e.g. a
-  // season pack) and just wants the next episode, short-circuit the search and
-  // play the matching file from that torrent. Only fires in native mode — debrid
+  // season pack) and just wants the next episode, short-circuit and play the
+  // matching file from that torrent. Only fires in native mode — debrid
   // stream swaps have invalidation semantics we don't want to touch from here.
   if (preferInfoHash && type === "tv" && season && episode && !(getDebridProvider() && getDebridMode() === "on")) {
     const existing = client().torrents.find(
@@ -273,166 +263,8 @@ app.post("/api/auto-play", async (req: Request, res: Response) => {
     }
   }
 
-  // ── Plugin check — only reached if preferInfoHash didn't short-circuit ──
-  if (!ctx.pluginRegistry?.isRunning()) {
-    return res.status(503).json({ error: "no_source" });
-  }
-
-  let results: SearchResult[];
-  if (type === "tv" && season && episode) {
-    log("info", "Auto-play search (TV)", { title, season, episode });
-    results = await searchTVViaPlugin(ctx.pluginRegistry, title, season, episode, imdbId);
-  } else {
-    const query = year ? `${title} ${year}` : title;
-    log("info", "Auto-play search", { query });
-    results = await ctx.pluginRegistry.search({ query, type: "movie", imdbId });
-  }
-
-  try {
-    if (results.length === 0) {
-      log("info", "Auto-play: no results");
-      return res.status(404).json({ error: "not_found" });
-    }
-
-    const scored = results
-      .map((r) => ({ ...r, score: scoreTorrent(r, title, year, type || "movie") }))
-      .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score || b.seeders - a.seeders);
-
-    if (scored.length === 0) {
-      log("info", "Auto-play: no quality matches", { total: results.length });
-      return res.status(404).json({ error: "not_found" });
-    }
-
-    // Prefer best 1080p torrent for auto-play (best balance of quality and size)
-    // Fall back to overall best if no 1080p is available
-    const best1080 = scored.find((r) => /1080p/i.test(r.name));
-    if (best1080) {
-      const topIdx = scored.indexOf(best1080);
-      if (topIdx > 0) {
-        scored.splice(topIdx, 1);
-        scored.unshift(best1080);
-        log("info", "Auto-play: promoted 1080p candidate", { name: best1080.name, score: best1080.score });
-      }
-    }
-
-    // Try debrid — loop through top candidates until one works
-    const debrid = getDebridProvider();
-    const debridOn = debrid && getDebridMode() === "on";
-    if (debridOn) {
-      const candidates = scored.slice(0, 5);
-      for (const candidate of candidates) {
-        const tags = parseTags(candidate.name);
-        const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
-        const magnet = `magnet:?xt=urn:btih:${candidate.infoHash}&dn=${encodeURIComponent(candidate.name)}${trackerParams}`;
-        try {
-          log("info", "Auto-play selected", { name: candidate.name, score: candidate.score, seeders: candidate.seeders });
-          const stream = await debrid.unrestrict(magnet, candidate.fileIdx);
-          log("info", "Auto-play via debrid", { name: candidate.name, filename: stream.filename });
-          const debridStreamKey = setActiveDebridStream(candidate.infoHash, stream.url, stream.files, stream.links, stream.torrentId, stream.provider);
-          return res.json({
-            infoHash: candidate.infoHash, fileIndex: stream.fileIndex, fileName: stream.filename,
-            torrentName: candidate.name, totalSize: stream.filesize, tags, debridStreamKey,
-          } satisfies TorrentPlayResult);
-        } catch (err) {
-          log("warn", "Debrid failed for candidate, trying next", { name: candidate.name, error: (err as Error).message });
-        }
-      }
-      log("err", "Debrid failed for all candidates", {});
-      return res.status(502).json({ error: "debrid_failed" });
-    }
-
-    const best = scored[0];
-    log("info", "Auto-play selected", { name: best.name, score: best.score, seeders: best.seeders, source: best.source });
-    const tags = parseTags(best.name);
-    const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
-    const magnet = `magnet:?xt=urn:btih:${best.infoHash}&dn=${encodeURIComponent(best.name)}${trackerParams}`;
-
-    // Reuse existing torrent if already in client
-    const existing = client().torrents.find(
-      (t) => t.infoHash === best.infoHash || t.infoHash === best.infoHash.toLowerCase()
-    );
-
-    const autoSeason = type === "tv" ? season : undefined;
-    const autoEpisode = type === "tv" ? episode : undefined;
-
-    if (existing) {
-      // Already ready with files — return immediately
-      if (existing.files && existing.files.length > 0) {
-        const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
-        if (result) return res.json(result);
-        // Torrent is ready but no matching video — don't wait for "ready" (it already fired)
-        log("info", "Existing torrent has no matching video, retrying fresh", { infoHash: existing.infoHash });
-        try { existing.destroy({ destroyStore: false }); } catch {}
-      } else {
-        // Still loading metadata — wait for ready
-        log("info", "Waiting for existing torrent metadata", { infoHash: existing.infoHash });
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("Timed out")), 30000);
-            existing.on("ready", () => { clearTimeout(timeout); resolve(); });
-            existing.on("error", (err) => { clearTimeout(timeout); reject(err); });
-          });
-          const result = respondWithTorrent(existing, autoSeason, autoEpisode, tags);
-          if (result) return res.json(result);
-        } catch {}
-        // If still no good, remove the stuck torrent and try fresh
-        log("info", "Removing stuck torrent, retrying", { infoHash: existing.infoHash });
-        try { existing.destroy({ destroyStore: false }); } catch {}
-      }
-    }
-
-    await new Promise<TorrentPlayResult>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Timed out waiting for metadata")), 30000);
-      let torrent: Torrent;
-      try {
-        torrent = client().add(magnet, { path: DOWNLOAD_PATH, deselect: true });
-      } catch (err) {
-        clearTimeout(timeout);
-        reject(err);
-        return;
-      }
-      torrent.on("error", (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      torrent.on("ready", () => {
-        clearTimeout(timeout);
-
-        torrent.on("download", throttle(() => {
-          log("info", "Progress", {
-            name: torrent.name,
-            progress: (torrent.progress * 100).toFixed(1) + "%",
-            down: fmtBytes(torrent.downloadSpeed) + "/s",
-            peers: torrent.numPeers,
-          });
-        }, 10000));
-
-        torrent.on("done", () => {
-          log("info", "Download complete", { name: torrent.name });
-          torrent.pause();
-        });
-
-        torrent.on("error", (err) => log("err", "Torrent error", { error: (err as Error).message }));
-
-        const result = respondWithTorrent(torrent, autoSeason, autoEpisode, tags);
-        if (!result) {
-          reject(new Error("No video files found in torrent"));
-          return;
-        }
-
-        resolve(result);
-      });
-    }).then((data) => {
-      if (!res.headersSent) res.json(data);
-    }).catch((err) => {
-      log("err", "Auto-play torrent failed", { error: (err as Error).message });
-      if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
-    });
-  } catch (err) {
-    log("err", "Auto-play failed", { error: (err as Error).message });
-    if (!res.headersSent) res.status(500).json({ error: "stream_failed" });
-  }
+  // No reuse possible — caller should use /api/search-streams + /api/play-torrent
+  return res.status(404).json({ error: "not_found" });
 });
 
 // Play a specific torrent by infoHash (user-selected from search-streams)
@@ -443,8 +275,7 @@ app.post("/api/play-torrent", async (req: Request, res: Response) => {
   if (!infoHash) return res.status(400).json({ error: "infoHash is required" });
 
   const tags = parseTags(name || "");
-  const trackerParams = TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
-  const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}${trackerParams}`;
+  const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(name || "")}`;
 
   // Try debrid if enabled — no WebTorrent fallback
   const debrid = getDebridProvider();

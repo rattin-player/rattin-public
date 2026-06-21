@@ -46,15 +46,13 @@ describe("Search routes", () => {
   // ── POST /api/auto-play ───────────────────────────────────────────────
 
   describe("POST /api/auto-play", () => {
-    it("returns 400 when body is empty", async () => {
+    it("returns 404 when no preferInfoHash and no plugin", async () => {
       const res = await fetch(`${baseUrl}/api/auto-play`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      assert.equal(res.status, 400);
-      const body = await res.json() as { error: string };
-      assert.ok(body.error, "should have an error field");
+      assert.equal(res.status, 404);
     });
 
     it("reuses preferred torrent when it contains the target episode", async () => {
