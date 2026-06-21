@@ -1,12 +1,1 @@
-[
-  {
-    "id": "rattin-sources",
-    "name": "Content Sources",
-    "description": "Community content sources — search and play",
-    "author": "rattin",
-    "downloadUrl": "https://rattin-plugins.pages.dev/plugins/rattin-sources/v1.0.0.js",
-    "sha256": "c5e26d88094f9beff47abccbcd551222f12a71831a34a1827f28e4a5c9265998",
-    "version": "1.0.0",
-    "apiVersion": 1
-  }
-]
+[]
