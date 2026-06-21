@@ -136,9 +136,18 @@ export async function fetchTMDB(path: string): Promise<unknown> {
   const userKey = loadTmdbKey();
 
   let url: string;
+  const headers: Record<string, string> = { "User-Agent": "Rattin/2.0" };
+
   if (userKey) {
-    // User has their own TMDB key — use the direct API
-    url = `https://api.themoviedb.org/3${path}${path.includes("?") ? "&" : "?"}api_key=${userKey}`;
+    // User has their own TMDB key — detect format and use appropriate auth
+    if (userKey.startsWith("eyJ")) {
+      // v4 JWT — use Authorization header
+      url = `https://api.themoviedb.org/3${path}`;
+      headers["Authorization"] = `Bearer ${userKey}`;
+    } else {
+      // v3 API key — use query parameter
+      url = `https://api.themoviedb.org/3${path}${path.includes("?") ? "&" : "?"}api_key=${userKey}`;
+    }
   } else if (TMDB_PROXY_URL) {
     // Proxy configured — use it (key is added server-side by the Worker)
     url = `${TMDB_PROXY_URL}/3${path}`;
@@ -147,7 +156,7 @@ export async function fetchTMDB(path: string): Promise<unknown> {
   }
 
   const res = await fetch(url, {
-    headers: { "User-Agent": "Rattin/2.0" },
+    headers,
     signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`TMDB API error: ${res.status}`);
