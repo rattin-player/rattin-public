@@ -98,15 +98,15 @@
 
 .movie-card-quality-badge {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  bottom: 0;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
+  width: 26px;
+  height: 26px;
+  border-radius: 0 6px 0 0;
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
   color: #b8952e;
   z-index: 2;

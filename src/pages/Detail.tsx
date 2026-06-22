@@ -118,24 +118,22 @@ export default function Detail() {
     let cancelled = false;
     setHasAnySource(null);
     setAvailabilityWarning("");
+    // Restore persisted warning from a previous visit (stored when the search
+    // pipeline found only low-quality sources after scoring).
+    try {
+      const stored = sessionStorage.getItem(`quality:${id}`);
+      if (stored) setAvailabilityWarning(stored);
+    } catch {}
     checkAvailability([{ id, title, year, type: type || "movie" }]).then(({ available, warning }) => {
       if (cancelled) return;
       setHasAnySource(available.has(id));
-      if (warning) setAvailabilityWarning(warning);
+      if (warning) {
+        setAvailabilityWarning(warning);
+        try { sessionStorage.setItem(`quality:${id}`, warning); } catch {}
+      }
     }).catch(() => {
       if (!cancelled) setHasAnySource(true); // fail open
     });
-    // Also run a quick scored search for quality warning — the availability
-    // check uses raw results (noisy for single-word titles), but the scored
-    // search pipeline filters out irrelevant results.
-    const imdbId = data.imdb_id || (data as any).external_ids?.imdb_id || undefined;
-    searchStreams(title, year, type || "movie", undefined, undefined, imdbId).then(({ warning }) => {
-      if (!cancelled && warning) {
-        setAvailabilityWarning(warning);
-        // Persist so home page cards can show it across navigation
-        try { sessionStorage.setItem(`quality:${id}`, warning); } catch {}
-      }
-    }).catch(() => {});
     return () => { cancelled = true; };
   }, [data, id, type]);
 
@@ -228,7 +226,10 @@ export default function Detail() {
       const year = parseInt((data.release_date || data.first_air_date || "").slice(0, 4)) || undefined;
       const imdbId = data.imdb_id || data.external_ids?.imdb_id || undefined;
       const { results, warning } = await searchStreams(title, year, type, season, episode, imdbId);
-      if (warning) setAvailabilityWarning(warning);
+      if (warning) {
+        setAvailabilityWarning(warning);
+        try { sessionStorage.setItem(`quality:${id}`, warning); } catch {}
+      }
       setStreams(results);
     } catch (err: unknown) {
       if ((err as Error).message === "no_source") {
@@ -361,7 +362,10 @@ export default function Detail() {
 
       // Search for streams via the plugin
       const { results, warning } = await searchStreams(title, year, type, season, episode, imdbId);
-      if (warning) setAvailabilityWarning(warning);
+      if (warning) {
+        setAvailabilityWarning(warning);
+        try { sessionStorage.setItem(`quality:${id}`, warning); } catch {}
+      }
       if ((window as any).__rattinCancelPlay) { (window as any).__rattinCancelPlay = false; setPlayState(null); return; }
       if (!results || results.length === 0) {
         throw new Error("not_found");

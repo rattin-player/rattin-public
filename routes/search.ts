@@ -3,6 +3,11 @@ import { scoreTorrent, parseTags, findEpisodeFile as findEpisodeFileFromList, fi
 import { fmtBytes, throttle } from "../lib/media/media-utils.js";
 import { getDebridProvider, setActiveDebridStream, getDebridMode } from "../lib/torrent/debrid.js";
 import type { ServerContext, Torrent } from "../lib/types.js";
+
+// In-memory cache for availability and quality checks — avoids hammering the
+// plugin (and its upstream APIs) on every page load. TTL: 30 minutes.
+const availCache = new Map<string, { data: unknown; ts: number }>();
+const AVAIL_CACHE_TTL = 30 * 60 * 1000;
 import type { SearchQuery, SearchResult as PluginSearchResult, PluginRegistry } from "../lib/plugins/types.js";
 
 interface SearchResult {
@@ -91,6 +96,17 @@ app.post("/api/check-availability", async (req: Request, res: Response) => {
   const { items } = req.body as { items?: Array<{ id: number; title: string; year?: string; type?: string }> };
   if (!Array.isArray(items) || items.length === 0) return res.json({ available: [] });
 
+  // Check cache first — keyed by the first item (detail page uses single-item checks)
+  const cacheKey = items.length === 1
+    ? `avail:${items[0].id}:${items[0].title}:${items[0].year || ""}`
+    : null;
+  if (cacheKey) {
+    const cached = availCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < AVAIL_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+  }
+
   const capped = items.slice(0, 40);
   try {
     const result = await ctx.pluginRegistry!.availability(
@@ -98,7 +114,9 @@ app.post("/api/check-availability", async (req: Request, res: Response) => {
     );
     const available = result.available.map((idx) => capped[idx]?.id).filter(Boolean);
     log("info", "Availability check", { requested: capped.length, available: available.length, warning: result.warning });
-    res.json({ available, warning: result.warning, warnings: result.warnings });
+    const response = { available, warning: result.warning, warnings: result.warnings };
+    if (cacheKey) availCache.set(cacheKey, { data: response, ts: Date.now() });
+    res.json(response);
   } catch {
     // Plugin not installed or search failed — fail open (show everything)
     res.json({ available: capped.map((i) => i.id) });
