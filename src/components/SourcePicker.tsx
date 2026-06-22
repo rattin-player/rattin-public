@@ -108,6 +108,7 @@ export default function SourcePicker({ streams, onPick, onClose, pluginName }: S
                         <div className="picker-item-main">
                           <span className="picker-item-name">{s.name}</span>
                           <div className="picker-item-tags">
+                            {s.qualityHint === "low" && <span className="picker-tag low-quality">Low quality</span>}
                             {s.cached && <span className="picker-tag cached">Instant</span>}
                             {s.seasonPack && <span className="picker-tag season-pack">Full season</span>}
                             {s.tags.filter((t: string) => t !== "Native").map((t: string) => (

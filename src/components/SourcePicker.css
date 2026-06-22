@@ -198,6 +198,12 @@
   color: var(--accent-bright);
 }
 
+.picker-tag.low-quality {
+  background: rgba(184, 149, 46, 0.1);
+  color: #b8952e;
+  font-weight: 600;
+}
+
 .picker-item-meta {
   display: flex;
   align-items: center;
