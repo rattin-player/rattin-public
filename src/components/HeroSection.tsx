@@ -10,7 +10,7 @@ interface HeroSectionProps {
 
 export default memo(function HeroSection({ item }: HeroSectionProps) {
   const navigate = useNavigate();
-  if (!item) return <div className="hero skeleton" style={{ height: "70vh" }} />;
+  if (!item) return <div className="hero skeleton" />;
 
   const type = item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
