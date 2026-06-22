@@ -134,18 +134,27 @@
   display: flex;
   gap: 12px;
   align-items: center;
+  padding-bottom: 22px;  /* room for absolute-positioned quality warning */
+}
+
+.detail-play-wrap {
+  position: relative;
 }
 
 .detail-quality-line {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  font-size: 0.72rem;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 0.65rem;
   color: #b8952e;
   font-weight: 500;
-  margin: 0 0 2px;
-  padding: 0;
+  white-space: nowrap;
 }
 
 .detail-play-wrap {
