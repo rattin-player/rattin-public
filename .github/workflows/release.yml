@@ -261,16 +261,14 @@ jobs:
       - name: Build Qt shell
         shell: pwsh
         run: |
-          pip install ninja
           $mpvDir = "$env:GITHUB_WORKSPACE/mpv-dev"
           cd shell
           New-Item -ItemType Directory -Force -Path build | Out-Null
           cd build
-          cmake -G "Ninja" `
-            -DCMAKE_BUILD_TYPE=Release `
+          cmake -G "Visual Studio 17 2022" -A x64 `
             -DMPV_PREFIX="$mpvDir" `
             ..
-          cmake --build .
+          cmake --build . --config Release
 
       - name: Assemble distribution
         shell: pwsh
@@ -281,7 +279,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $app | Out-Null
 
           # Qt shell + icon
-          Copy-Item shell/build/rattin-shell.exe $dist/
+          Copy-Item shell/build/Release/rattin-shell.exe $dist/
           Copy-Item packaging/windows/rattin.ico $dist/
 
           # windeployqt — try windeployqt6 first, fall back to windeployqt
