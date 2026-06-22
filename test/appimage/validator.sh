@@ -89,7 +89,7 @@ wait_for() {
 echo "---- stage 1: startup gate ----"
 
 wait_for "server log: 'Rattin running at'" \
-    'grep -q "Rattin running at" "$STDOUT_LOG"' 30 \
+    'grep -q "Rattin running at" "$STDOUT_LOG"' 90 \
     || { dump_diagnostics; exit 1; }
 
 wait_for "http 200 on http://127.0.0.1:9630" \

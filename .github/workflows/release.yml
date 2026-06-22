@@ -202,7 +202,7 @@ jobs:
     # Skip on manual dispatch — we run those to validate the Linux matrix,
     # burning Windows CI minutes on every dispatch is wasteful.
     if: github.event_name != 'workflow_dispatch'
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
