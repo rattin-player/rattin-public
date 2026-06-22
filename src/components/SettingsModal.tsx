@@ -26,7 +26,7 @@ import {
   type PluginStatus,
 } from "../lib/api";
 import { usePlayer } from "../lib/PlayerContext";
-import UpdateSection from "./UpdateSection";
+import UpdateSection, { getUpdateInfo } from "./UpdateSection";
 import rattinMark from "../../packaging/linux/rattin.svg";
 import "./SettingsModal.css";
 
@@ -158,6 +158,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [clearing, setClearing] = useState(false);
   const [cacheMessage, setCacheMessage] = useState<{ kind: "info" | "error" | "success"; text: string } | null>(null);
 
+  // ── About ──
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+
   // ── Data ──
   const [clearingHistory, setClearingHistory] = useState(false);
   const [clearingSaved, setClearingSaved] = useState(false);
@@ -172,6 +175,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     loadPluginIndex();
     loadSettings();
     loadTmdbStatus();
+    getUpdateInfo().then((info) => setCurrentVersion(info.current));
   }, []);
 
   // ── Loaders ──
@@ -1083,7 +1087,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           </div>
           <div className="about-factsheet">
             <div className="about-factsheet-label">Version</div>
-            <div className="about-factsheet-value mono">3.0.0</div>
+            <div className="about-factsheet-value mono">{currentVersion || "..."}</div>
 
             <div className="about-factsheet-label">License</div>
             <div className="about-factsheet-value">GPL-3.0-only</div>

@@ -4,7 +4,7 @@ import "./UpdateSection.css";
 
 // Shared promise so Navbar and UpdateSection don't fire duplicate requests
 let sharedPromise: Promise<UpdateInfo> | null = null;
-function getUpdateInfo(): Promise<UpdateInfo> {
+export function getUpdateInfo(): Promise<UpdateInfo> {
   if (!sharedPromise) {
     sharedPromise = checkForUpdate().catch(() => ({
       available: false,
