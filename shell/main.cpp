@@ -132,18 +132,8 @@ int main(int argc, char *argv[])
         });
 #endif
 
-    // Pipe server stdout/stderr to a log file under TEMP so it's accessible
-    // from PowerShell with: Get-Content $env:TEMP\rattin-shell.log -Tail 200 -Wait
-    // Override the path with RATTIN_LOG_FILE env var. Truncated on each launch.
-    QString logPath = qEnvironmentVariable("RATTIN_LOG_FILE",
-        QDir(QDir::tempPath()).filePath("rattin-shell.log"));
-    {
-        QFile clear(logPath);
-        if (clear.open(QIODevice::WriteOnly | QIODevice::Truncate)) clear.close();
-    }
-    serverProcess->setStandardOutputFile(logPath, QIODevice::WriteOnly | QIODevice::Append);
-    serverProcess->setStandardErrorFile(logPath, QIODevice::WriteOnly | QIODevice::Append);
-    fprintf(stderr, "[shell] server logs: %s\n", qPrintable(logPath));
+    serverProcess->setProcessChannelMode(QProcess::ForwardedChannels);
+    fprintf(stderr, "[shell] server logs forwarded to stderr\n");
 
     // Find the app directory (where server.ts and node_modules live).
     // When MAGNET_APP_DIR is set (AppImage mode), use that directly.
