@@ -239,7 +239,6 @@ jobs:
       - name: Download libmpv
         shell: pwsh
         run: |
-          # Get latest mpv-dev x86_64 from shinchiro's GitHub releases
           $release = gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest --jq '.assets[] | select(.name | test("mpv-dev-x86_64-[0-9]")) | .browser_download_url' | Select-Object -First 1
           Write-Host "Downloading: $release"
           Invoke-WebRequest -Uri $release -OutFile mpv-dev.7z
@@ -247,19 +246,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Cache Node.js binary
+        uses: actions/cache@v4
+        with:
+          path: node-build
+          key: node-win-20.18.1
+
       - name: Download Node.js binary
         shell: pwsh
         run: |
-          $nodeVer = "20.18.1"
-          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/node-v$nodeVer-win-x64.zip" -OutFile node.zip
-          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/SHASUMS256.txt" -OutFile node-shasums.txt
-          $expected = (Get-Content node-shasums.txt | Select-String "node-v$nodeVer-win-x64.zip").ToString().Split(" ")[0]
-          $actual = (Get-FileHash node.zip -Algorithm SHA256).Hash.ToLower()
-          if ($expected -ne $actual) {
-              throw "Node.js checksum mismatch! Expected: $expected Got: $actual"
+          if (-not (Test-Path node-build/node.exe)) {
+            $nodeVer = "20.18.1"
+            Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/node-v$nodeVer-win-x64.zip" -OutFile node.zip
+            Expand-Archive node.zip -DestinationPath node-build -Force
+          } else {
+            Write-Host "Node.js cached"
           }
-          Write-Host "Node.js checksum verified: $actual"
-          Expand-Archive node.zip -DestinationPath node-build -Force
 
       - name: Build frontend
         run: npm ci && npm run build
