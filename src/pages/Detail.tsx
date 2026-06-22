@@ -500,44 +500,46 @@ export default function Detail() {
                   Not yet available
                 </button>
               ) : (
-                <button
-                  className="detail-play-btn"
-                  onClick={() => {
-                    if (type === "tv" && isValidResumePoint(resumePoint, seasons)) {
-                      handlePlay(resumePoint.season, resumePoint.episode);
-                    } else if (type === "tv") {
-                      handlePlay(1, 1);
-                    } else {
-                      handlePlay();
-                    }
-                  }}
-                  disabled={playState === "loading" || hasAnySource === null}
-                >
-                  {playState === "loading" ? (
-                    "Searching..."
-                  ) : (
-                    <>
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
+                <div className="detail-play-wrap">
+                  <button
+                    className="detail-play-btn"
+                    onClick={() => {
+                      if (type === "tv" && isValidResumePoint(resumePoint, seasons)) {
+                        handlePlay(resumePoint.season, resumePoint.episode);
+                      } else if (type === "tv") {
+                        handlePlay(1, 1);
+                      } else {
+                        handlePlay();
+                      }
+                    }}
+                    disabled={playState === "loading" || hasAnySource === null}
+                  >
+                    {playState === "loading" ? (
+                      "Searching..."
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        {type === "tv" && isValidResumePoint(resumePoint, seasons)
+                          ? `Resume S${resumePoint.season}E${resumePoint.episode}`
+                          : type === "movie" && resumePoint?.position > 0
+                            ? "Resume"
+                            : "Play"}
+                      </>
+                    )}
+                  </button>
+                  {availabilityWarning && (
+                    <span className="detail-quality-line">
+                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
                       </svg>
-                      {type === "tv" && isValidResumePoint(resumePoint, seasons)
-                        ? `Resume S${resumePoint.season}E${resumePoint.episode}`
-                        : type === "movie" && resumePoint?.position > 0
-                          ? "Resume"
-                          : "Play"}
-                    </>
+                      Low quality sources
+                    </span>
                   )}
-                </button>
-              )}
-              {availabilityWarning && (
-                <span className="detail-quality-line">
-                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                  Low quality sources
-                </span>
+                </div>
               )}
               <button
                 className={`detail-save-btn${isSaved ? " saved" : ""}`}
