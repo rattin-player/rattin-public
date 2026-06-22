@@ -136,6 +136,18 @@
   align-items: center;
 }
 
+.detail-quality-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: #b8952e;
+  font-weight: 500;
+  margin: 0 0 2px;
+  padding: 0;
+}
+
 .detail-play-wrap {
   display: inline-flex;
   flex-direction: column;
