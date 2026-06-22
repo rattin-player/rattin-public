@@ -24,19 +24,6 @@
   box-shadow: inset 0 -160px 120px -20px var(--bg-deep);
 }
 
-/* Warm amber wash — top only, away from bottom edge */
-.detail-backdrop-overlay::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(201, 168, 76, 0.06) 0%,
-    transparent 70%
-  );
-  pointer-events: none;
-}
-
 /* Warm amber wash */
 .detail-backdrop-overlay::after {
   content: "";
