@@ -125,6 +125,15 @@ export default function Detail() {
     }).catch(() => {
       if (!cancelled) setHasAnySource(true); // fail open
     });
+    // Also run a quick scored search for quality warning — the availability
+    // check uses raw results (noisy for single-word titles), but the scored
+    // search pipeline filters out irrelevant results.
+    if (hasAnySource !== false) {
+      const imdbId = data.imdb_id || (data as any).external_ids?.imdb_id || undefined;
+      searchStreams(title, year, type || "movie", undefined, undefined, imdbId).then(({ warning }) => {
+        if (!cancelled && warning) setAvailabilityWarning(warning);
+      }).catch(() => {});
+    }
     return () => { cancelled = true; };
   }, [data, id, type]);
 
