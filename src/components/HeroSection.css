@@ -21,22 +21,17 @@
       rgba(10, 10, 17, 0.92) 80%,
       var(--bg-deep) 90%
     );
-  /* fill the last 10% with solid bg-deep to guarantee no cutoff */
-  box-shadow: inset 0 -60px 60px -20px var(--bg-deep);
 }
 
-/* Warm amber wash at the bottom */
+/* Warm amber wash — only at the top/middle, NOT at the bottom edge */
 .hero-overlay::after {
   content: "";
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 40%;
+  inset: 0;
   background: linear-gradient(
-    to top,
-    rgba(201, 168, 76, 0.04) 0%,
-    transparent 100%
+    to bottom,
+    rgba(201, 168, 76, 0.06) 0%,
+    transparent 70%
   );
   pointer-events: none;
 }
