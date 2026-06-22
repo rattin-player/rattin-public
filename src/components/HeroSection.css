@@ -15,11 +15,11 @@
   background:
     linear-gradient(
       to bottom,
-      transparent 0%,
-      rgba(10, 10, 17, 0.15) 50%,
-      rgba(10, 10, 17, 0.5) 70%,
-      rgba(10, 10, 17, 0.85) 85%,
-      var(--bg-deep) 93%
+      transparent 30%,
+      rgba(10, 10, 17, 0.08) 50%,
+      rgba(10, 10, 17, 0.35) 70%,
+      rgba(10, 10, 17, 0.75) 85%,
+      var(--bg-deep) 95%
     );
 }
 
