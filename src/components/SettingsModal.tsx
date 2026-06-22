@@ -1021,7 +1021,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   function renderAbout() {
     return (
       <div className="settings-tab">
-        <TabHeader tab="about" />
+        <div className="settings-tab-title">
+          <span className="settings-tab-eyebrow">About</span>
+        </div>
 
         <div className="settings-section">
           <div className="about-mark">
@@ -1034,7 +1036,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           <div className="about-baseline" />
           <p className="about-statement">
             A single desktop app for browsing, clicking, and watching —{" "}
-            <strong>no waiting, no accounts, no telemetry</strong>.
+            <strong>free, open source, no accounts, fully private</strong>.
             Built on libmpv, decentralized streaming, TMDB, and a signed add-on system.
           </p>
         </div>
