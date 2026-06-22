@@ -128,12 +128,14 @@ export default function Detail() {
     // Also run a quick scored search for quality warning — the availability
     // check uses raw results (noisy for single-word titles), but the scored
     // search pipeline filters out irrelevant results.
-    if (hasAnySource !== false) {
-      const imdbId = data.imdb_id || (data as any).external_ids?.imdb_id || undefined;
-      searchStreams(title, year, type || "movie", undefined, undefined, imdbId).then(({ warning }) => {
-        if (!cancelled && warning) setAvailabilityWarning(warning);
-      }).catch(() => {});
-    }
+    const imdbId = data.imdb_id || (data as any).external_ids?.imdb_id || undefined;
+    searchStreams(title, year, type || "movie", undefined, undefined, imdbId).then(({ warning }) => {
+      if (!cancelled && warning) {
+        setAvailabilityWarning(warning);
+        // Persist so home page cards can show it across navigation
+        try { sessionStorage.setItem(`quality:${id}`, warning); } catch {}
+      }
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [data, id, type]);
 

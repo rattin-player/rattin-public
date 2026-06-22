@@ -89,7 +89,11 @@ export default function ContentRow({ title, fetchFn, filterAvailability = false 
                   <div className="movie-card-poster skeleton" />
                 </div>
               ))
-            : items.map((item) => <MovieCard key={item.id} item={item} warning={itemWarnings[item.id]} />)}
+            : items.map((item) => {
+                const persisted = itemWarnings[item.id]
+                  || (() => { try { return sessionStorage.getItem(`quality:${item.id}`) || undefined; } catch { return undefined; } })();
+                return <MovieCard key={item.id} item={item} warning={persisted} />;
+              })}
         </div>
         <button className="content-row-arrow right" onClick={() => scroll(1)}>&rsaquo;</button>
       </div>
