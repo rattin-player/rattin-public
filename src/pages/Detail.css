@@ -29,7 +29,10 @@
   z-index: 1;
   margin-top: -200px;
   padding: 0 48px 48px;
-  animation: fadeUp 0.6s ease-out both;
+  /* ponytail: backwards (not both) so the transform doesn't persist
+     after the animation ends — a lingering transform creates a containing
+     block that breaks position:sticky on descendants. */
+  animation: fadeUp 0.6s ease-out backwards;
 }
 
 .detail-main {
@@ -1285,11 +1288,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 14px;
-  /* Show one row only — cap with overflow hidden. Extra padding-bottom
-     so the channel/views text isn't clipped at the edge. */
-  max-height: 200px;
+  /* Show one row only — card is ~197px (thumb 124 + meta 71 + border 2).
+     Give buffer so channel/views text isn't clipped. */
+  max-height: 210px;
   overflow: hidden;
-  padding-bottom: 8px;
 }
 
 .recap-card {
