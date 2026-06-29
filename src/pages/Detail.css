@@ -1280,6 +1280,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 14px;
+  /* ponytail: show one row only — card is ~168px (220×9/16 thumb + meta),
+     cap with overflow hidden. CSS grid handles column count per breakpoint. */
+  max-height: 182px;
+  overflow: hidden;
 }
 
 .recap-card {
@@ -1397,6 +1401,8 @@
   }
   .recaps-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    /* ponytail: mobile card ~134px (160×9/16 thumb + meta) */
+    max-height: 148px;
   }
   .recap-featured {
     flex-direction: column;
