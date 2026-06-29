@@ -1,9 +1,34 @@
 import crypto from "crypto";
+import dgram from "dgram";
 import os from "os";
 import type { Express, Request, Response } from "express";
 import { buildCookie, clearCookie, getRcAuthToken, getRcSessionId } from "../lib/access-control.js";
 import type { ServerContext, RCSession, RCClient, BingeCapabilities, BingeDiagnostics, PersistedTracks } from "../lib/types.js";
 import { dumpRcSessions } from "../lib/storage/rc-sessions.js";
+
+/** Get the LAN IP the kernel would use to reach the internet.
+ *  Works by connecting a UDP socket to a public address (no packets sent)
+ *  and reading the locally bound address — the kernel picks the correct
+ *  interface based on the routing table. VirtualBox/Docker host-only
+ *  adapters never carry default routes, so they are never returned. */
+function getLanIp(): Promise<string> {
+  return new Promise((resolve) => {
+    const sock = dgram.createSocket("udp4");
+    let resolved = false;
+    const done = (addr: string) => {
+      if (resolved) return;
+      resolved = true;
+      try { sock.close(); } catch {}
+      resolve(addr);
+    };
+    sock.on("error", () => done(""));
+    sock.connect(80, "1.1.1.1", () => {
+      const addr = sock.address();
+      done(addr && typeof addr === "object" ? addr.address : "");
+    });
+    setTimeout(() => done(""), 2000);
+  });
+}
 
 export default function rcRoutes(app: Express, ctx: ServerContext): void {
   const { log, pcAuthToken, rcSessions } = ctx;
@@ -116,18 +141,32 @@ export default function rcRoutes(app: Express, ctx: ServerContext): void {
     }
   });
 
-  // LAN IP for phone remote pairing (native shell binds to 0.0.0.0 but QR needs a real IP)
-  app.get("/api/rc/lan-ip", (_req: Request, res: Response) => {
-    const interfaces = os.networkInterfaces();
-    for (const addrs of Object.values(interfaces)) {
-      if (!addrs) continue;
-      for (const addr of addrs) {
-        if (addr.family === "IPv4" && !addr.internal) {
-          return res.json({ ip: addr.address, port: Number(process.env.PORT) || 3000 });
+  // LAN IP for phone remote pairing — uses kernel routing table so virtual
+  // adapters (VirtualBox, Docker, VPNs) are never picked up. Falls back to
+  // interface iteration if the machine is offline.
+  app.get("/api/rc/lan-ip", async (_req: Request, res: Response) => {
+    const port = Number(process.env.PORT) || 3000;
+    let ip = await getLanIp();
+
+    // Fallback: offline/no default route — iterate interfaces.
+    if (!ip) {
+      const ifaces = os.networkInterfaces();
+      outer:
+      for (const [name, addrs] of Object.entries(ifaces)) {
+        if (!addrs) continue;
+        // Skip known virtual/host-only adapters (cross-platform)
+        if (/^(vboxnet|vmnet|docker|virbr|tun|tap|veth|br-|utun|llw|awdl|anpi|bridge|lo$)/i.test(name)) continue;
+        if (/(VirtualBox|vEthernet|Hyper-V|VMware|WSL)/i.test(name)) continue;
+        for (const addr of addrs) {
+          if (addr.family === "IPv4" && !addr.internal) {
+            ip = addr.address;
+            break outer;
+          }
         }
       }
     }
-    res.json({ ip: null, port: Number(process.env.PORT) || 3000 });
+
+    res.json({ ip: ip || null, port });
   });
 
   // Session status probe (used by phone to detect expired sessions)
