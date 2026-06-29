@@ -488,15 +488,18 @@ export default function Detail() {
   }
 
   // Fetch YouTube recaps, score by relevance, and sort best-first
-  function doRecapSearch(query: string) {
+  async function doRecapSearch(query: string) {
     setRecapLoading(true);
-    fetchYoutubeSearch(query)
-      .then((results) => {
-        const scored = results.map((r: any) => ({ ...r, _score: scoreRecap(r, recapSeason) }));
-        scored.sort((a: any, b: any) => b._score - a._score);
-        setRecapResults(scored);
-      })
-      .finally(() => setRecapLoading(false));
+    try {
+      const results = await fetchYoutubeSearch(query);
+      const scored = results.map((r: any) => ({ ...r, _score: scoreRecap(r, recapSeason) }));
+      scored.sort((a: any, b: any) => b._score - a._score);
+      setRecapResults(scored);
+    } catch {
+      setRecapResults([]);
+    } finally {
+      setRecapLoading(false);
+    }
   }
 
   // Sync recap season when the main season dropdown changes

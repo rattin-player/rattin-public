@@ -48,14 +48,22 @@ export default function youtubeRoutes(app: Express, ctx: ServerContext): void {
 
       const html = await resp.text();
 
-      // Extract ytInitialData JSON blob
-      const match = html.match(/var ytInitialData\s*=\s*(\{.+?\});/);
+      // Extract ytInitialData JSON blob. Match to </script> boundary —
+      // YouTube always emits it right after the data, and it's reliable
+      // even when JSON string values contain "};"
+      const match = html.match(/var ytInitialData\s*=\s*(\{.*?\})\s*;\s*<\/script>/s);
       if (!match) {
         log("warn", "ytInitialData not found in YouTube response");
         return res.json({ results: [] });
       }
 
-      const data = JSON.parse(match[1]);
+      let data: any;
+      try {
+        data = JSON.parse(match[1]);
+      } catch {
+        log("warn", "ytInitialData JSON parse failed");
+        return res.json({ results: [] });
+      }
       const contents =
         data?.contents?.twoColumnSearchResultsRenderer?.primaryContents
           ?.sectionListRenderer?.contents;
