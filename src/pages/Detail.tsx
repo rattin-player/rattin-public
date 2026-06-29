@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { fetchMovie, fetchTV, fetchSeason, fetchEpisodeGroups, fetchReviews, searchStreams, playTorrent, backdrop, poster, still, fetchResumePoint, fetchSeriesProgress, checkSaved, toggleSaved, reportWatchProgress, castProfile, getPluginStatus, checkAvailability, fetchYoutubeSearch } from "../lib/api";
 import { ratingColor, formatBytes } from "../lib/utils";
@@ -109,7 +109,10 @@ export default function Detail() {
   const [recapExpanded, setRecapExpanded] = useState(false);
   const [recapMinimized, setRecapMinimized] = useState(false);
   const [showMoreRecaps, setShowMoreRecaps] = useState(false);
+  const [recapRowsShown, setRecapRowsShown] = useState(1);
+  const [recapColumns, setRecapColumns] = useState(3);
   const [recapSeason, setRecapSeason] = useState(selectedSeason);
+  const recapsGridRef = useRef<HTMLDivElement>(null);
   const [recoveryKey, setRecoveryKey] = useState(0);
   useRefetchOnRecovery(useCallback(() => setRecoveryKey((k) => k + 1), []));
   const [showPluginPrompt, setShowPluginPrompt] = useState(false);
@@ -127,6 +130,7 @@ export default function Detail() {
     setRecapExpanded(false);
     setRecapMinimized(false);
     setShowMoreRecaps(false);
+    setRecapRowsShown(1);
     setShowAllReddit(false);
     setShowAllReviews(false);
     setResumePoint(null);
@@ -509,6 +513,7 @@ export default function Detail() {
     setSelectedRecap(null);
     setRecapMinimized(false);
     setShowMoreRecaps(false);
+    setRecapRowsShown(1);
     if (recapExpanded && data) {
       const q = `${data.name || data.title} season ${recapSeason} recap`;
       setRecapQuery(q);
@@ -516,6 +521,24 @@ export default function Detail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recapSeason]);
+
+  // Measure grid columns from actual DOM (before paint, no flash).
+  // Uses window resize — NOT ResizeObserver on the grid, to avoid the
+  // feedback loop where adding items changes grid size → observer fires
+  // → column count changes → item count changes → repeat.
+  useLayoutEffect(() => {
+    if (!showMoreRecaps) return;
+    const grid = recapsGridRef.current;
+    if (!grid) return;
+    const measure = () => {
+      const cols = window.getComputedStyle(grid)
+        .gridTemplateColumns.split(" ").filter(Boolean).length;
+      if (cols > 0) setRecapColumns(cols);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [showMoreRecaps]);
 
   if (!data) {
     return (
@@ -860,16 +883,33 @@ export default function Detail() {
                       <>
                         <button
                           className="recaps-more-toggle"
-                          onClick={() => setShowMoreRecaps(!showMoreRecaps)}
+                          onClick={() => {
+                            if (!showMoreRecaps) {
+                              setShowMoreRecaps(true);
+                            } else {
+                              const visible = recapRowsShown * recapColumns;
+                              const remaining = recapResults.length - 1 - visible;
+                              if (remaining > 0) {
+                                setRecapRowsShown((r) => r + 1);
+                              } else {
+                                setShowMoreRecaps(false);
+                                setRecapRowsShown(1);
+                              }
+                            }
+                          }}
                         >
-                          {showMoreRecaps ? "Show less" : "Show more recaps"}
+                          {(() => {
+                            if (!showMoreRecaps) return "Show more recaps";
+                            const remaining = recapResults.length - 1 - recapRowsShown * recapColumns;
+                            return remaining > 0 ? "Show more" : "Show less";
+                          })()}
                           <span className={`recaps-chevron${showMoreRecaps ? " open" : ""}`}>
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                           </span>
                         </button>
                         {showMoreRecaps && (
-                          <div className="recaps-grid">
-                            {recapResults.slice(1).map((r: any) => (
+                          <div className="recaps-grid" ref={recapsGridRef}>
+                            {recapResults.slice(1, 1 + recapRowsShown * recapColumns).map((r: any) => (
                               <button
                                 key={r.videoId}
                                 className={`recap-card${selectedRecap?.videoId === r.videoId ? " active" : ""}`}
