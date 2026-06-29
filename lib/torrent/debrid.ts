@@ -11,7 +11,7 @@ export interface DebridFileInfo {
   bytes: number;
 }
 
-export interface DebridStream {
+interface DebridStream {
   url: string;
   filename: string;
   filesize: number;
